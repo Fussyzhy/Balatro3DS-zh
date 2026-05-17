@@ -106,6 +106,9 @@ function Game:init(seed)
     self._pause_settings_rect = nil
     self._pause_show_settings = false
     self._pause_speed_rects = {}
+    -- D-pad card cursor (hold L + left/right to sweep-select cards)
+    self._dpad_cursor_index = nil
+    self._l_held = false
     self._main_menu_continue_rect = nil
     self.round_score = 0
     self.last_hand_score = 0
