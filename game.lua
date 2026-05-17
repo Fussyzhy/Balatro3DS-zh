@@ -103,6 +103,9 @@ function Game:init(seed)
     self._pause_new_run_rect = nil
     self._pause_save_quit_rect = nil
     self._pause_save_error = nil
+    self._pause_settings_rect = nil
+    self._pause_show_settings = false
+    self._pause_speed_rects = {}
     self._main_menu_continue_rect = nil
     self.round_score = 0
     self.last_hand_score = 0
@@ -891,6 +894,9 @@ function Game:enter_pause_menu()
     self._pause_continue_rect = nil
     self._pause_new_run_rect = nil
     self._pause_save_quit_rect = nil
+    self._pause_settings_rect = nil
+    self._pause_show_settings = false
+    self._pause_speed_rects = {}
     self:set_state(self.STATES.PAUSED)
     return true
 end
@@ -903,6 +909,9 @@ function Game:exit_pause_menu()
     self._pause_save_quit_rect = nil
     self._pause_save_error = nil
     self._pause_prev_state = nil
+    self._pause_settings_rect = nil
+    self._pause_show_settings = false
+    self._pause_speed_rects = {}
     self:set_state(resume)
     return true
 end
@@ -3094,36 +3103,92 @@ function Game:draw_bottom_pause()
         love.graphics.setColor(self.C.PANEL)
         love.graphics.rectangle("fill", panel_x, panel_y, panel_w, panel_h, 6, 6)
     end
-    love.graphics.setColor(self.C.WHITE)
-    love.graphics.setFont(self.FONTS.PIXEL.MEDIUM)
-    love.graphics.printf("Paused", panel_x, panel_y + 14, panel_w, "center")
 
-    local btn_w, btn_h = 176, 32
-    local btn_x = panel_x + math.floor((panel_w - btn_w) * 0.5 + 0.5)
-    self._pause_continue_rect = { x = btn_x, y = panel_y + 48, w = btn_w, h = btn_h }
-    self._pause_new_run_rect = { x = btn_x, y = panel_y + 88, w = btn_w, h = btn_h }
-    self._pause_save_quit_rect = { x = btn_x, y = panel_y + 128, w = btn_w, h = btn_h }
-
-    local can_save = not self:is_hand_scoring_active()
     local function draw_btn(r, label, color)
         love.graphics.setColor(color)
         love.graphics.rectangle("fill", r.x, r.y, r.w, r.h, 4, 4)
         love.graphics.setColor(self.C.WHITE)
+        love.graphics.setFont(self.FONTS.PIXEL.MEDIUM)
         local ty = r.y + math.floor((r.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
         love.graphics.printf(label, r.x, ty, r.w, "center")
     end
-    draw_btn(self._pause_continue_rect, "Continue", self.C.GREEN)
-    draw_btn(self._pause_new_run_rect, "New Run", self.C.RED)
-    draw_btn(self._pause_save_quit_rect, "Save and Quit", can_save and self.C.BLUE or self.C.GREY)
 
-    if not can_save then
+    if self._pause_show_settings then
+        -- ===== SETTINGS PAGE =====
+        love.graphics.setColor(self.C.WHITE)
+        love.graphics.setFont(self.FONTS.PIXEL.MEDIUM)
+        love.graphics.printf("Settings", panel_x, panel_y + 10, panel_w, "center")
+
         love.graphics.setColor(self.C.GREY)
         love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-        love.graphics.printf("Finish hand scoring before saving.", panel_x, panel_y + 166, panel_w, "center")
-    elseif self._pause_save_error then
-        love.graphics.setColor(self.C.RED)
+        love.graphics.printf("Game Speed", panel_x, panel_y + 38, panel_w, "center")
+
+        local speeds = { 0.5, 1, 2, 3, 4 }
+        local speed_labels = { "0.5x", "1x", "2x", "3x", "4x" }
+        local cur_speed = (self.SETTINGS and self.SETTINGS.GAMESPEED) or 1
+        local sb_w = 44
+        local sb_h = 28
+        local sb_gap = 6
+        local total_sb = #speeds * sb_w + (#speeds - 1) * sb_gap
+        local sb_start_x = panel_x + math.floor((panel_w - total_sb) * 0.5 + 0.5)
+        local sb_y = panel_y + 56
+        self._pause_speed_rects = {}
+        for i, spd in ipairs(speeds) do
+            local rx = sb_start_x + (i - 1) * (sb_w + sb_gap)
+            local r = { x = rx, y = sb_y, w = sb_w, h = sb_h, speed = spd }
+            self._pause_speed_rects[i] = r
+            local is_active = math.abs(cur_speed - spd) < 0.01
+            local btn_color = is_active and self.C.ORANGE or self.C.BLOCK.BACK
+            love.graphics.setColor(btn_color)
+            love.graphics.rectangle("fill", rx, sb_y, sb_w, sb_h, 4, 4)
+            if is_active then
+                love.graphics.setColor(self.C.WHITE)
+            else
+                love.graphics.setColor(self.C.DARK_WHITE or self.C.GREY)
+            end
+            love.graphics.setFont(self.FONTS.PIXEL.SMALL)
+            local ty = sb_y + math.floor((sb_h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
+            love.graphics.printf(speed_labels[i], rx, ty, sb_w, "center")
+        end
+
+        love.graphics.setColor(self.C.WHITE)
         love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-        love.graphics.printf(tostring(self._pause_save_error), panel_x + 8, panel_y + 166, panel_w - 16, "center")
+        local speed_str = string.format("Current: %.4g x", cur_speed)
+        love.graphics.printf(speed_str, panel_x, panel_y + 96, panel_w, "center")
+
+        -- Back button
+        local back_w, back_h = 120, 28
+        local back_x = panel_x + math.floor((panel_w - back_w) * 0.5 + 0.5)
+        self._pause_back_rect = { x = back_x, y = panel_y + 148, w = back_w, h = back_h }
+        draw_btn(self._pause_back_rect, "Back", self.C.PANEL)
+    else
+        -- ===== MAIN PAUSE PAGE =====
+        love.graphics.setColor(self.C.WHITE)
+        love.graphics.setFont(self.FONTS.PIXEL.MEDIUM)
+        love.graphics.printf("Paused", panel_x, panel_y + 10, panel_w, "center")
+
+        local btn_w, btn_h = 176, 28
+        local btn_x = panel_x + math.floor((panel_w - btn_w) * 0.5 + 0.5)
+        self._pause_continue_rect  = { x = btn_x, y = panel_y + 42,  w = btn_w, h = btn_h }
+        self._pause_settings_rect  = { x = btn_x, y = panel_y + 78,  w = btn_w, h = btn_h }
+        self._pause_new_run_rect   = { x = btn_x, y = panel_y + 114, w = btn_w, h = btn_h }
+        self._pause_save_quit_rect = { x = btn_x, y = panel_y + 150, w = btn_w, h = btn_h }
+
+        local can_save = not self:is_hand_scoring_active()
+        draw_btn(self._pause_continue_rect,  "Continue",      self.C.GREEN)
+        draw_btn(self._pause_settings_rect,  "Settings",      self.C.BOOSTER)
+        draw_btn(self._pause_new_run_rect,   "New Run",        self.C.RED)
+        draw_btn(self._pause_save_quit_rect, "Save and Quit",  can_save and self.C.BLUE or self.C.GREY)
+
+        if not can_save then
+            love.graphics.setColor(self.C.GREY)
+            love.graphics.setFont(self.FONTS.PIXEL.SMALL)
+            love.graphics.printf("Finish scoring before saving.", panel_x, panel_y + 182, panel_w, "center")
+        elseif self._pause_save_error then
+            love.graphics.setColor(self.C.RED)
+            love.graphics.setFont(self.FONTS.PIXEL.SMALL)
+            love.graphics.printf(tostring(self._pause_save_error), panel_x + 8, panel_y + 182, panel_w - 16, "center")
+        end
     end
 end
 
@@ -5975,8 +6040,29 @@ function Game:touchpressed(id, x, y)
         return
     end
     if self.STATE == self.STATES.PAUSED then
+        if self._pause_show_settings then
+            -- Settings page touch
+            for _, r in ipairs(self._pause_speed_rects or {}) do
+                if self:_point_in_rect_simple(x, y, r) then
+                    if self.SETTINGS then
+                        self.SETTINGS.GAMESPEED = r.speed
+                    end
+                    return
+                end
+            end
+            if self._pause_back_rect and self:_point_in_rect_simple(x, y, self._pause_back_rect) then
+                self._pause_show_settings = false
+                return
+            end
+            return
+        end
+        -- Main pause page touch
         if self._pause_continue_rect and self:_point_in_rect_simple(x, y, self._pause_continue_rect) then
             self:exit_pause_menu()
+            return
+        end
+        if self._pause_settings_rect and self:_point_in_rect_simple(x, y, self._pause_settings_rect) then
+            self._pause_show_settings = true
             return
         end
         if self._pause_new_run_rect and self:_point_in_rect_simple(x, y, self._pause_new_run_rect) then

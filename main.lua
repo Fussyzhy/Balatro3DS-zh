@@ -44,7 +44,9 @@ function love.load()
 end
 
 function love.update(dt)
-    G:update(dt)
+    local speed = (G and G.SETTINGS and tonumber(G.SETTINGS.GAMESPEED)) or 1
+    if speed <= 0 then speed = 1 end
+    G:update(dt * speed)
 end
 
 function love.draw(screen)
