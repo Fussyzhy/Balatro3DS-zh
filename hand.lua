@@ -382,6 +382,22 @@ function Hand:_discard_selected_impl(reason)
         end
         return
     end
+    -- Glass: 1/4 destroy only when played cards leave the hand after scoring
+    if reason == "play" then
+        local to_try = {}
+        for _, node in ipairs(self.selected) do
+            to_try[#to_try + 1] = node
+        end
+        for _, node in ipairs(to_try) do
+            if node and node.enhancement == "glass" and self.game.do_random and self.game:do_random(1, 4, 1) then
+                Sfx.play_glass_break()
+                if self.game.emit_joker_event then
+                    self.game:emit_joker_event("glass_broken")
+                end
+                self:destroy_card_node(node)
+            end
+        end
+    end
     local deck = self.game.deck
     local discarded_nodes = {}
     local discarded_cards = {}
@@ -807,13 +823,6 @@ function Hand:_update_play_sequence(dt)
                     G.selectedHandChips = chips
                     G.selectedHandMult = mult
 
-                    local glass_broke = false
-                    if card_ctx.glass_broken_node == node then
-                        card_ctx.glass_broken_node = nil
-                        self:destroy_card_node(node)
-                        glass_broke = true
-                    end
-
                     local jctx = {
                         event = "card_played",
                         event_name = "card_played",
@@ -827,9 +836,6 @@ function Hand:_update_play_sequence(dt)
                         photograph_first_face_node = seq.photograph_first_face_node,
                         photograph_pareidolia = seq.photograph_pareidolia,
                     }
-                    if glass_broke then
-                        seq.play_rep = seq.play_rep_total
-                    end
                     if G and G.begin_joker_emit and G:begin_joker_emit("card_played", jctx) then
                         seq.phase = "wait_jokers"
                         seq.joker_wait_resume = { phase = "trigger", bump_trigger_wait = true, advance_play_repeat = true }

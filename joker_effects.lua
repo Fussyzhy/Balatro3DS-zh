@@ -70,6 +70,10 @@ local function count_full_deck(pred)
     if G and G.count_cards_in_full_deck then return G:count_cards_in_full_deck(pred) end
     return 0
 end
+local function count_cards_in_deck(pred)
+    if G and G.count_cards_in_deck then return G:count_cards_in_deck(pred) end
+    return 0
+end
 local function held_cards(ctx)
     local out = {}
     local played = {}
@@ -526,7 +530,7 @@ local SPECIAL = {
     },
     j_blue_joker = {
         matches_trigger = function(_, e) return e == "on_hand_scored" end,
-        apply_effect = function(_, ctx) add_chips(ctx, 2 * count_full_deck()) end
+        apply_effect = function(_, ctx) add_chips(ctx, 2 * count_cards_in_deck()) end
     },
     j_stone_joker = {
         matches_trigger = function(_, e) return e == "on_hand_scored" end,
@@ -548,7 +552,7 @@ local SPECIAL = {
         matches_trigger = function(_, e) return e == "on_hand_played" or e == "on_discard" or e == "on_hand_scored" end,
         apply_effect = function(j, ctx)
             if ctx.event_name == "on_hand_played" then j.stored_mult = (tonumber(j.stored_mult) or 0) + 1
-            elseif ctx.event_name == "on_discard" and ctx.discard_reason == "discard" then j.stored_mult = (tonumber(j.stored_mult) or 0) - 1
+            elseif ctx.event_name == "on_discard" and ctx.discard_reason == "discard" then j.stored_mult = math.max(0, (tonumber(j.stored_mult) or 0) - 1)
             else add_mult(ctx, tonumber(j.stored_mult) or 0) end
         end
     },
@@ -992,6 +996,7 @@ local SPECIAL = {
             if e == "on_discard" and type(ctx) == "table" and ctx.discard_reason == "discard" then
                 return true
             end
+            if e == "on_round_end" then return true end
             return false
         end,
         apply_effect = function(j, ctx)
@@ -1003,6 +1008,12 @@ local SPECIAL = {
                     if c.suit == j.random_suit then
                         j.runtime_counter = (tonumber(j.runtime_counter) or 0) + 3
                     end
+                end
+            elseif ctx.event_name == "on_round_end" then
+                local deck = G and G.deck
+                if deck and deck.random_card then
+                    local card = deck:random_card()
+                    self.random_suit = card.suit
                 end
             end
         end

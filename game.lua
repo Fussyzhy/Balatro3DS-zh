@@ -1301,10 +1301,6 @@ function Game:is_boss_blind_allowed_for_ante(blind, ante)
     local boss = blind.boss
     if type(boss) ~= "table" then return false end
     local a = math.max(1, tonumber(ante) or tonumber(self.ante) or 1)
-    local bmin = tonumber(boss.min)
-    local bmax = tonumber(boss.max)
-    if bmin and a < bmin then return false end
-    if bmax and a > bmax then return false end
     local allow_showdown = self:is_showdown_ante(a)
     local is_showdown_boss = (boss.showdown == true)
     if is_showdown_boss and not allow_showdown then
@@ -1313,6 +1309,11 @@ function Game:is_boss_blind_allowed_for_ante(blind, ante)
     if (not is_showdown_boss) and allow_showdown then
         return false
     end
+    if is_showdown_boss then
+        return true
+    end
+    local bmin = tonumber(boss.min)
+    if bmin and a < bmin then return false end
     return true
 end
 
@@ -3677,6 +3678,25 @@ function Game:count_cards_in_full_deck(predicate)
     return total
 end
 
+function Game:count_cards_in_deck(predicate)
+    local total = 0
+    local function count_in(list)
+        if type(list) ~= "table" then return end
+        for _, card in ipairs(list) do
+            if type(card) == "table" then
+                if not predicate or predicate(card) then
+                    total = total + 1
+                end
+            end
+        end
+    end
+    local deck = self.deck
+    if deck then
+        count_in(deck.cards)
+    end
+    return total
+end
+
 function Game:_apply_joker_layout()
     if not self.jokers then return end
 
@@ -5758,7 +5778,9 @@ end
 
 function Game:handle_failed_blind_reset()
     local mr_bones_index = nil
-    if type(self.jokers) == "table" then
+    local goal = (tonumber(self.current_blind_target) or 0) * 0.25
+    local score = tonumber(self.round_score) or 0
+    if type(self.jokers) == "table" and score >= goal then
         for i, j in ipairs(self.jokers) do
             if j and j.def and j.def.id == "j_mr_bones" then
                 mr_bones_index = i
@@ -5772,6 +5794,13 @@ function Game:handle_failed_blind_reset()
             Sfx.play("resources/sounds/slice1.ogg")
         end
         self._blind_resolution_pending = false
+        self:recycle_full_deck_after_blind_win()
+
+        local cap_dollars = self:get_interest_round_cap_dollars()
+        local interest_count_cap = cap_dollars * 5
+        local interest = math.floor(math.min(math.max(0, self.money), interest_count_cap) / 5)
+        interest = math.min(interest, cap_dollars)
+        self.money = (tonumber(self.money) or 0) + interest
         self:enter_shop_after_blind()
         return
     end

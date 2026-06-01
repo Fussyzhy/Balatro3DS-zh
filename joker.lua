@@ -72,6 +72,13 @@ local function count_full_deck(pred)
     return 0
 end
 
+local function count_cards_in_deck(pred)
+    if G and G.count_cards_in_deck then
+        return G:count_cards_in_deck(pred)
+    end
+    return 0
+end
+
 ---@param raw string|nil
 ---@return "base"|"foil"|"holo"|"polychrome"|"negative"
 function Joker.normalize_edition(raw)
@@ -261,12 +268,17 @@ function Joker:init(X, Y, W, H, def, params)
     self.effect_impl = JokerEffects.get(self)
 
     if type(self.def) == "table" then
-        if (self.def.id == "j_ancient_joker" or self.def.id == "j_castle") then
+        if (self.def.id == "j_ancient_joker") then
             local suits = { "Hearts", "Clubs", "Diamonds", "Spades" }
             self.random_suit = suits[math.random(1, #suits)]
         end
         if self.def.id == "j_castle" then
             self.runtime_counter = tonumber(self.runtime_counter) or 0
+            local deck = G and G.deck
+            if deck and deck.random_card then
+                local card = deck:random_card()
+                self.random_suit = card.suit
+            end
         elseif self.def.id == "j_ramen" then
             self.runtime_counter = self.def.config.Xmult or 2 -- Starts at 2
         elseif self.def.id == "j_seltzer" then
@@ -610,7 +622,7 @@ function Joker:get_live_current_tooltip_text(base_text)
             return string.format("(Currently +%d Chips)", n)
         end,
         j_runner = function(j) return string.format("(Currently +%d Chips)", math.floor(tonumber(j.stored_chips) or 0)) end,
-        j_blue_joker = function() return string.format("(Currently +%d Chips)", 2 * count_full_deck()) end,
+        j_blue_joker = function() return string.format("(Currently +%d Chips)", 2 * count_cards_in_deck()) end,
         j_square = function(j) return string.format("(Currently +%d Chips)", math.floor(tonumber(j.stored_chips) or 0)) end,
         j_wee = function(j) return string.format("(Currently +%d Chips)", math.floor(tonumber(j.stored_chips) or 0)) end,
         j_stone_joker = function() return string.format("(Currently +%d Chips)", 25 * count_full_deck(function(c) return c.enhancement == "stone" end)) end,

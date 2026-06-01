@@ -8,5 +8,8 @@
 # Scripts
 *.bat
 .luarc.json
-scripts/split_joker_atlases.py
-scripts/copy_and_zip_lua.sh
+scripts/*
+tools/*
+
+# Misc
+Bugs.txt

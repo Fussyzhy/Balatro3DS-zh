@@ -8,7 +8,7 @@ local ENHANCEMENT_CENTER_INDICES = {
     bonus = { back = 0, face = 8 },
     mult = { back = 0, face = 9 },
     wild = { back = 0, face = 10 },
-    glass = { back = 6, face = 12 },
+    glass = { back = 0, face = 12 },
     steel = { back = 13, face = 13 },
     stone = { back = 5, face = 5 },
     gold = { back = 6, face = 6 },
@@ -866,10 +866,6 @@ function Card:do_enhancement(ctx)
         -- x2 mult, 1 in 4 chance to break
         ctx.mult = mult * 2
         Sfx.play_mult()
-        if G:do_random(1, 4, 1) then
-            G:emit_joker_event("glass_broken")
-            ctx.glass_broken_node = self
-        end
     elseif self.enhancement == "steel" then
         ctx.mult = (tonumber(ctx.mult) or 1) * 1.5
         Sfx.play_mult()

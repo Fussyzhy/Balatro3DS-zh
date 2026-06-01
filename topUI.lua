@@ -188,7 +188,11 @@ function TopUI.draw()
     ix, iy, iw, ih = draw_rounded_rect(ix + paneOffset, iy, iw - paneOffset, ih, 2, 2, "fill")
 
     local score = tostring(G.round_score or 0)
-    love.graphics.setFont(G.FONTS.PIXEL.MEDIUM)
+    if (tonumber(G.round_score) or 0) > 99999999 then
+        love.graphics.setFont(G.FONTS.PIXEL.SMALL)
+    else
+        love.graphics.setFont(G.FONTS.PIXEL.MEDIUM)
+    end
     love.graphics.setColor(G.C.WHITE)
     TopUI.center_text(score, ix, iy -1, iw, ih)
 
