@@ -74,7 +74,7 @@ function ShopUI.draw_shop_offer_price_tags(game)
             end
             love.graphics.setFont(font)
             love.graphics.setColor(game.C.MONEY)
-            love.graphics.printf(label, tx, ty + 2, tag_w, "center")
+            love.graphics.printf(label, math.floor(tx), math.floor(ty + 2), tag_w, "center")
         end
     end
 end
@@ -103,8 +103,8 @@ function ShopUI.draw_shop_offer_buy_button(game)
 
     local can_afford = game:can_afford_price(tonumber(offer.price) or 0)
     local label = "Buy"
-    local btn_w = math.max(32, font:getWidth(label) + 14)
-    local btn_h = math.max(14, font:getHeight() + 4)
+    local btn_w = math.max(32, font:getWidth(label) + 18)
+    local btn_h = math.max(14, font:getHeight() + 8)
     local gap = 4
     local margin = 2
     local sw = 320
@@ -138,7 +138,7 @@ function ShopUI.draw_shop_offer_buy_button(game)
     end
     love.graphics.setColor(game.C.WHITE)
     local text_y = by + math.floor((btn_h - font:getHeight()) * 0.5 + 0.5)
-    love.graphics.printf(label, bx, text_y, btn_w, "center")
+    love.graphics.printf(label, math.floor(bx), math.floor(text_y), btn_w, "center")
 
     if can_buy then
         game._shop_buy_button_hit = { x = bx, y = by, w = btn_w, h = btn_h, slot_index = slot }
@@ -177,7 +177,7 @@ function ShopUI.draw_shop_offer_use_button(game)
     local can_afford = game:can_afford_price(tonumber(offer.price) or 0)
     local label = "Buy and Use"
     local btn_w = math.max(32, font:getWidth(label) + 14)
-    local btn_h = math.max(14, font:getHeight() + 4)
+    local btn_h = math.max(14, font:getHeight() + 8)
     local gap = 4
     local margin = 2
     local sw = 320
@@ -191,7 +191,7 @@ function ShopUI.draw_shop_offer_use_button(game)
         bx = rect.x - btn_w - gap
     end
     if bx < margin then bx = margin end
-    local buy_h = math.max(14, font:getHeight() + 4)
+    local buy_h = math.max(14, font:getHeight() + 8)
     local by = rect.y + math.floor((rect.h - buy_h) * 0.5 + 0.5) + buy_h + 3
     if by < margin then by = margin end
     local can_use = can_afford
@@ -210,7 +210,7 @@ function ShopUI.draw_shop_offer_use_button(game)
     end
     love.graphics.setColor(game.C.WHITE)
     local text_y = by + math.floor((btn_h - font:getHeight()) * 0.5 + 0.5)
-    love.graphics.printf(label, bx, text_y, btn_w, "center")
+    love.graphics.printf(label, math.floor(bx), math.floor(text_y), btn_w, "center")
 
     if can_use then
         game._shop_use_button_hit = { x = bx, y = by, w = btn_w, h = btn_h, slot_index = slot }
@@ -359,12 +359,12 @@ function ShopUI.draw_shop_booster_slots(game)
                 end
                 love.graphics.setColor(game.C.WHITE)
                 love.graphics.setFont(game.FONTS.PIXEL.SMALL)
-                love.graphics.printf(offer.name or "Booster", rect.x + 2, rect.y + 3, rect.w - 4, "center")
+                love.graphics.printf(offer.name or "Booster", math.floor(rect.x + 2), math.floor(rect.y + 3), math.floor(rect.w - 4), "center")
             end
             love.graphics.setColor(game.C.WHITE)
             love.graphics.setFont(game.FONTS.PIXEL.SMALL)
             local sz = ({ normal = "N", jumbo = "J", mega = "M" })[offer.size] or ""
-            love.graphics.printf(sz, rect.x + 2, rect.y + rect.h - 12, rect.w - 4, "center")
+            love.graphics.printf(sz, math.floor(rect.x + 2), math.floor(rect.y + rect.h - 12), math.floor(rect.w - 4), "center")
         end
     end
 end
@@ -378,7 +378,7 @@ function ShopUI.draw_shop_booster_price_tags(game)
             local font = game.FONTS.PIXEL.SMALL
             local tw = font:getWidth(label)
             local tag_w = tw + 12
-            local tag_h = font:getHeight() + 4
+            local tag_h = font:getHeight() + 8
             local tx = rect.x + math.floor((rect.w - tag_w) * 0.5 + 0.5)
             local ty = rect.y - tag_h - 2
             if _G.draw_rect_with_shadow then
@@ -389,7 +389,7 @@ function ShopUI.draw_shop_booster_price_tags(game)
             end
             love.graphics.setFont(font)
             love.graphics.setColor(game.C.MONEY)
-            love.graphics.printf(label, tx, ty + 2, tag_w, "center")
+            love.graphics.printf(label, math.floor(tx), math.floor(ty + 2), tag_w, "center")
         end
     end
 end
@@ -409,8 +409,8 @@ function ShopUI.draw_shop_booster_buy_button(game)
 
     local can_afford = game:can_afford_price(tonumber(offer.price) or 0)
     local label = "Buy"
-    local btn_w = math.max(32, font:getWidth(label) + 14)
-    local btn_h = math.max(14, font:getHeight() + 4)
+    local btn_w = math.max(32, font:getWidth(label) + 18)
+    local btn_h = math.max(14, font:getHeight() + 8)
     local gap = 4
     local margin = 2
     local sw = 320
@@ -435,7 +435,7 @@ function ShopUI.draw_shop_booster_buy_button(game)
         love.graphics.rectangle("fill", bx, by, btn_w, btn_h, 3, 3)
     end
     love.graphics.setColor(game.C.WHITE)
-    love.graphics.printf(label, bx, by + math.floor((btn_h - font:getHeight()) * 0.5 + 0.5), btn_w, "center")
+    love.graphics.printf(label, math.floor(bx), math.floor(by + math.floor((btn_h - font:getHeight()) * 0.5 + 0.5)), btn_w, "center")
 
     if can_afford then
         game._shop_booster_buy_button_hit = { x = bx, y = by, w = btn_w, h = btn_h, slot_index = slot }
@@ -651,7 +651,7 @@ function ShopUI.draw_shop_voucher_price_tags(game)
     end
     love.graphics.setFont(font)
     love.graphics.setColor(game.C.MONEY)
-    love.graphics.printf(label, tx, ty + 2, tag_w, "center")
+    love.graphics.printf(label, math.floor(tx), math.floor(ty + 2), tag_w, "center")
 end
 
 function ShopUI.draw_shop_voucher_buy_button(game)
@@ -668,8 +668,8 @@ function ShopUI.draw_shop_voucher_buy_button(game)
 
     local can_afford = game:can_afford_price(tonumber(offer.price) or 0)
     local label = "Buy"
-    local btn_w = math.max(32, font:getWidth(label) + 14)
-    local btn_h = math.max(14, font:getHeight() + 4)
+    local btn_w = math.max(32, font:getWidth(label) + 18)
+    local btn_h = math.max(14, font:getHeight() + 8)
     local gap = 4
     local margin = 2
     local sw = 320
@@ -694,7 +694,7 @@ function ShopUI.draw_shop_voucher_buy_button(game)
     end
     love.graphics.setColor(game.C.WHITE)
     local text_y = by + math.floor((btn_h - font:getHeight()) * 0.5 + 0.5)
-    love.graphics.printf(label, bx, text_y, btn_w, "center")
+    love.graphics.printf(label, math.floor(bx), math.floor(text_y), btn_w, "center")
 
     if can_afford then
         game._shop_voucher_buy_button_hit = { x = bx, y = by, w = btn_w, h = btn_h }

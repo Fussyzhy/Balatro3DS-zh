@@ -985,6 +985,7 @@ end
 
 function Joker:apply_effect(ctx)
     ctx = ctx or {}
+    ctx.VT = self.VT
     local before = capture_joker_runtime_snapshot(self)
     local before_chips = tonumber(ctx.chips)
     local before_mult = tonumber(ctx.mult)

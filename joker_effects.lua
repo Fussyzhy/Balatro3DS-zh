@@ -21,10 +21,23 @@ local function mark_created_item(ctx)
     ctx._joker_effect_created_item_now = true
 end
 
+local function card_center_x(node)
+    return node.x + (node.w / 2) * node.scale
+end
+
+local function card_center_y(node)
+    return node.y + (node.h / 2) * node.scale
+end
+
 local function add_mult(ctx, n)
     ctx.mult = (tonumber(ctx.mult) or 0) + (tonumber(n) or 0)
     if(n > 0) then 
         mark_effect_applied(ctx)
+
+        local p = Popup()
+        p:spawn(n, "mult", card_center_x(ctx.VT), card_center_y(ctx.VT))
+        Top:addPopup(p)
+
         Sfx.play_mult()
     end
 end
@@ -32,6 +45,11 @@ local function add_chips(ctx, n)
     ctx.chips = (tonumber(ctx.chips) or 0) + (tonumber(n) or 0)
     if(n > 0) then 
         mark_effect_applied(ctx) 
+
+        local p = Popup()
+        p:spawn(n, "chips", card_center_x(ctx.VT), card_center_y(ctx.VT))
+        Top:addPopup(p)
+
         Sfx.play_chips()
     end
 end
@@ -39,6 +57,11 @@ local function mul_mult(ctx, n)
     ctx.mult = (tonumber(ctx.mult) or 1) * (tonumber(n) or 1)
     if(n > 1) then
         mark_effect_applied(ctx)
+
+        local p = Popup()
+        p:spawn(n, "xmult", card_center_x(ctx.VT), card_center_y(ctx.VT))
+        Top:addPopup(p)
+
         Sfx.play_mult2()
     end
 end
@@ -47,6 +70,11 @@ local function add_money(ctx, n)
         G.money = (tonumber(G.money) or 0) + (tonumber(n) or 0)
         if(n > 0) then 
             mark_effect_applied(ctx) 
+
+            local p = Popup()
+            p:spawn(n, "money", card_center_x(ctx.VT), card_center_y(ctx.VT))
+            Top:addPopup(p)
+
             Sfx.play_money()
         end
     end

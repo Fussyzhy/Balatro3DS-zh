@@ -1,5 +1,6 @@
+---@class TopUI
+TopUI = Object:extend()
 --- Top-screen UI: draw content for the 3DS top screen (or equivalent when screen ~= "bottom").
-TopUI = {}
 
 --- Draw a rounded rectangle and return the inner area (with padding) for placing content.
 --- @param x number Left edge
@@ -31,7 +32,7 @@ function draw_rect_with_shadow(x, y, w, h, radius, padding, color, shadowColor, 
     return draw_rounded_rect(x, y, w, h, radius, padding, "fill")
 end
 
-function TopUI.draw()
+function TopUI:draw()
     local panelHeight = 104
     local panelY = 4
     local is_blind_select = (G.STATE == G.STATES.BLIND_SELECT)
@@ -275,7 +276,7 @@ function TopUI.draw()
     local start_x = G.joker_slot_start_x or math.floor((400 - total_w) * 0.5 + 0.5)
 
     -- Extra padding so jokers don't touch the panel edges.
-    local panel_pad = 4
+    local panel_pad = 3
     total_w = total_w + (panel_pad * 2)
     start_x = start_x - panel_pad
     slot_y = slot_y - panel_pad
@@ -300,6 +301,21 @@ function TopUI.draw()
             love.graphics.rectangle("fill", start_x, slot_y, total_w, slot_h, 4, 4)
         end
     end
+
+    for _, t in ipairs(G.tags) do
+        if t and t.draw then
+            local scale = 0.75
+            love.graphics.push()
+            love.graphics.translate(t.X,t.Y)
+            love.graphics.scale(scale,scale)
+            local Tag = Tag(t.type)
+            Tag.X = 0
+            Tag.Y = 0
+            Tag:draw()
+            love.graphics.pop()
+        end
+    end
+
     if G and G.jokers_on_bottom ~= true and n > 0 then
 
         love.graphics.setFont(G.FONTS.PIXEL.MEDIUM)
@@ -312,6 +328,14 @@ function TopUI.draw()
                 if joker.states then joker.states.visible = true end
                 joker:draw()
                 if joker.states then joker.states.visible = prev_visible end
+            end
+        end
+    end
+
+    if self.popups then
+        for _, popup in ipairs(self.popups) do
+            if popup and popup.draw then
+                popup:draw()
             end
         end
     end
@@ -348,4 +372,31 @@ function TopUI.center_text(string, x, y, iw, ih)
     love.graphics.printf(s, x, yval, iw, "center")
     local xval = x
     return xval, yval
+end
+
+function TopUI:init()
+    self.popups = {}
+end
+
+function TopUI:update(dt)
+    local to_remove = {}
+    for i, popup in ipairs(self.popups or {}) do
+        if popup.update then
+            popup:update(dt)
+            if popup.remove or popup.time <= 0 then
+                table.insert(to_remove, i)
+            end
+        end
+    end
+
+    -- Remove in reverse order so indices stay valid
+    for i = #to_remove, 1, -1 do
+        table.remove(self.popups, to_remove[i])
+    end
+end
+
+function TopUI:addPopup(node)
+    if Popup and node and node.is and node:is(Popup) then
+        table.insert(self.popups, node)
+    end
 end

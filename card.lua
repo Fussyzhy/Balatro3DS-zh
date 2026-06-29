@@ -854,33 +854,50 @@ function Card:do_enhancement(ctx)
     local mult = tonumber(ctx.mult) or 1
     ctx.chips = chips
     ctx.mult = mult
-
+    p = Popup()
+    local card_center_x = self.VT.x + self.collision_offset.x + (self.VT.w / 2) * self.VT.scale
+    local card_center_y = self.VT.y + self.collision_offset.y + (self.VT.h / 2) * self.VT.scale
+    
     if self.enhancement == "bonus" then
         --+30 chips
-        ctx.chips = chips + 30
+        ctx.chips = chips + 30   
+        p:spawn(30, "chips", card_center_x, card_center_y)
+        G:addPopup(p)
         Sfx.play_chips()
     elseif self.enhancement == "mult" then
         --+4 mult
+        p:spawn(4, "mult", card_center_x, card_center_y)
+        G:addPopup(p)
         ctx.mult = mult + 4
     elseif self.enhancement == "glass" then
         -- x2 mult, 1 in 4 chance to break
+        p:spawn(2, "xmult", card_center_x, card_center_y)
+        G:addPopup(p)
         ctx.mult = mult * 2
         Sfx.play_mult()
     elseif self.enhancement == "steel" then
+        p:spawn(1.5, "xmult", card_center_x, card_center_y)
+        G:addPopup(p)
         ctx.mult = (tonumber(ctx.mult) or 1) * 1.5
         Sfx.play_mult()
     elseif self.enhancement == "stone" then
         -- +50 chip
         ctx.chips = (tonumber(ctx.chips) or 0) + 50
+        p:spawn(50, "chips", card_center_x, card_center_y)
+        G:addPopup(p)
         Sfx.play_chips()
     elseif self.enhancement == "gold" then
         -- +$3 when held in hand
         G.money = G.money + 3
+        p:spawn(3, "money", card_center_x, card_center_y)
+        G:addPopup(p)
         Sfx.play_money()
     elseif self.enhancement == "lucky" then
         local triggered = false
         -- 1 in 5 chance to give +20 mult
         if G:do_random(1, 5, 1) then
+            p:spawn(20, "mult", card_center_x, card_center_y)
+            G:addPopup(p)
             ctx.mult = (tonumber(ctx.mult) or 1) + 20
             triggered = true
             Sfx.play_mult()
@@ -888,6 +905,8 @@ function Card:do_enhancement(ctx)
         -- 1 in 15 to give +$20
         if G:do_random(1, 15, 1) then
             G.money = G.money + 20
+            p:spawn(20, "money", card_center_x, card_center_y)
+            G:addPopup(p)
             triggered = true
             Sfx.play_money()
         end

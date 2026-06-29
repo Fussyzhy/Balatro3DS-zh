@@ -24,6 +24,8 @@ require "globals"
 require "consumable_catalog"
 require "voucher_catalog"
 require "topUI"
+require "popup"
+require "tag"
 local MainMenuUI = require "main_menu_ui"
 Sfx = require "sfx"
 
@@ -36,6 +38,8 @@ function love.load()
     G = Game()
     G:enter_main_menu()
 
+    Top = TopUI()
+
     G.music = love.audio.newSource("resources/sounds/music1_low.ogg", "stream")
     if G.music then
         G.music:setLooping(true)
@@ -45,6 +49,7 @@ end
 
 function love.update(dt)
     G:update(dt)
+    Top:update(dt)
 end
 
 function love.draw(screen)
@@ -60,7 +65,7 @@ function love.draw(screen)
         if G and G.STATE == G.STATES.MENU then
             MainMenuUI.draw_top(G)
         else
-            TopUI.draw()
+            Top:draw()
         end
     end
 end
@@ -69,6 +74,15 @@ function love.keypressed(key)
     if key == "f1" then
         if G then G.DEBUG = not G.DEBUG end
     end
+    if key == "p" and G.DEBUG then
+        if G and G.popups then
+            local p = Popup()
+            p:spawn(30, "chips", 100, 100)
+            G:addPopup(p)
+            Top:addPopup(p)
+        end
+    end
+
     if not G then return end
     if key == "escape" then
         if G.toggle_pause then
@@ -121,7 +135,10 @@ function love.keypressed(key)
         if G.hand:has_selection() then G.hand:discard_selected() end
     end
     if (key == ";") and G.hand then
-        if G.hand:has_selection() then G.hand:play_selected() end
+        if G.hand:has_selection() then 
+            G:set_jokers_location(false)
+            G.hand:play_selected() 
+        end
     end
     if key == "x" and G.deck and G.hand and not G.deck:empty() and not G.hand:is_full() then
         local card = G.deck:draw()
@@ -205,6 +222,7 @@ function love.gamepadpressed(_, button)
         G.hand:discard_selected()
     end
     if (button == "rightshoulder" or button == "y") and G.hand and G.hand:has_selection() then
+        G:set_jokers_location(false)
         G.hand:play_selected()
     end
     if (button == "b") and G and G.deck and G.hand and not G.deck:empty() and not G.hand:is_full() then

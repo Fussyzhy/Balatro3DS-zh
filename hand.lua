@@ -731,13 +731,17 @@ end
 
 
 --- After one played-card trigger (including jokers), advance repeat counter or move to next card.
-local function hand_advance_play_trigger(seq)
+--- A normal card-to-card transition keeps a small delay; the extra pause is only added when a delayed joker batch ran.
+local function hand_advance_play_trigger(seq, add_delay)
+    add_delay = add_delay ~= false
     seq.play_rep = (tonumber(seq.play_rep) or 0) + 1
     if seq.play_rep > (tonumber(seq.play_rep_total) or 1) then
         seq.play_rep = nil
         seq.play_rep_total = nil
     end
-    seq.trigger_wait = (seq.trigger_wait or 0) + PLAY_TRIGGER_INTERVAL
+    if add_delay then
+        seq.trigger_wait = (seq.trigger_wait or 0) + PLAY_TRIGGER_INTERVAL
+    end
 end
 
 function Hand:_update_play_sequence(dt)
@@ -838,7 +842,7 @@ function Hand:_update_play_sequence(dt)
                     }
                     if G and G.begin_joker_emit and G:begin_joker_emit("card_played", jctx) then
                         seq.phase = "wait_jokers"
-                        seq.joker_wait_resume = { phase = "trigger", bump_trigger_wait = true, advance_play_repeat = true }
+                        seq.joker_wait_resume = { phase = "trigger", advance_play_repeat = true, delay_next_trigger = true }
                     else
                         if G and G.emit_joker_event then
                             G:emit_joker_event("card_played", jctx)
@@ -858,11 +862,8 @@ function Hand:_update_play_sequence(dt)
             seq.joker_wait_resume = nil
             if r and r.phase == "trigger" then
                 seq.phase = "trigger"
-                if r.bump_trigger_wait then
-                    seq.trigger_wait = (seq.trigger_wait or 0) + PLAY_TRIGGER_INTERVAL
-                end
                 if r.advance_play_repeat then
-                    hand_advance_play_trigger(seq)
+                    hand_advance_play_trigger(seq, r.delay_next_trigger == true)
                 end
             elseif r and r.phase == "finalize" then
                 seq.phase = "finalize"
@@ -1111,6 +1112,17 @@ function Hand:accumulate_card_score(chips, mult, node)
     chips = chips + mod_chip_bonus
     mult = mult + mod_mult_bonus
 
+    local card_center_x = node.VT.x + node.collision_offset.x + (node.VT.w / 2) * node.VT.scale
+    local card_center_y = node.VT.y + node.collision_offset.y + (node.VT.h / 2) * node.VT.scale
+    local p = Popup()
+    p:spawn(card_chips + mod_chip_bonus, "chips", card_center_x, card_center_y)
+    G:addPopup(p)
+    if mod_mult_bonus > 1 then
+        p = Popup()
+        p:spawn(mod_mult_bonus, "mult", card_center_x, card_center_y)
+        G:addPopup(p)
+    end
+
     return chips, mult
 end
 
@@ -1186,6 +1198,7 @@ function Hand:play_selected()
     end
 
     G.hands = G.hands - 1
+    G.handsPlayed = G.handsPlayed + 1
     if self.game and self.game.boss_apply_on_hand_submitted then
         self.game:boss_apply_on_hand_submitted(cards)
     end
