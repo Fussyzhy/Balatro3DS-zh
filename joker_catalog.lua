@@ -1446,6 +1446,10 @@ JOKER_DEFS = {
         pos = {
             atlas = "Joker2_p2",
             index = 10
+        },
+        sub_pos = {
+            atlas = "Joker2_p1",
+            index = 2
         }
     },
 
@@ -2602,6 +2606,10 @@ JOKER_DEFS = {
         pos = {
             atlas = "Joker1_p4",
             index = 11
+        },
+        sub_pos = {
+            atlas = "Joker2_p1",
+            index = 3
         }
     },
 
@@ -2622,6 +2630,10 @@ JOKER_DEFS = {
         pos = {
             atlas = "Joker1_p4",
             index = 12
+        },
+        sub_pos = {
+            atlas = "Joker2_p1",
+            index = 4
         }
     },
 
@@ -2642,6 +2654,10 @@ JOKER_DEFS = {
         pos = {
             atlas = "Joker1_p4",
             index = 13
+        },
+        sub_pos = {
+            atlas = "Joker2_p1",
+            index = 5
         }
     },
 
@@ -2662,6 +2678,10 @@ JOKER_DEFS = {
         pos = {
             atlas = "Joker1_p4",
             index = 14
+        },
+        sub_pos = {
+            atlas = "Joker2_p1",
+            index = 6
         }
     },
 
@@ -2682,6 +2702,10 @@ JOKER_DEFS = {
         pos = {
             atlas = "Joker1_p4",
             index = 15
+        },
+        sub_pos = {
+            atlas = "Joker2_p1",
+            index = 7
         }
     },
 

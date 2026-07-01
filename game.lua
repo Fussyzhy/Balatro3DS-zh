@@ -6,6 +6,7 @@ local RoundWinUI = require("round_win_ui")
 local GameOverUI = require("game_over_ui")
 local BoosterPackUI = require("booster_pack_ui")
 local MainMenuUI = require("main_menu_ui")
+local DeckViewUI = require("deck_view_ui")
 local TooltipDraw = require("tooltip_draw")
 
 --- Seconds between revealing each payout line on the round-win screen.
@@ -106,6 +107,7 @@ function Game:init(seed)
     self._pause_new_run_rect = nil
     self._pause_save_quit_rect = nil
     self._pause_save_error = nil
+    self._deck_view_open = false
     self._main_menu_continue_rect = nil
     self.round_score = 0
     self.last_hand_score = 0
@@ -113,9 +115,9 @@ function Game:init(seed)
     --- Run currency
     self.money = 0
     -- Run Discards
-    self.discards = 5
+    self.discards = 4
     -- Run Hands
-    self.hands = 5
+    self.hands = 4
     -- Permanent run modifier from Spectral cards (e.g. Ouija/Ectoplasm).
     self.hand_size_delta_spectral = 0
     self.hand_size_delta_juggle = 0
@@ -146,8 +148,6 @@ function Game:init(seed)
     self.shop_voucher_bought_pending_boss = false
     self.active_tooltip_shop_voucher = false
     self.hand_size_delta_voucher = 0
-    self.voucher_hands_delta = 0
-    self.voucher_discards_delta = 0
     self.boss_rerolls_used_this_ante = 0
     self._shop_voucher_buy_button_hit = nil
     self._boss_reroll_btn_rect = nil
@@ -186,6 +186,11 @@ function Game:init(seed)
     if self.set_globals then
         self:set_globals()
     end
+
+    -- Unlock all Stakes and Decks
+    for _, d in ipairs(DECK_DEFS)  do d.unlocked = true end
+    for _, s in ipairs(STAKE_DEFS) do s.unlocked = true end
+
     if self.init_item_prototypes then
         self:init_item_prototypes()
     end
@@ -239,6 +244,7 @@ end
 
 function Game:get_effective_hand_size_limit()
     local limit = 8
+    limit = limit + (self.deck_hand_size or 0)
     limit = limit + (tonumber(self.hand_size_delta_spectral) or 0)
     limit = limit + (tonumber(self.hand_size_delta_voucher) or 0)
     limit = limit + (tonumber(self.hand_size_delta_juggle) or 0)
@@ -258,8 +264,11 @@ function Game:get_effective_hand_size_limit()
 end
 
 function Game:get_effective_hands_per_round()
-    local hands = 4
-    hands = hands + (tonumber(self.voucher_hands_delta) or 0)
+    local hands = 4 -- Base value
+    if self:has_voucher("v_hieroglyph") then hands = hands - 1 end
+    if self:has_voucher("v_grabber") then hands = hands + 1 end
+    if self:has_voucher("v_nacho") then hands = hands + 1 end
+    hands = hands + (self.deck_hands or 0)
     for _, j in ipairs(self.jokers or {}) do
         local id = j and j.def and j.def.id
         if id == "j_burglar" then hands = hands + 3 end
@@ -269,10 +278,11 @@ function Game:get_effective_hands_per_round()
 end
 
 function Game:get_effective_discards_per_round()
-    local discards = 4 -- Base is 3 (Red Deck is 4)
+    local discards = 3 -- Base is 3 (Red Deck is 4)
     if self:has_voucher("v_wasteful") then discards = discards + 1 end
     if self:has_voucher("v_recyclomancy") then discards = discards + 1 end
-    discards = discards + (tonumber(self.voucher_discards_delta) or 0)
+    if self:has_voucher("v_petroglyph") then discards = discards - 1 end
+    discards = discards  + (self.deck_discards or 0) + (self._stake_discard or 0)
     for _, j in ipairs(self.jokers or {}) do
         local id = j and j.def and j.def.id
         if id == "j_drunkard" then discards = discards + 1 end
@@ -668,7 +678,7 @@ function Game:sync_shop_offer_nodes()
     for i, offer in ipairs(self.shop_offers) do
         local node = self.shop_offer_nodes[i]
         local need_joker = (offer.kind == nil or offer.kind == "joker")
-        local need_cons = (offer.kind == "tarot" or offer.kind == "planet")
+        local need_cons = (offer.kind == "tarot" or offer.kind == "planet" or offer.kind == "spectral")
         local need_pc = (offer.kind == "playing_card")
 
         if node then
@@ -701,7 +711,16 @@ function Game:sync_shop_offer_nodes()
             if need_joker and Joker then
                 local def = JOKER_DEFS and JOKER_DEFS[offer.id]
                 if type(def) == "table" then
-                    node = Joker(0, 0, self.joker_slot_w, self.joker_slot_h, def, { face_up = true, edition = offer.edition })
+                    local create_params = offer.create_params
+                    if type(create_params) ~= "table" then
+                        create_params = self:_build_joker_create_params(def, { edition = offer.edition }, offer.stickers)
+                    end
+                    if type(create_params) ~= "table" then
+                        create_params = { face_up = true, edition = offer.edition }
+                    else
+                        create_params.face_up = true
+                    end
+                    node = Joker(0, 0, self.joker_slot_w, self.joker_slot_h, def, create_params)
                     self.shop_offer_nodes[i] = node
                     self:add(node)
                 end
@@ -959,6 +978,9 @@ end
 
 function Game:enter_pause_menu()
     if not self:can_pause_now() then return false end
+    if self._deck_view_open then
+        self:exit_deck_view()
+    end
     if self.STATE ~= self.STATES.PAUSED then
         self._pause_prev_state = self.STATE
     end
@@ -988,6 +1010,45 @@ function Game:toggle_pause()
         return self:exit_pause_menu()
     end
     return self:enter_pause_menu()
+end
+
+function Game:can_open_deck_view()
+    if self._deck_view_open then return true end
+    if self.STATE == self.STATES.MENU or self.STATE == self.STATES.GAME_OVER then return false end
+    if self.STATE == self.STATES.PAUSED then return false end
+    return self.STATE == self.STATES.BLIND_SELECT
+        or self.STATE == self.STATES.SELECTING_HAND
+        or self.STATE == self.STATES.SHOP
+        or self.STATE == self.STATES.ROUND_EVAL
+        or self.STATE == self.STATES.OPEN_BOOSTER
+        or self.STATE == self.STATES.HAND_PLAYED
+        or self.STATE == self.STATES.DRAW_TO_HAND
+        or self.STATE == self.STATES.NEW_ROUND
+end
+
+function Game:enter_deck_view()
+    if self._deck_view_open or not self:can_open_deck_view() then return false end
+    self.dragging = nil
+    self.active_tooltip_card = nil
+    self._deck_view_open = true
+    DeckViewUI.build(self)
+    return true
+end
+
+function Game:exit_deck_view()
+    if not self._deck_view_open then return false end
+    self.dragging = nil
+    self.active_tooltip_card = nil
+    DeckViewUI.destroy(self)
+    self._deck_view_open = false
+    return true
+end
+
+function Game:toggle_deck_view()
+    if self._deck_view_open then
+        return self:exit_deck_view()
+    end
+    return self:enter_deck_view()
 end
 
 function Game:current_resume_state()
@@ -1027,6 +1088,13 @@ function Game:build_run_snapshot()
                 sell_cost = tonumber(j.sell_cost) or 0,
                 loyalty_remaining = j.loyalty_remaining,
                 free_joker_slots = j.free_joker_slots,
+                perishable = j.perishable,
+                perishable_counter = tonumber(j.perishable_counter) or 5,
+                eternal = j.eternal,
+                rental = j.rental,
+                random_suit = j.random_suit,
+                random_rank = j.random_rank,
+                random_hand = j.random_hand,
             }
         end
     end
@@ -1090,6 +1158,7 @@ function Game:build_run_snapshot()
         boss_runtime = copy_table(self.boss_runtime or {}),
         jokers_on_bottom = self.jokers_on_bottom == true,
         jokers = jokers,
+        joker_shared_picks = copy_table(self.joker_shared_picks or {}),
         consumables = copy_table(self.consumables or {}),
         consumable_base_capacity = tonumber(self.consumable_base_capacity) or 2,
         deck_cards = table_array_deep_copy(self.deck and self.deck.cards or {}),
@@ -1115,15 +1184,14 @@ function Game:build_run_snapshot()
         hand_size_delta_juggle = tonumber(self.hand_size_delta_juggle) or 0,
         _shop_reroll_base_cost_override = tonumber(self._shop_reroll_base_cost_override) or nil,
         voucher_hands_delta = tonumber(self.voucher_hands_delta) or 0,
-        voucher_discards_delta = tonumber(self.voucher_discards_delta) or 0,
         boss_rerolls_used_this_ante = tonumber(self.boss_rerolls_used_this_ante) or 0,
-        joker_base_capacity = tonumber(self.joker_base_capacity) or 5,
         hand_stats = copy_table(self.hand_stats or {}),
         gros_michel_extinct = self.gros_michel_extinct,
         skips = self.skips,
         handsPlayed = self.handsPlayed,
         discardsUnused = self.discardsUnused,
-        skipsTaken = self.skipsTaken
+        skipsTaken = self.skipsTaken,
+        ectoplasm_used = self.ectoplasm_used
     }
 end
 
@@ -1166,7 +1234,7 @@ function Game:load_run_snapshot(snapshot)
 
     if type(self.jokers) == "table" then
         for i = #self.jokers, 1, -1 do
-            self:remove_owned_joker_at(i)
+            self:remove_owned_joker_at(i,true)
         end
     end
     if type(self.consumables) == "table" then
@@ -1262,15 +1330,15 @@ function Game:load_run_snapshot(snapshot)
     self.hand_size_delta_juggle = tonumber(snapshot.hand_size_delta_juggle) or 0
     self._shop_reroll_base_cost_override = snapshot._shop_reroll_base_cost_override
     self.voucher_hands_delta = tonumber(snapshot.voucher_hands_delta) or 0
-    self.voucher_discards_delta = tonumber(snapshot.voucher_discards_delta) or 0
     self.boss_rerolls_used_this_ante = tonumber(snapshot.boss_rerolls_used_this_ante) or 0
-    self.joker_base_capacity = tonumber(snapshot.joker_base_capacity) or self.joker_base_capacity or 5
     self.hand_stats = copy_table(snapshot.hand_stats or {})
     self.gros_michel_extinct = snapshot.gros_michel_extinct == true
     self.skips = snapshot.skips
     self.handsPlayed = snapshot.handsPlayed
     self.discardsUnused = snapshot.discardsUnused
     self.skipsTaken = snapshot.skipsTaken
+    self.ectoplasm_used = snapshot.ectoplasm_used
+    self.joker_shared_picks = copy_table(snapshot.joker_shared_picks or {})
 
     for _, jrec in ipairs(snapshot.jokers or {}) do
         local params = nil
@@ -1288,6 +1356,23 @@ function Game:load_run_snapshot(snapshot)
                 j.sell_cost = tonumber(jrec.sell_cost) or j.sell_cost
                 j.loyalty_remaining = jrec.loyalty_remaining
                 j.free_joker_slots = jrec.free_joker_slots
+                j.perishable = jrec.perishable
+                j.perishable_counter = jrec.perishable_counter or 5
+                j.eternal = jrec.eternal
+                j.rental = jrec.rental
+                if jrec.random_suit ~= nil or jrec.random_rank ~= nil or jrec.random_hand ~= nil then
+                    local restore = {}
+                    if jrec.random_suit ~= nil then restore.random_suit = jrec.random_suit end
+                    if jrec.random_rank ~= nil then restore.random_rank = jrec.random_rank end
+                    if jrec.random_hand ~= nil then restore.random_hand = jrec.random_hand end
+                    if not self:get_joker_shared_pick(jrec.id) then
+                        self:set_joker_shared_picks(jrec.id, restore)
+                    else
+                        self:apply_joker_shared_picks_to_joker(j)
+                    end
+                else
+                    self:apply_joker_shared_picks_to_joker(j)
+                end
             end
         end
     end
@@ -1347,6 +1432,14 @@ function Game:start_new_run_from_main_menu()
     return self:start_run_from_main_menu()
 end
 
+function Game:enter_main_menu_deck_select()
+    self:clear_run_snapshot()
+    self._pause_prev_state = nil
+    self._pause_save_error = nil
+    self:enter_main_menu()
+    MainMenuUI.open_deck_select(self)
+end
+
 function Game:pause_save_and_quit()
     if self:is_hand_scoring_active() then
         self._pause_save_error = "Cannot save while scoring."
@@ -1367,14 +1460,18 @@ end
 function Game:get_base_requirement_for_ante(ante)
     local base_table = self.BASE_REQUIREMENT_BY_ANTE or {}
     local a = math.max(1, tonumber(ante) or 1)
-    if base_table[a] then
-        return tonumber(base_table[a]) or 0
+    local stake_offset = tonumber(self._stake_ante_mult) or 0
+    local max_ante = 8
+    local deckMult = 1
+    if self._deck_special == "plasma" then
+        deckMult = 2
     end
-    local max_ante = 1
-    for k, _ in pairs(base_table) do
-        if k > max_ante then max_ante = k end
+    a = a + (max_ante + 1) * stake_offset
+    if base_table[a] and self.ante <= max_ante then
+        return tonumber(base_table[a] * deckMult) or 0
     end
-    local last_base = tonumber(base_table[max_ante]) or 50000
+    -- Endless Formula
+    local last_base = tonumber(base_table[max_ante + (max_ante + 1) * stake_offset] * deckMult) or 50000
     local overflow = math.max(0, a - max_ante)
     local raw_result = last_base * (1.6 + (0.75 * overflow)^(1 + (0.2 * overflow)))^(overflow)
     -- Cap to two significant figures, rounded down
@@ -1749,7 +1846,7 @@ function Game:draw()
         end
     end
     for _, node in ipairs(self.nodes) do
-        if not cons_set[node] and not hand_set[node] and not joker_set[node] then
+        if not node._deck_view_card and not cons_set[node] and not hand_set[node] and not joker_set[node] then
             node:draw()
         end
     end
@@ -1791,6 +1888,10 @@ function Game:draw()
 
     self._use_button_hit = nil
     self:draw_use_button()
+
+    if self._deck_view_open then
+        DeckViewUI.draw_bottom(self)
+    end
 
     -- Tooltips last so they paint over sprites, hand, and Use/Sell (etc.).
     self:draw_tooltips_on_top()
@@ -1840,12 +1941,15 @@ function Game:draw_tooltips_on_top()
             end
         end
     end
-    if self.hand and self.hand.card_nodes then
+    if self.hand and self.hand.card_nodes and not self._deck_view_open then
         for _, hn in ipairs(self.hand.card_nodes) do
             if hn and hn.draw_tooltip_overlay then
                 hn:draw_tooltip_overlay()
             end
         end
+    end
+    if self._deck_view_open then
+        DeckViewUI.draw_tooltips(self)
     end
     if self.STATE == self.STATES.SHOP and self.active_tooltip_shop_voucher and self.shop_voucher_offer then
         self:_draw_shop_voucher_tooltip()
@@ -1903,7 +2007,7 @@ function Game:add_consumable(def_id, create_params)
     local incoming_negative = tostring(incoming_edition or ""):lower() == "negative"
         or tostring(incoming_edition or ""):lower() == "e_negative"
     local cap_after = self:get_effective_consumable_capacity() + (incoming_negative and 1 or 0)
-    if #self.consumables >= cap_after then return false end
+    if not incoming_negative and #self.consumables >= cap_after then return false end
 
     local copy = copy_table(def)
     if type(create_params) == "table" then
@@ -1924,7 +2028,11 @@ function Game:add_consumable(def_id, create_params)
 end
 
 function Game:get_effective_consumable_capacity()
-    local cap = tonumber(self.consumable_capacity) or tonumber(self.consumable_base_capacity) or 2
+    local cap = self.consumable_base_capacity or 2
+    cap = cap + (self.deck_consumable_slots or 0)
+    if self:has_voucher("v_crystal_ball") then
+        cap = cap + 1
+    end
     return math.max(0, math.floor(cap))
 end
 
@@ -2006,8 +2114,18 @@ function Game:joker_has_room_for_new(edition)
         end
     end
     local new_is_neg = edition == "negative"
-    local cap_after = (self.joker_base_capacity or 5) + neg_owned + (new_is_neg and 1 or 0)
+    local cap_after = self:joker_base_capacity() + neg_owned + (new_is_neg and 1 or 0)
     return #self.jokers < cap_after
+end
+
+function Game:has_base_edition_joker()
+    if not self.jokers then return false end
+    for _, jj in ipairs(self.jokers) do
+        if jj and Joker and Joker.normalize_edition and Joker.normalize_edition(jj.edition) == "base" then
+            return true
+        end
+    end
+    return false
 end
 
 function Game:tarot_selection_requirement_met(c)
@@ -2072,6 +2190,9 @@ function Game:consumable_use_enabled(idx)
         local sid = c.id
         if sid == "spectral_wraith" or sid == "spectral_soul" then
             if not self:joker_has_room_for_new("base") then return false end
+        end
+        if sid == "spectral_ectoplasm" and not self:has_base_edition_joker() then
+            return false
         end
         local need_hand = false
         local s = c.select
@@ -2358,14 +2479,20 @@ function Game:apply_consumable_effect(c)
             self.hand_size_delta_spectral = (tonumber(self.hand_size_delta_spectral) or 0) - 1
         elseif id == "spectral_ectoplasm" then
             if self.jokers and #self.jokers > 0 then
-                local j = self.jokers[math.random(1, #self.jokers)]
-                if j and Joker then
-                    j.edition = Joker.normalize_edition("negative")
-                    if j.refresh_quads then j:refresh_quads() end
-                    self:refresh_joker_capacity_from_negatives()
+                local attempts = 0
+                while attempts < #self.jokers do
+                    local j = self.jokers[math.random(1, #self.jokers)]
+                    if j and Joker and Joker.normalize_edition and Joker.normalize_edition(j.edition) == "base" then
+                        j.edition = Joker.normalize_edition("negative")
+                        if j.refresh_quads then j:refresh_quads() end
+                        self:refresh_joker_capacity_from_negatives()
+                        break
+                    end
+                    attempts = attempts + 1
                 end
             end
-            self.hand_size_delta_spectral = (tonumber(self.hand_size_delta_spectral) or 0) - 1
+            self.ectoplasm_used = (self.ectoplasm_used or 0) + 1
+            self.hand_size_delta_spectral = (tonumber(self.hand_size_delta_spectral) or 0) - self.ectoplasm_used
         elseif id == "spectral_immolate" then
             if hand and hand.card_nodes and #hand.card_nodes > 0 then
                 local count = math.min(5, #hand.card_nodes)
@@ -2811,9 +2938,11 @@ function Game:draw_sell_button()
     love.graphics.setFont(font)
 
     local sell_cost = 1
+    local disabled = false
     if target.kind == "joker" and target.node then
         local n = target.node
         sell_cost = math.max(1, math.floor(tonumber(n.sell_cost) or tonumber(n.def and n.def.sell_cost) or 0))
+        disabled = n and n.eternal == true
     elseif target.kind == "consumable" then
         local c = self.consumables and self.consumables[target.index]
         sell_cost = self:consumable_sell_value(c)
@@ -2821,9 +2950,9 @@ function Game:draw_sell_button()
     local label = string.format("Sell $%d", sell_cost)
     local btn_w = math.max(34, font:getWidth(label) + 10)
     local btn_h = math.max(14, font:getHeight() + 4)
-    local fill_c = self.C and self.C.PALE_GREEN
+    local fill_c = disabled and (self.C and self.C.GREY) or (self.C and self.C.PALE_GREEN)
     local shadow_c = self.C and self.C.BLOCK and self.C.BLOCK.SHADOW
-    local text_c = self.C and self.C.WHITE or { 1, 1, 1, 1 }
+    local text_c = disabled and (self.C and self.C.DARK_WHITE) or (self.C and self.C.WHITE) or { 1, 1, 1, 1 }
 
     local gap = 4
     local margin = 2
@@ -2858,14 +2987,18 @@ function Game:draw_sell_button()
         end
         love.graphics.rectangle("fill", bx, by, btn_w, btn_h, 3, 3)
     end
-    love.graphics.setColor(self.C.WHITE)
+    love.graphics.setColor(text_c or { 0.85, 0.85, 0.85, 1 })
     local text_y = by + math.floor((btn_h - font:getHeight()) * 0.5 + 0.5)
     love.graphics.printf(label, bx, text_y, btn_w, "center")
 
-    self._sell_button_hit = {
-        x = bx, y = by, w = btn_w, h = btn_h,
-        target = { kind = target.kind, index = target.index, node = target.node },
-    }
+    if disabled then
+        self._sell_button_hit = nil
+    else
+        self._sell_button_hit = {
+            x = bx, y = by, w = btn_w, h = btn_h,
+            target = { kind = target.kind, index = target.index, node = target.node },
+        }
+    end
 
     love.graphics.setFont(prev_font)
     love.graphics.setColor(prev_r, prev_g, prev_b, prev_a)
@@ -2948,6 +3081,9 @@ function Game:try_sell_button_press(x, y)
     if not self:_point_in_rect_simple(x, y, hit) then return false end
     -- Consumables become non-interactive when jokers are on bottom.
     if hit.target.kind == "consumable" and self.jokers_on_bottom == true then
+        return false
+    end
+    if hit.target.kind == "joker" and hit.target.node and hit.target.node.eternal == true then
         return false
     end
     self.touch_start_x = x
@@ -3071,9 +3207,9 @@ function Game:skip_blind(index)
     local tag_type = self:tag_type_for_id(skip_id)
     if tag_type then
         if type(self.tags) ~= "table" then self.tags = {} end
+        self.skipsTaken = self.skipsTaken + 1
         self:addTag(tag_type)
     end
-    self.skipsTaken = self.skipsTaken + 1
     self.current_blind_index = math.min(3, blind_index + 1)
     self.selected_blind_index = self.current_blind_index
     return true
@@ -3368,7 +3504,7 @@ function Game:continue_from_game_over()
     -- Start the next run from a fully fresh state.
     if type(self.jokers) == "table" then
         for i = #self.jokers, 1, -1 do
-            self:remove_owned_joker_at(i)
+            self:remove_owned_joker_at(i,true)
         end
     end
     self.jokers_on_bottom = false
@@ -3389,6 +3525,7 @@ end
 function Game:enter_main_menu()
     self.STAGE = self.STAGES.MAIN_MENU
     self:set_state(self.STATES.MENU)
+    self._menu_sub_state = "main"
     self.dragging = nil
     self._main_menu_start_rect = nil
     self._main_menu_continue_rect = nil
@@ -3399,9 +3536,10 @@ function Game:enter_main_menu()
     end
     if type(self.jokers) == "table" then
         for i = #self.jokers, 1, -1 do
-            self:remove_owned_joker_at(i)
+            self:remove_owned_joker_at(i,true)
         end
     end
+    self:clear_joker_shared_picks()
     if type(self.consumables) == "table" then
         for i = #self.consumables, 1, -1 do
             self:remove_consumable_at(i)
@@ -3428,7 +3566,7 @@ function Game:start_run_from_main_menu()
     -- Starting a new run should always clear any existing run objects (especially owned jokers).
     if type(self.jokers) == "table" then
         for i = #self.jokers, 1, -1 do
-            self:remove_owned_joker_at(i)
+            self:remove_owned_joker_at(i,true)
         end
     end
     if type(self.consumables) == "table" then
@@ -3470,6 +3608,15 @@ end
 
 function Game:update(dt)
     if self.STATE == self.STATES.PAUSED then
+        return
+    end
+    if self._deck_view_open then
+        for _, node in ipairs(self._deck_view_nodes or {}) do
+            if node and node.update then
+                node:update(dt)
+            end
+        end
+        self:check_collisions(dt)
         return
     end
     self:_update_joker_emit_queue(dt)
@@ -3725,16 +3872,24 @@ function Game:recompute_joker_slot_layout()
     self.joker_slot_start_x_bottom = bot_x
 end
 
+function Game:joker_base_capacity() 
+    local base = 5
+    if self:has_voucher("v_antimatter") then
+        base = base + 1
+    end
+    base = base + (self.deck_joker_slots or 0)
+    return base
+end
+
 --- `joker_base_capacity` + one slot per owned Joker with Negative edition.
 function Game:refresh_joker_capacity_from_negatives()
-    if not self.joker_base_capacity then self.joker_base_capacity = 5 end
     local bonus = 0
     for _, j in ipairs(self.jokers or {}) do
         if j and Joker.normalize_edition(j.edition) == "negative" then
             bonus = bonus + 1
         end
     end
-    self.joker_capacity = (self.joker_base_capacity or 5) + bonus
+    self.joker_capacity = self:joker_base_capacity() + bonus
     self:recompute_joker_slot_layout()
     self:_apply_joker_layout()
     self:sync_jokers_interactivity()
@@ -3746,8 +3901,7 @@ function Game:init_jokers()
 
     if not Joker then return end
 
-    self.joker_base_capacity = self.joker_base_capacity or 5
-    self.joker_capacity = self.joker_base_capacity
+    self.joker_capacity = self:joker_base_capacity()
 
     self.jokers_on_bottom = false
     self.jokers_sliding = false
@@ -3768,26 +3922,134 @@ function Game:init_jokers()
             pool[#pool + 1] = def_id
         end
     end
+end
 
-    -- -- Fisher–Yates shuffle
-    -- for i = #pool, 2, -1 do
-    --     local j = math.random(i)
-    --     pool[i], pool[j] = pool[j], pool[i]
-    -- end
+--- Jokers with per-type random targets (duplicate copies share the same pick).
+local JOKER_SHARED_RANDOM_IDS = {
+    j_ancient_joker = true,
+    j_castle = true,
+    j_mail = true,
+    j_idol = true,
+    j_todo_list = true,
+}
 
-    -- local want = math.min(self.joker_capacity or 0, #pool)
-    -- for i = 1, want do
-    --     self:add_joker_by_def(pool[i])
-    -- end
-    -- self:add_joker_by_def("j_swashbuckler")
-    -- self:add_joker_by_def("j_invisible")
-    -- self:add_joker_by_def("j_smeared")
-    -- self:add_joker_by_def("j_popcorn")
-    -- self:add_joker_by_def("j_troubadour")
-    -- self:add_joker_by_def("j_dna")
-    -- for _, jj in ipairs(self.jokers) do
-    --     if jj and jj.refresh_quads then jj:refresh_quads() end
-    -- end
+function Game:clear_joker_shared_picks()
+    self.joker_shared_picks = {}
+end
+
+function Game:uses_joker_shared_picks(def_id)
+    return type(def_id) == "string" and JOKER_SHARED_RANDOM_IDS[def_id] == true
+end
+
+function Game:get_joker_shared_pick(def_id)
+    if not self:uses_joker_shared_picks(def_id) then return nil end
+    self.joker_shared_picks = self.joker_shared_picks or {}
+    return self.joker_shared_picks[def_id]
+end
+
+function Game:propagate_joker_shared_picks(def_id)
+    local picks = self:get_joker_shared_pick(def_id)
+    if type(picks) ~= "table" then return end
+    for _, j in ipairs(self.jokers or {}) do
+        if j and j.def and j.def.id == def_id then
+            for k, v in pairs(picks) do
+                j[k] = v
+            end
+        end
+    end
+end
+
+function Game:set_joker_shared_picks(def_id, picks)
+    if not self:uses_joker_shared_picks(def_id) or type(picks) ~= "table" then return end
+    self.joker_shared_picks = self.joker_shared_picks or {}
+    local slot = self.joker_shared_picks[def_id]
+    if type(slot) ~= "table" then
+        slot = {}
+        self.joker_shared_picks[def_id] = slot
+    end
+    for k, v in pairs(picks) do
+        slot[k] = v
+    end
+    self:propagate_joker_shared_picks(def_id)
+end
+
+function Game:roll_joker_shared_picks(def_id)
+    if not self:uses_joker_shared_picks(def_id) then return nil end
+    local suits = { "Hearts", "Clubs", "Diamonds", "Spades" }
+
+    if def_id == "j_ancient_joker" then
+        return { random_suit = suits[math.random(1, #suits)] }
+    end
+
+    if def_id == "j_castle" then
+        local deck = self.deck
+        if deck and deck.random_card then
+            local card = deck:random_card()
+            if card and card.suit then
+                return { random_suit = card.suit }
+            end
+        end
+        return { random_suit = suits[math.random(1, #suits)] }
+    end
+
+    if def_id == "j_mail" then
+        return { random_rank = math.random(2, 14) }
+    end
+
+    if def_id == "j_idol" then
+        local deck = self.deck
+        if deck and deck.random_card then
+            local card = deck:random_card()
+            if card then
+                return { random_rank = card.rank, random_suit = card.suit }
+            end
+        end
+        return { random_rank = math.random(2, 14), random_suit = suits[math.random(1, #suits)] }
+    end
+
+    if def_id == "j_todo_list" then
+        local handlist = self.handlist or {}
+        if #handlist == 0 then return nil end
+        local found = false
+        local hand_name = nil
+        while not found do
+            local pos = math.random(1, #handlist)
+            if pos < 4 then
+                if self.hand_play_counts and self.hand_play_counts[pos] and self.hand_play_counts[pos] > 0 then
+                    found = true
+                    hand_name = handlist[pos]
+                end
+            else
+                found = true
+                hand_name = handlist[pos]
+            end
+        end
+        return { random_hand = hand_name }
+    end
+
+    return nil
+end
+
+function Game:ensure_joker_shared_picks(def_id)
+    if not self:uses_joker_shared_picks(def_id) then return nil end
+    local existing = self:get_joker_shared_pick(def_id)
+    if type(existing) == "table" then return existing end
+    local picks = self:roll_joker_shared_picks(def_id)
+    if picks then
+        self:set_joker_shared_picks(def_id, picks)
+        return picks
+    end
+    return nil
+end
+
+function Game:apply_joker_shared_picks_to_joker(joker)
+    local def_id = joker and joker.def and joker.def.id
+    if not def_id then return end
+    local picks = self:ensure_joker_shared_picks(def_id)
+    if type(picks) ~= "table" then return end
+    for k, v in pairs(picks) do
+        joker[k] = v
+    end
 end
 
 ---Add an owned Joker by definition id.
@@ -3801,8 +4063,7 @@ function Game:add_joker_by_def(def_id, create_params)
     local def = JOKER_DEFS[def_id]
     if type(def) ~= "table" then return false end
 
-    if not self.joker_base_capacity then self.joker_base_capacity = 5 end
-    if not self.joker_capacity then self.joker_capacity = self.joker_base_capacity end
+    if not self.joker_capacity then self.joker_capacity = self:joker_base_capacity() end
     if not self.jokers then self.jokers = {} end
 
     local merged = { face_up = true }
@@ -3819,10 +4080,11 @@ function Game:add_joker_by_def(def_id, create_params)
         end
     end
     local new_is_neg = Joker.normalize_edition(merged.edition) == "negative"
-    local cap_after = (self.joker_base_capacity or 5) + neg_owned + (new_is_neg and 1 or 0)
+    local cap_after = self:joker_base_capacity() + neg_owned + (new_is_neg and 1 or 0)
     if #self.jokers >= cap_after then return false end
 
     local j = Joker(0, 0, self.joker_slot_w, self.joker_slot_h, def, merged)
+    self:apply_joker_shared_picks_to_joker(j)
     table.insert(self.jokers, j)
     self:add(j)
 
@@ -4378,6 +4640,7 @@ function Game:prepare_hand_for_new_blind()
 end
 
 function Game:initialize_run_loop()
+    self:clear_joker_shared_picks()
     self.STAGE = self.STAGES.RUN
     self.ante = 1
     self.round = 1
@@ -4402,7 +4665,6 @@ function Game:initialize_run_loop()
     self.active_tooltip_shop_voucher = false
     self.hand_size_delta_voucher = 0
     self.voucher_hands_delta = 0
-    self.voucher_discards_delta = 0
     self.boss_rerolls_used_this_ante = 0
     self.hand_play_counts = {}
     self.blind_hand_play_counts = {}
@@ -4414,14 +4676,10 @@ function Game:initialize_run_loop()
     if self.hand and self.hand.clear then
         self.hand:clear()
     end
-    if self.hand and self.hand.fill_from_deck then
-        self.hand:fill_from_deck(true)
-    end
-    if self.hand and self.hand.clear then
-        self.hand:clear()
-    end
     self.consumables = {}
     self.last_consumable_use_id = nil
+    G:apply_deck_config(G._pending_deck_id   or "b_red")
+    G:apply_stake_config(G._pending_stake_id or "stake_white")
     self:init_shop_offer_queue()
     self:roll_skips()
     self:set_state(self.STATES.BLIND_SELECT)
@@ -4577,14 +4835,14 @@ end
 function Game:_shop_queue_tarot_planet_weights()
     local t, pl = 4, 4
     if self:has_voucher("v_tarot_tycoon") then
-        t = 16
+        t = 32
     elseif self:has_voucher("v_tarot_merchant") then
-        t = 8
+        t = 9.6
     end
     if self:has_voucher("v_planet_tycoon") then
-        pl = 16
+        pl = 32
     elseif self:has_voucher("v_planet_merchant") then
-        pl = 8
+        pl = 9.6
     end
     return t, pl
 end
@@ -4666,11 +4924,12 @@ function Game:roll_shop_voucher()
         end
     end
     table.sort(candidates)
+    local pick
     if #candidates == 0 then
-        self.shop_voucher_offer = nil
-        return
+        pick = "v_blank"
+    else
+        pick = candidates[self:_shop_rand_int(1, #candidates)]
     end
-    local pick = candidates[self:_shop_rand_int(1, #candidates)]
     local d = VOUCHER_DEFS[pick]
     local price = tonumber(d and d.price) or 10
     price = self:apply_shop_discount_to_price(price)
@@ -4705,6 +4964,28 @@ function Game:buy_shop_voucher()
     return true
 end
 
+--- Debug / test helper: grant one random voucher the player does not already own.
+---@return string|nil voucher id granted, or nil if every voucher is owned
+function Game:give_random_unowned_voucher()
+    if type(VOUCHER_DEFS) ~= "table" then return nil end
+    local candidates = {}
+    for vid, def in pairs(VOUCHER_DEFS) do
+        if type(vid) == "string" and type(def) == "table" and not self:has_voucher(vid) then
+            candidates[#candidates + 1] = vid
+        end
+    end
+    local pick
+    if #candidates == 0 then 
+        pick = "v_blank"
+    else
+        pick = candidates[math.random(1, #candidates)]
+    end
+    if not self.vouchers then self.vouchers = {} end
+    self.vouchers[#self.vouchers + 1] = pick
+    self:apply_voucher_effect(pick)
+    return pick
+end
+
 function Game:apply_voucher_effect(id)
     if id == "v_wasteful" or id == "v_recyclomancy" then return end
     if id == "v_tarot_merchant" or id == "v_tarot_tycoon" then return end
@@ -4712,7 +4993,6 @@ function Game:apply_voucher_effect(id)
     if id == "v_seed_money" or id == "v_money_tree" then return end
     if id == "v_blank" then return end
     if id == "v_antimatter" then
-        self.joker_base_capacity = (tonumber(self.joker_base_capacity) or 5) + 1
         if self.refresh_joker_capacity_from_negatives then
             self:refresh_joker_capacity_from_negatives()
         end
@@ -4721,7 +5001,6 @@ function Game:apply_voucher_effect(id)
     if id == "v_magic_trick" or id == "v_illusion" then return end
     if id == "v_hieroglyph" then
         self.ante = (tonumber(self.ante) or 1) - 1
-        self.voucher_hands_delta = (tonumber(self.voucher_hands_delta) or 0) - 1
         self.boss_rerolls_used_this_ante = 0
         if self.current_boss_blind_id and self.roll_boss_blind then
             self:roll_boss_blind()
@@ -4730,7 +5009,6 @@ function Game:apply_voucher_effect(id)
     end
     if id == "v_petroglyph" then
         self.ante = (tonumber(self.ante) or 1) - 1
-        self.voucher_discards_delta = (tonumber(self.voucher_discards_delta) or 0) - 1
         self.boss_rerolls_used_this_ante = 0
         if self.current_boss_blind_id and self.roll_boss_blind then
             self:roll_boss_blind()
@@ -4750,7 +5028,6 @@ function Game:apply_voucher_effect(id)
     if id == "v_hone" or id == "v_glow_up" then return end
     if id == "v_reroll" or id == "v_reroll_glut" then return end
     if id == "v_crystal_ball" then
-        self.consumable_base_capacity = (tonumber(self.consumable_base_capacity) or 2) + 1
         if self.refresh_consumable_capacity_from_negatives then
             self:refresh_consumable_capacity_from_negatives()
         end
@@ -4900,37 +5177,42 @@ end
 
 function Game:_generate_next_shop_queue_offer()
     local tw, pw = self:_shop_queue_tarot_planet_weights()
-    local total = 20 + tw + pw
-    local roll = self:_shop_rand_int(1, total)
-    local kind = "planet"
-    if roll <= 20 then
-        kind = "joker"
-    elseif roll <= 20 + tw then
-        kind = "tarot"
-    else
-        kind = "planet"
-    end
+    local sw = self.deck_spectral_rate or 0
+    local cw = self:has_voucher("v_magic_trick") and 6 or 0
+    local total = 20 + tw + pw + sw + cw
+    local max_attempts = 32
 
-    if kind == "joker" then
-        if self:has_voucher("v_magic_trick") and self:_shop_rand_int(1, 4) == 1 then
+    for _ = 1, max_attempts do
+        local roll = self:_shop_rand_int(1, total)
+        local kind = "planet"
+        if roll <= 20 then
+            kind = "joker"
+        elseif roll <= 20 + tw then
+            kind = "tarot"
+        elseif roll <= 20 + tw + pw then
+            kind = "planet"
+        elseif roll <= 20 + tw + pw + sw then
+            kind = "spectral"
+        else
+            kind = "playing_card"
+        end
+
+        if kind == "joker" then
+            local joker_offer = self:_roll_shop_queue_joker_offer()
+            if joker_offer then return joker_offer end
+        elseif kind == "tarot" then
+            local c = self:_roll_shop_queue_consumable_offer("tarot")
+            if c then return c end
+        elseif kind == "planet" then
+            local c = self:_roll_shop_queue_consumable_offer("planet")
+            if c then return c end
+        elseif kind == "spectral" then
+            local c = self:_roll_shop_queue_consumable_offer("spectral")
+            if c then return c end
+        else
             local pc = self:_roll_shop_playing_card_offer()
             if pc then return pc end
         end
-        local joker_offer = self:_roll_shop_queue_joker_offer()
-        if joker_offer then return joker_offer end
-        kind = self:_shop_rand_int(1, 2) == 1 and "tarot" or "planet"
-    end
-
-    if kind == "tarot" then
-        local c = self:_roll_shop_queue_consumable_offer("tarot")
-        if c then return c end
-        local c2 = self:_roll_shop_queue_consumable_offer("planet")
-        if c2 then return c2 end
-    else
-        local c = self:_roll_shop_queue_consumable_offer("planet")
-        if c then return c end
-        local c2 = self:_roll_shop_queue_consumable_offer("tarot")
-        if c2 then return c2 end
     end
 
     local j2 = self:_roll_shop_queue_joker_offer()
@@ -4994,13 +5276,21 @@ function Game:_roll_shop_queue_joker_offer()
     if not pick then return nil end
     local def = JOKER_DEFS[pick]
     local edition = self:roll_joker_offer_edition()
-    return {
+    local sticker_params = self:_build_joker_sticker_params(def)
+    local create_params = self:_build_joker_create_params(def, { edition = edition }, sticker_params)
+    local offer = {
         kind = "joker",
         id = pick,
         name = def and def.name or pick,
-        price = self:shop_price_for_joker_offer(def, edition),
+        price = self:shop_price_for_joker_offer(def, edition, sticker_params),
         edition = edition,
+        stickers = sticker_params,
+        create_params = create_params,
     }
+    if sticker_params.eternal then offer.eternal = true end
+    if sticker_params.perishable then offer.perishable = true end
+    if sticker_params.rental then offer.rental = true end
+    return offer
 end
 
 function Game:_roll_shop_queue_consumable_offer(wanted_kind)
@@ -5053,8 +5343,12 @@ end
 --- Buy price for a shop row: `def.cost` plus edition bonus (same as a spawned `Joker`).
 ---@param def table|nil
 ---@param edition string|nil
-function Game:shop_price_for_joker_offer(def, edition)
+function Game:shop_price_for_joker_offer(def, edition, sticker_params)
     if type(def) ~= "table" then return 1 end
+    local sticker_data = type(sticker_params) == "table" and sticker_params or nil
+    if (sticker_data and sticker_data.rental == true) or def.rental == true or (type(def.stickers) == "table" and def.stickers.rental == true) then
+        return 1
+    end
     local base = tonumber(def.cost) or 1
     if not Joker then
         return self:apply_shop_discount_to_price(math.max(1, base))
@@ -5065,6 +5359,45 @@ function Game:shop_price_for_joker_offer(def, edition)
 end
 
 ---@param def table|nil
+function Game:_build_joker_sticker_params(def)
+    local params = {}
+    if type(def) == "table" then
+        local sticker_def = def.stickers
+        if type(sticker_def) == "table" then
+            for k, v in pairs(sticker_def) do
+                if v == true then params[k] = true end
+            end
+        end
+        if def.eternal == true then params.eternal = true end
+        if def.perishable == true then params.perishable = true end
+        if def.rental == true then params.rental = true end
+    end
+
+    if self._stake_eternal_jokers == true and params.eternal ~= true and self:_shop_rand_int(1, 100) <= 30 then
+        params.eternal = true
+    end
+    if params.eternal ~= true and self._stake_perishable_jokers == true and self:_shop_rand_int(1, 100) <= 30 then
+        params.perishable = true
+    end
+    if self._stake_rental_jokers == true and self:_shop_rand_int(1, 100) <= 30 then
+        params.rental = true
+    end
+    if params.eternal then params.perishable = nil end
+    return params
+end
+
+function Game:_build_joker_create_params(def, base_params, sticker_params)
+    local params = type(base_params) == "table" and copy_table(base_params) or {}
+    local sticker_data = type(sticker_params) == "table" and sticker_params or self:_build_joker_sticker_params(def)
+    if next(sticker_data) ~= nil then
+        params.stickers = sticker_data
+        for k, v in pairs(sticker_data) do
+            params[k] = v
+        end
+    end
+    return next(params) ~= nil and params or nil
+end
+
 function Game:shop_price_for_consumable_offer(def)
     if type(def) ~= "table" then return 3 end
     if self:hasJoker("j_astronomer") and def.kind == "planet" then
@@ -5638,7 +5971,15 @@ function Game:_booster_build_choices(offer)
         local entries = self:_shop_pick_unique_joker_ids(n)
         for _, e in ipairs(entries) do
             if e and e.id then
-                choices[#choices + 1] = { kind = "joker", joker_id = e.id, edition = e.edition or "base", taken = false }
+                local sticker_params = self:_build_joker_sticker_params(JOKER_DEFS and JOKER_DEFS[e.id])
+                choices[#choices + 1] = {
+                    kind = "joker",
+                    joker_id = e.id,
+                    edition = e.edition or "base",
+                    taken = false,
+                    create_params = self:_build_joker_create_params(JOKER_DEFS and JOKER_DEFS[e.id], { edition = e.edition or "base" }, sticker_params),
+                    stickers = sticker_params,
+                }
             end
         end
     elseif pack == "standard" then
@@ -5674,7 +6015,9 @@ function Game:_booster_spawn_choice_nodes(choices)
         elseif ch.kind == "joker" and Joker then
             local jd = JOKER_DEFS and JOKER_DEFS[ch.joker_id]
             if type(jd) == "table" then
-                local node = Joker(0, 0, self.joker_slot_w, self.joker_slot_h, jd, { face_up = true, edition = ch.edition or "base" })
+                local create_params = type(ch.create_params) == "table" and copy_table(ch.create_params) or { edition = ch.edition or "base" }
+                create_params.face_up = true
+                local node = Joker(0, 0, self.joker_slot_w, self.joker_slot_h, jd, create_params)
                 node._booster_choice_index = i
                 node.states.drag.can = false
                 nodes[i] = node
@@ -5797,6 +6140,9 @@ function Game:pack_consumable_can_apply(c)
         if sid == "spectral_wraith" or sid == "spectral_soul" then
             if not self:joker_has_room_for_new("base") then return false end
         end
+        if sid == "spectral_ectoplasm" and not self:has_base_edition_joker() then
+            return false
+        end
         if self:booster_spectral_needs_hand(c) then
             if not self:hand_ready_for_tarot_selection() then return false end
             return self:tarot_selection_requirement_met(c)
@@ -5845,7 +6191,7 @@ function Game:pick_booster_choice(idx)
     elseif ch.kind == "joker" then
         local ed = ch.edition or "base"
         if not self:joker_has_room_for_new(ed) then return false end
-        local create_params = (ed ~= "base") and { edition = ed } or nil
+        local create_params = type(ch.create_params) == "table" and copy_table(ch.create_params) or ((ed ~= "base") and { edition = ed } or nil)
         self:add_joker_by_def(ch.joker_id, create_params)
     elseif ch.kind == "playing" then
         if self.deck and self.deck.insert_random then
@@ -5915,6 +6261,24 @@ end
 
 --- Blind just beaten: recycle deck, pay reward, show round-win screen (then shop).
 --- Interest: +$1 per full $5 held (only the first $25 counts toward the divisor; max +$5).
+function Game:apply_joker_sticker_round_end()
+    if type(self.jokers) ~= "table" then return end
+    for _, joker in ipairs(self.jokers) do
+        if joker then
+            if joker.perishable == true then
+                local counter = math.max(0, (tonumber(joker.perishable_counter) or 5) - 1)
+                joker.perishable_counter = counter
+                if counter <= 0 then
+                    joker.perishable_debuffed = true
+                end
+            end
+            if joker.rental == true then
+                self.money = (tonumber(self.money) or 0) - 3
+            end
+        end
+    end
+end
+
 function Game:enter_round_win_after_blind()
     Sfx.play("resources/sounds/win.ogg")
     if tonumber(self.current_blind_index) == 3 then
@@ -5923,6 +6287,8 @@ function Game:enter_round_win_after_blind()
     end
     local hands_left = math.max(0, math.floor(tonumber(self.hands) or 0))
     self._round_win_joker_payout_lines = {}
+
+    self:apply_joker_sticker_round_end()
 
     local ctx = self:prepare_joker_event_ctx("on_round_end", {
         hands_left = hands_left,
@@ -5956,6 +6322,11 @@ function Game:enter_round_win_after_blind()
                 self:removeTag(i)
             end
         end
+
+        -- If Anaglyph Deck - Add Double Tag
+        if (G._deck_special or nil) == "anaglyph" then
+            self:addTag("double")
+        end
     end
 
     self:recycle_full_deck_after_blind_win()
@@ -5963,6 +6334,16 @@ function Game:enter_round_win_after_blind()
     local interest_count_cap = cap_dollars * 5
     local interest = math.floor(math.min(math.max(0, self.money), interest_count_cap) / 5)
     interest = math.min(interest, cap_dollars)
+    if self._deck_no_interest then interest = 0 end
+
+    if self.extra_hand_bonus or 0 ~= 0 then
+        ctx.add_round_win_payout("Hand Bonus", self.extra_hand_bonus * self.hands)
+    end
+
+    if self.extra_discard_bonus or 0 ~= 0 then
+        ctx.add_round_win_payout("Discard Bonus", self.extra_discard_bonus * self.discards)
+    end
+
     local blind_pay = math.max(0, math.floor(tonumber(self.current_blind_reward) or 0))
 
     self._round_win_display_lines = {
@@ -6072,13 +6453,17 @@ function Game:do_random(min,max,goal)
 
 end
 
-function Game:remove_owned_joker_at(index)
+function Game:remove_owned_joker_at(index, force)
+    if not force then force = false end
     if type(index) ~= "number" or index < 1 then return nil end
     if type(self.jokers) ~= "table" then return nil end
     local joker = self.jokers[index]
     if not joker then return nil end
     if self.active_tooltip_joker == joker then
         self.active_tooltip_joker = nil
+    end
+    if joker.eternal then
+        return nil
     end
     table.remove(self.jokers, index)
     self:remove(joker)
@@ -6104,11 +6489,33 @@ function Game:buy_shop_joker(slot_index)
             end
         end
         local new_neg = Joker and Joker.normalize_edition(offer.edition) == "negative"
-        local cap_after = (self.joker_base_capacity or 5) + neg_owned + (new_neg and 1 or 0)
+        local cap_after = self:joker_base_capacity() + neg_owned + (new_neg and 1 or 0)
         if #self.jokers >= cap_after then return false end
         local create_params = nil
-        if offer.edition and offer.edition ~= "base" then
+        local def = JOKER_DEFS and JOKER_DEFS[offer.id]
+        if type(offer.create_params) == "table" then
+            create_params = copy_table and copy_table(offer.create_params) or nil
+        elseif offer.edition and offer.edition ~= "base" then
             create_params = { edition = offer.edition }
+        end
+        if type(def) == "table" and type(create_params) ~= "table" then
+            local sticker_flags = {}
+            local sticker_def = def.stickers
+            if def.rental == true or (type(sticker_def) == "table" and sticker_def.rental == true) then
+                sticker_flags.rental = true
+            end
+            if def.perishable == true or (type(sticker_def) == "table" and sticker_def.perishable == true) then
+                sticker_flags.perishable = true
+            end
+            if def.eternal == true or (type(sticker_def) == "table" and sticker_def.eternal == true) then
+                sticker_flags.eternal = true
+            end
+            if next(sticker_flags) ~= nil then
+                create_params = create_params or {}
+                for k, v in pairs(sticker_flags) do
+                    create_params[k] = v
+                end
+            end
         end
         ok = self:add_joker_by_def(offer.id, create_params) and true or false
     elseif k == "tarot" or k == "planet" then
@@ -6487,13 +6894,17 @@ function Game:touchpressed(id, x, y)
         MainMenuUI.handle_touch(self, x, y)
         return
     end
+    if self._deck_view_open then
+        DeckViewUI.handle_touchpressed(self, id, x, y)
+        return
+    end
     if self.STATE == self.STATES.PAUSED then
         if self._pause_continue_rect and self:_point_in_rect_simple(x, y, self._pause_continue_rect) then
             self:exit_pause_menu()
             return
         end
         if self._pause_new_run_rect and self:_point_in_rect_simple(x, y, self._pause_new_run_rect) then
-            self:start_new_run_from_main_menu()
+            self:enter_main_menu_deck_select()
             return
         end
         if self._pause_save_quit_rect and self:_point_in_rect_simple(x, y, self._pause_save_quit_rect) then
@@ -6669,6 +7080,10 @@ function Game:touchpressed(id, x, y)
 end
 
 function Game:touchmoved(id, x, y, dx, dy)
+    if self._deck_view_open then
+        DeckViewUI.handle_touchmoved(self, id, x, y, dx, dy)
+        return
+    end
     if self.STATE == self.STATES.PAUSED then
         return
     end
@@ -6700,6 +7115,10 @@ function Game:touchmoved(id, x, y, dx, dy)
 end
 
 function Game:touchreleased(id, x, y)
+    if self._deck_view_open then
+        DeckViewUI.handle_touchreleased(self, id, x, y)
+        return
+    end
     if self.STATE == self.STATES.PAUSED then
         self.dragging = nil
         return

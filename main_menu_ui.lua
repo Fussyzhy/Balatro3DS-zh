@@ -1,10 +1,11 @@
+
 local MainMenuUI = {}
 
 function MainMenuUI.draw_background(game, screen)
     local w = (screen == "bottom") and 320 or 400
     local h = 240
-    local top = G.C.BOOSTER
-    local bottom = G.C.CLEAR
+    local top = G.C.BLOCK.BACK
+    local bottom = G.C.PANEL
     local steps = 48
 
     love.graphics.setColor(top)
@@ -22,16 +23,16 @@ function MainMenuUI.draw_background(game, screen)
 end
 
 function MainMenuUI.draw_top(game)
-    local panel_x, panel_y, panel_w, panel_h = 24, 10, 352, 220
-    
+    local panel_x, panel_y, panel_w = 24, 10, 352
+
     local atlas = nil
     if game.ensure_asset_atlas_loaded then
         atlas = game:ensure_asset_atlas_loaded("balatro")
     end
+
     if atlas and atlas.image then
         local iw, ih = atlas.image:getDimensions()
-        local max_w = panel_w - 24
-        local max_h = 132
+        local max_w, max_h = panel_w - 24, 132
         local s = math.min(max_w / iw, max_h / ih)
         if s > 1 then s = 1 end
         local draw_w = iw * s
@@ -45,22 +46,40 @@ function MainMenuUI.draw_top(game)
     love.graphics.setColor(game.C.WHITE)
     love.graphics.setFont(game.FONTS.PIXEL.LARGE)
     love.graphics.printf("Balatro 3DS", panel_x, panel_y + 152, panel_w, "center")
-
     love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
-    love.graphics.setColor(game.C.GREY)
+    love.graphics.setColor(game.C.BLACK)
     love.graphics.printf("Press A / Y", panel_x, panel_y + 184, panel_w, "center")
 
     if game.SEED then
         love.graphics.setFont(game.FONTS.PIXEL.SMALL)
         love.graphics.setColor(game.C.DARK_WHITE or game.C.GREY)
-        love.graphics.printf("Seed " .. tostring(math.floor(tonumber(game.SEED) or 0)), panel_x, panel_y + 204, panel_w, "center")
+        love.graphics.printf(
+            "Seed " .. tostring(math.floor(tonumber(game.SEED) or 0)),
+            panel_x, panel_y + 204, panel_w, "center"
+        )
     end
 end
 
+function MainMenuUI.open_deck_select(game)
+    game._deck_select_idx = game._deck_select_idx or 1
+    game._stake_select_idx = game._stake_select_idx or 1
+    game._menu_sub_state = "deck_select"
+end
+
 function MainMenuUI.draw_bottom(game)
+    if game._menu_sub_state == "deck_select" then
+        MainMenuUI.draw_deck_select(game)
+    else
+        MainMenuUI.draw_main(game)
+    end
+end
+
+function MainMenuUI.draw_main(game)
     local panel_x, panel_y, panel_w, panel_h = 8, 12, 304, 168
+
     if _G.draw_rect_with_shadow then
-        draw_rect_with_shadow(panel_x, panel_y, panel_w, panel_h, 6, 3, game.C.BLOCK.BACK, game.C.BLOCK.SHADOW, 3)
+        draw_rect_with_shadow(panel_x, panel_y, panel_w, panel_h, 6, 3,
+            game.C.PANEL, game.C.BLOCK.SHADOW, 3)
     else
         love.graphics.setColor(game.C.PANEL)
         love.graphics.rectangle("fill", panel_x, panel_y, panel_w, panel_h, 6, 6)
@@ -73,35 +92,344 @@ function MainMenuUI.draw_bottom(game)
     local has_save = game.has_saved_run and game:has_saved_run() == true
     local btn_w, btn_h = 160, 32
     local btn_x = panel_x + math.floor((panel_w - btn_w) * 0.5 + 0.5)
+
     if has_save then
         game._main_menu_continue_rect = { x = btn_x, y = panel_y + 78, w = btn_w, h = btn_h }
-        game._main_menu_start_rect = { x = btn_x, y = panel_y + 118, w = btn_w, h = btn_h }
+        game._main_menu_start_rect    = { x = btn_x, y = panel_y + 118, w = btn_w, h = btn_h }
 
-        love.graphics.setColor(game.C.BLUE)
-        love.graphics.rectangle("fill", game._main_menu_continue_rect.x, game._main_menu_continue_rect.y, game._main_menu_continue_rect.w, game._main_menu_continue_rect.h, 4, 4)
-        love.graphics.setColor(game.C.GREEN)
-        love.graphics.rectangle("fill", game._main_menu_start_rect.x, game._main_menu_start_rect.y, game._main_menu_start_rect.w, game._main_menu_start_rect.h, 4, 4)
+        draw_rect_with_shadow(
+            game._main_menu_continue_rect.x, game._main_menu_continue_rect.y,
+            game._main_menu_continue_rect.w, game._main_menu_continue_rect.h, 4, 4,
+            game.C.BLUE, game.C.BLOCK.SHADOW, 2)
+
+        draw_rect_with_shadow(
+            game._main_menu_start_rect.x, game._main_menu_start_rect.y,
+            game._main_menu_start_rect.w, game._main_menu_start_rect.h, 4, 4,
+            game.C.GREEN, game.C.BLOCK.SHADOW, 2)
 
         love.graphics.setColor(game.C.WHITE)
         love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
-        local cy = game._main_menu_continue_rect.y + math.floor((game._main_menu_continue_rect.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
-        love.graphics.printf("Continue Run", game._main_menu_continue_rect.x, cy, game._main_menu_continue_rect.w, "center")
-        local sy = game._main_menu_start_rect.y + math.floor((game._main_menu_start_rect.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
-        love.graphics.printf("Start Run", game._main_menu_start_rect.x, sy, game._main_menu_start_rect.w, "center")
+
+        local cy = game._main_menu_continue_rect.y +
+                   math.floor((game._main_menu_continue_rect.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
+        love.graphics.printf("Continue Run",
+            game._main_menu_continue_rect.x, cy, game._main_menu_continue_rect.w, "center")
+
+        local sy = game._main_menu_start_rect.y +
+                   math.floor((game._main_menu_start_rect.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
+        love.graphics.printf("New Run",
+            game._main_menu_start_rect.x, sy, game._main_menu_start_rect.w, "center")
     else
         game._main_menu_continue_rect = nil
-        game._main_menu_start_rect = { x = btn_x, y = panel_y + 98, w = btn_w, h = btn_h }
+        game._main_menu_start_rect    = { x = btn_x, y = panel_y + 98, w = btn_w, h = btn_h }
+
         love.graphics.setColor(game.C.GREEN)
-        love.graphics.rectangle("fill", game._main_menu_start_rect.x, game._main_menu_start_rect.y, game._main_menu_start_rect.w, game._main_menu_start_rect.h, 4, 4)
+        draw_rect_with_shadow(
+            game._main_menu_start_rect.x, game._main_menu_start_rect.y,
+            game._main_menu_start_rect.w, game._main_menu_start_rect.h, 4, 4,
+            game.C.GREEN, game.C.BLOCK.SHADOW, 2)
 
         love.graphics.setColor(game.C.WHITE)
         love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
-        local by = game._main_menu_start_rect.y + math.floor((game._main_menu_start_rect.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
-        love.graphics.printf("Start Run", game._main_menu_start_rect.x, by, game._main_menu_start_rect.w, "center")
+        local by = game._main_menu_start_rect.y +
+                   math.floor((game._main_menu_start_rect.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
+        love.graphics.printf("Start Run",
+            game._main_menu_start_rect.x, by, game._main_menu_start_rect.w, "center")
     end
 end
 
+function MainMenuUI.draw_deck_carousel_sprite(game, def, x, y, w, h, p)
+    local atlas = nil
+    if game.ensure_asset_atlas_loaded then
+        atlas = game:ensure_asset_atlas_loaded("centers")
+    end
+
+    if atlas and atlas.image then
+        local index = tonumber(def and def.pos) or 0
+        if def and not def.unlocked then
+            index = 4
+        end
+        local iw, ih = atlas.image:getDimensions()
+        local cell_w = tonumber(atlas.px) or 72
+        local cell_h = tonumber(atlas.py) or 95
+        local cols = math.max(1, math.floor(iw / cell_w))
+        local col = index % cols
+        local row = math.floor(index / cols)
+        local quad = love.graphics.newQuad(col * cell_w, row * cell_h, cell_w, cell_h, iw, ih)
+
+        local scale = math.min((w - p) / cell_w, (h - p) / cell_h)
+        if scale > 1 then scale = 1 end
+        if scale < 0.45 then scale = 0.45 end
+        local draw_w = cell_w * scale
+        local draw_h = cell_h * scale
+        local dx = x + math.floor((w - draw_w) * 0.5 + 0.5)
+        local dy = y + math.floor((h - draw_h) * 0.5 + 0.5)
+
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(atlas.image, quad, dx, dy, 0, scale, scale)
+        return dx,dy, draw_w, draw_h
+    end
+
+    love.graphics.setColor(0.25, 0.25, 0.25, 1)
+    love.graphics.rectangle("fill", x, y, w, h, 8, 8)
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.printf("Sprite unavailable", x, y + math.floor(h * 0.5) - 6, w, "center")
+    return false
+end
+
+function MainMenuUI.draw_stake_carousel_sprite(game, def, x, y, w, h, p)
+    p = p or 0
+    local atlas = nil
+    if game.ensure_asset_atlas_loaded then
+        atlas = game:ensure_asset_atlas_loaded("chips")
+    end
+
+    if atlas and atlas.image then
+        local index = tonumber(def and def.pos) or 0
+        local iw, ih = atlas.image:getDimensions()
+        local cell_w = tonumber(atlas.px) or 30
+        local cell_h = tonumber(atlas.py) or 30
+        local cols = math.max(1, math.floor(iw / cell_w))
+        local col = index % cols
+        local row = math.floor(index / cols)
+        local quad = love.graphics.newQuad(col * cell_w, row * cell_h, cell_w, cell_h, iw, ih)
+
+        local scale = math.min((w - p) / cell_w, (h - p) / cell_h)
+        if scale > 1 then scale = 1 end
+        if scale < 0.45 then scale = 0.45 end
+        local draw_w = cell_w * scale
+        local draw_h = cell_h * scale
+        local dx = x + math.floor((w - draw_w) * 0.5 + 0.5)
+        local dy = y + math.floor((h - draw_h) * 0.5 + 0.5)
+
+        if def and not def.unlocked then
+            love.graphics.setColor(0.35, 0.35, 0.35, 1)
+        else
+            love.graphics.setColor(1, 1, 1, 1)
+        end
+        love.graphics.draw(atlas.image, quad, dx, dy, 0, scale, scale)
+        return dx, dy, draw_w, draw_h
+    end
+
+    love.graphics.setColor(0.25, 0.25, 0.25, 1)
+    love.graphics.rectangle("fill", x, y, w, h, 8, 8)
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.printf("Sprite unavailable", x, y + math.floor(h * 0.5) - 6, w, "center")
+    return false
+end
+
+function MainMenuUI._start_run(game)
+    local deck_list = DECK_DEFS or {}
+    local stake_list = STAKE_DEFS or {}
+    local deck_idx = tonumber(game._deck_select_idx) or 1
+    local stake_idx = tonumber(game._stake_select_idx) or 1
+    local deck_def = deck_list[deck_idx]
+    local stake_def = stake_list[stake_idx]
+    if not deck_def or not deck_def.unlocked then return false end
+    if not stake_def or not stake_def.unlocked then return false end
+
+    game._pending_deck_id = deck_def.id
+    game._pending_stake_id = stake_def.id
+    game._menu_sub_state = nil
+    if game.start_new_run_from_main_menu then
+        game:start_new_run_from_main_menu()
+    elseif game.initialize_run_loop then
+        game:initialize_run_loop()
+    end
+    return true
+end
+
+function MainMenuUI.draw_deck_select(game)
+    local W, H    = 320, 240
+    local font_s  = game.FONTS.PIXEL.SMALL
+    local font_m  = game.FONTS.PIXEL.MEDIUM
+    local C       = game.C
+
+    love.graphics.setColor(C.PANEL)
+    love.graphics.rectangle("fill", 0, 0, W, H)
+
+    love.graphics.setFont(font_m)
+    love.graphics.setColor(C.WHITE)
+
+    local deck_list = DECK_DEFS or {}
+    local stake_list = STAKE_DEFS or {}
+    local sel_idx = tonumber(game._deck_select_idx) or 1
+    sel_idx = math.max(1, math.min(#deck_list, sel_idx))
+    local def = deck_list[sel_idx]
+    if not def then return end
+
+    local stake_idx = tonumber(game._stake_select_idx) or 1
+    stake_idx = math.max(1, math.min(#stake_list, stake_idx))
+    local stake_def = stake_list[stake_idx]
+    if not stake_def then return end
+
+    local startX, startY = 24, 4
+    local endX, endY = W - 24, H - 128
+    local padding = 4
+    local buttonW = 24
+
+    local frameW = endX - startX
+    local frameH = endY - startY
+
+    local prev_x, prev_y, prev_w, prev_h = startX, startY, buttonW, frameH
+    local next_x = W - 52
+    local card_x, card_y, card_w, card_h = startX + buttonW + padding, startY + padding, frameW - 2*buttonW - 3*padding, frameH - 4*padding -- Select Button
+
+    local selectbuttonW = frameW - padding - 64
+    local selectX, selectY, selectW, selectH = startX + 32, 200, selectbuttonW, 24
+    draw_rect_with_shadow(selectX, selectY, selectW, selectH, 4, 4, G.C.CHIPS, G.C.BLOCK.SHADOW, 2)
+    love.graphics.setFont(font_m)
+    love.graphics.setColor(C.WHITE)
+    love.graphics.printf("PLAY", selectX, selectY, selectW, "center")
+
+    game._deck_select_rects = {
+        prev = { x = prev_x, y = prev_y, w = prev_w, h = prev_h, action = "prev" },
+        next = { x = next_x, y = prev_y, w = prev_w, h = prev_h, action = "next" },
+        card = { x = selectX, y = selectY, w = selectW, h = selectH, action = "select" },
+    }
+
+    love.graphics.setColor(C.MULT)
+    draw_rect_with_shadow(prev_x, prev_y, prev_w, prev_h, 4, 4, G.C.MULT, G.C.BLOCK.SHADOW, 2)
+    draw_rect_with_shadow(next_x, prev_y, prev_w, prev_h, 4, 4, G.C.MULT, G.C.BLOCK.SHADOW, 2)
+    love.graphics.setColor(C.WHITE)
+    love.graphics.setFont(font_s)
+    love.graphics.printf("<", prev_x, prev_y + math.floor(frameH/2) - 2*padding, prev_w, "center")
+    love.graphics.printf(">", next_x, prev_y + math.floor(frameH/2) - 2*padding, prev_w, "center")
+
+    love.graphics.setColor(C.BLOCK.BACK)
+    love.graphics.rectangle("fill", card_x, card_y, card_w, card_h, 8, 8)
+    local dx,dy,dw,dh = MainMenuUI.draw_deck_carousel_sprite(game, def, card_x + 4, card_y, 64, card_h, 0)
+
+    -- Infocard
+    love.graphics.setColor(C.PANEL)
+    local infoX,infoY,infoW,infoH = dx+dw + padding, card_y + padding, 2*dw - 16, card_h - 2*padding
+    love.graphics.rectangle("fill", infoX, infoY, infoW, infoH, 4, 4)
+
+    love.graphics.setFont(font_m)
+    love.graphics.setColor(C.WHITE)
+    if love.graphics.getFont():getWidth(def.name) > infoW then
+        love.graphics.setFont(font_s)
+        love.graphics.printf(def.name, infoX, infoY + 6, infoW, "center")
+    else
+        love.graphics.printf(def.name, infoX, infoY, infoW, "center")
+    end
+    love.graphics.setFont(font_m)
+    local offset = love.graphics.getFont():getHeight(def.name)
+    love.graphics.rectangle("fill", infoX + padding, infoY + padding + offset, infoW - 2*padding, infoH - 2*padding - offset, 4, 4)
+    
+    love.graphics.setFont(font_s)
+    love.graphics.setColor(C.PANEL)
+    love.graphics.printf(
+        def.unlocked and (def.description or "") or def.unlock_condition and def.unlock_condition.text or "Complete the unlock condition to play this deck.",
+        infoX + 2*padding, infoY + 2*padding + offset, infoW - 4*padding, "center"
+    )
+
+    -- Stake Markers
+    local space = 2
+    local markerX = infoX + infoW + padding
+    local markerY = card_y + padding
+    local markerY2 = card_y + card_h - padding - space
+    for i = 1,#stake_list do
+        love.graphics.setColor(stake_list[i].colour or C.WHITE)
+        local markerH = (math.floor((markerY2 - markerY - (#stake_list + 1) * space) / #stake_list + 1))
+        love.graphics.rectangle("fill", markerX, markerY2 - math.floor(markerH/2) - space - (markerH + space) * (i - 1), 20, markerH, 4, 4)
+        if stake_idx == i then
+            love.graphics.setColor(C.WHITE)
+            love.graphics.rectangle("line", markerX, markerY2 - math.floor(markerH/2) - space - (markerH + space) * (i - 1), 20, markerH, 2, 2)
+        end
+    end
+    
+
+    local limitX1 = startX + buttonW + 3 * padding
+    local limitX2 = endX - buttonW - 3 * padding
+    local dotY = startY + frameH - padding
+    local offset = 8
+    local midX = math.floor((limitX2 - limitX1)/2 + limitX1)
+    --love.graphics.circle("fill", midX, dotY, 2)
+    for i = 1,#deck_list do
+        local mid = math.floor(#deck_list/2)
+        x = midX + offset * (i - mid - 1)
+        if sel_idx == i then
+            love.graphics.setColor(C.WHITE)
+        else
+            love.graphics.setColor(C.BLOCK.BACK)
+        end
+        love.graphics.circle("fill", x, dotY, 2)
+    end
+
+    -- Stake Select
+    prev_y = prev_y + frameH + 1 * padding
+    local stakeH = 80
+    card_y = prev_y
+
+    game._stake_select_rects = {
+        prev = { x = prev_x, y = prev_y, w = prev_w, h = stakeH, action = "prev" },
+        next = { x = next_x, y = prev_y, w = prev_w, h = stakeH, action = "next" },
+    }
+    draw_rect_with_shadow(prev_x, prev_y, prev_w, stakeH, 4, 4, G.C.MULT, G.C.BLOCK.SHADOW, 2)
+    draw_rect_with_shadow(next_x, prev_y, prev_w, stakeH, 4, 4, G.C.MULT, G.C.BLOCK.SHADOW, 2)
+    love.graphics.setColor(C.WHITE)
+    love.graphics.setFont(font_s)
+    love.graphics.printf("<", prev_x, prev_y + math.floor(stakeH/2) - 2*padding, prev_w, "center")
+    love.graphics.printf(">", next_x, prev_y + math.floor(stakeH/2) - 2*padding, prev_w, "center")
+
+    -- Stake Infocard
+    love.graphics.setColor(C.BLOCK.BACK)
+    love.graphics.rectangle("fill", card_x, card_y, card_w, stakeH - 2*padding, 8, 8)
+    local sx, sy, sw, sh = MainMenuUI.draw_stake_carousel_sprite(game, stake_def, card_x - 12, card_y, 64, stakeH - 2*padding, 0)
+
+    love.graphics.setColor(C.PANEL)
+    local stake_info_x = sx + sw + padding
+    local stake_info_y = card_y + padding
+    local stake_info_w = card_w - sw - 3 * padding
+    local stake_info_h = stakeH - 4 * padding
+    love.graphics.rectangle("fill", stake_info_x, stake_info_y, stake_info_w, stake_info_h, 4, 4)
+
+    love.graphics.setFont(font_m)
+    love.graphics.setColor(stake_def.unlocked and C.WHITE or C.GREY)
+    if love.graphics.getFont():getWidth(stake_def.name) > stake_info_w then
+        love.graphics.setFont(font_s)
+        love.graphics.printf(stake_def.name, stake_info_x, stake_info_y + 6, stake_info_w, "center")
+    else
+        love.graphics.printf(stake_def.name, stake_info_x, stake_info_y, stake_info_w, "center")
+    end
+    love.graphics.setFont(font_m)
+    local stake_name_h = love.graphics.getFont():getHeight()
+    love.graphics.setColor(C.WHITE)
+    love.graphics.rectangle("fill", stake_info_x + padding, stake_info_y + padding + stake_name_h, stake_info_w - 2 * padding, stake_info_h - 2 * padding - stake_name_h, 4, 4)
+
+    love.graphics.setFont(font_s)
+    love.graphics.setColor(C.PANEL)
+    love.graphics.printf(
+        stake_def.unlocked and (stake_def.description or "") or "Clear the previous stake first.",
+        stake_info_x + 2 * padding, stake_info_y + padding + stake_name_h, stake_info_w - 4 * padding, "center"
+    )
+
+    local stake_dot_y = prev_y + stakeH - 1 * padding
+    local stake_mid_x = math.floor((limitX2 - limitX1) / 2 + limitX1)
+    for i = 1, #stake_list do
+        local x = stake_mid_x + offset * (i - math.floor(#stake_list / 2) - 1)
+        if stake_idx == i then
+            love.graphics.setColor(C.WHITE)
+        else
+            love.graphics.setColor(C.BLOCK.BACK)
+        end
+        love.graphics.circle("fill", x, stake_dot_y, 2)
+    end
+
+    love.graphics.setFont(font_s)
+    love.graphics.setColor(C.GREY)
+    love.graphics.printf("A/Y: Play  LEFT/RIGHT: Deck  UP/DOWN: Stake  B/X: Back", 0, H - 14, W, "center")
+end
+
 function MainMenuUI.handle_touch(game, x, y)
+    if game._menu_sub_state == "deck_select" then
+        return MainMenuUI._touch_deck_select(game, x, y)
+    end
+    return MainMenuUI._touch_main(game, x, y)
+end
+
+function MainMenuUI._touch_main(game, x, y)
     local cr = game._main_menu_continue_rect
     if cr and game:_point_in_rect_simple(x, y, cr) then
         if game.continue_saved_run_from_main_menu then
@@ -109,19 +437,85 @@ function MainMenuUI.handle_touch(game, x, y)
         end
         return true
     end
+
     local r = game._main_menu_start_rect
-    if not r then return false end
-    if game:_point_in_rect_simple(x, y, r) then
-        if game.start_new_run_from_main_menu then
-            game:start_new_run_from_main_menu()
-        elseif game.start_run_from_main_menu then
-            game:start_run_from_main_menu()
-        else
-            game:initialize_run_loop()
-        end
+    if r and game:_point_in_rect_simple(x, y, r) then
+        MainMenuUI.open_deck_select(game)
         return true
     end
+
     return false
+end
+
+function MainMenuUI._touch_deck_select(game, x, y)
+    local deck_rects = game._deck_select_rects or {}
+    local stake_rects = game._stake_select_rects or {}
+    local deck_list = DECK_DEFS or {}
+    local stake_list = STAKE_DEFS or {}
+    local deck_idx = tonumber(game._deck_select_idx) or 1
+    local stake_idx = tonumber(game._stake_select_idx) or 1
+
+    if deck_rects.prev and game:_point_in_rect_simple(x, y, deck_rects.prev) then
+        game._deck_select_idx = math.max(1, deck_idx - 1)
+        return true
+    end
+
+    if deck_rects.next and game:_point_in_rect_simple(x, y, deck_rects.next) then
+        game._deck_select_idx = math.min(#deck_list, deck_idx + 1)
+        return true
+    end
+
+    if stake_rects.prev and game:_point_in_rect_simple(x, y, stake_rects.prev) then
+        game._stake_select_idx = math.max(1, stake_idx - 1)
+        return true
+    end
+
+    if stake_rects.next and game:_point_in_rect_simple(x, y, stake_rects.next) then
+        game._stake_select_idx = math.min(#stake_list, stake_idx + 1)
+        return true
+    end
+
+    if deck_rects.card and game:_point_in_rect_simple(x, y, deck_rects.card) then
+        MainMenuUI._start_run(game)
+        return true
+    end
+
+    return false
+end
+
+function MainMenuUI.handle_button(game, btn)
+    if game._menu_sub_state == "deck_select" then
+        MainMenuUI._button_deck_select(game, btn)
+    else
+        MainMenuUI._button_main(game, btn)
+    end
+end
+
+function MainMenuUI._button_main(game, btn)
+    if btn == "a" or btn == "y" or btn == "z" then
+        MainMenuUI.open_deck_select(game)
+    end
+end
+
+function MainMenuUI._button_deck_select(game, btn)
+    local deck_list = DECK_DEFS or {}
+    local stake_list = STAKE_DEFS or {}
+    local deck_idx = tonumber(game._deck_select_idx) or 1
+    local stake_idx = tonumber(game._stake_select_idx) or 1
+
+    if btn == "dpleft" or btn == "left" then
+        game._deck_select_idx = math.max(1, deck_idx - 1)
+    elseif btn == "dpright" or btn == "right" then
+        game._deck_select_idx = math.min(#deck_list, deck_idx + 1)
+    elseif btn == "dpup" or btn == "up" then
+        game._stake_select_idx = math.max(1, stake_idx + 1)
+    elseif btn == "dpdown" or btn == "down" then
+        game._stake_select_idx = math.min(#stake_list, stake_idx - 1)
+    elseif btn == "a" or btn == "y" then
+        MainMenuUI._start_run(game)
+    elseif btn == "b" or btn == "x" then
+        game._menu_sub_state = "main"
+    end
 end
 
 return MainMenuUI

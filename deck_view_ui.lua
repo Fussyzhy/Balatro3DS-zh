@@ -1,0 +1,456 @@
+--- Bottom-screen overlay: remaining draw-pile cards as interactable Card nodes (one row per non-empty suit).
+local DeckViewUI = {}
+local SCREEN_W, SCREEN_H = 320, 240
+local CARD_W, CARD_H = 71, 95
+local TAP_THRESHOLD = 15
+
+local SUITS = { "Hearts", "Clubs", "Diamonds", "Spades" }
+
+local SUIT_SYMBOLS = {
+    Hearts = "H",
+    Clubs = "C",
+    Diamonds = "D",
+    Spades = "S",
+}
+
+---@param cards table[]
+---@return table<string, table[]>
+function DeckViewUI.group_by_suit(cards)
+    local by_suit = {}
+    for _, suit in ipairs(SUITS) do
+        by_suit[suit] = {}
+    end
+    for _, card_data in ipairs(cards or {}) do
+        local suit = card_data and card_data.suit
+        if suit and by_suit[suit] then
+            by_suit[suit][#by_suit[suit] + 1] = card_data
+        end
+    end
+    for _, suit in ipairs(SUITS) do
+        table.sort(by_suit[suit], function(a, b)
+            return (tonumber(a.rank) or 0) < (tonumber(b.rank) or 0)
+        end)
+    end
+    return by_suit
+end
+
+--- Suits that still have at least one card in the draw pile, in standard order.
+---@param rows table<string, table[]>
+---@return string[]
+function DeckViewUI.active_suits(rows)
+    local active = {}
+    for _, suit in ipairs(SUITS) do
+        if rows[suit] and #rows[suit] > 0 then
+            active[#active + 1] = suit
+        end
+    end
+    return active
+end
+
+local ROW_GAP = 2
+local ROW_PAD_Y = 1
+
+--- Overlapping row step (same idea as `Game:_compute_fanned_joker_row`).
+---@return number step
+---@return number total_span
+---@return number start_x offset within `area_w`
+local function compute_fanned_step(n, area_w, card_w, gap)
+    gap = gap or ROW_GAP
+    n = tonumber(n) or 0
+    card_w = tonumber(card_w) or CARD_W
+    area_w = tonumber(area_w) or SCREEN_W
+    if n <= 0 then return 0, 0, 0 end
+    if n == 1 then
+        return 0, card_w, math.floor((area_w - card_w) * 0.5 + 0.5)
+    end
+    local natural_step = card_w + gap
+    local natural_span = card_w + (n - 1) * natural_step
+    local step, total_span
+    if natural_span <= area_w then
+        step = natural_step
+        total_span = natural_span
+    else
+        step = (area_w - card_w) / (n - 1)
+        total_span = (n - 1) * step + card_w
+    end
+    local start_x = math.floor((area_w - total_span) * 0.5 + 0.5)
+    return step, total_span, start_x
+end
+
+function DeckViewUI._chrome_metrics(row_count)
+    local margin_x = 2
+    local label_w = -4
+    local header_h = 6
+    local footer_h = 22
+    row_count = tonumber(row_count) or 0
+    local content_h = SCREEN_H - header_h - footer_h
+    local row_h = row_count > 0 and (content_h / row_count) or 0
+    local area_w = SCREEN_W - margin_x * 4 - label_w
+    local scale = row_count > 0 and math.min(1, (row_h - ROW_PAD_Y * 2) / CARD_H) or 1
+    local card_w = CARD_W * scale
+    local card_h = CARD_H * scale
+    return {
+        margin_x = margin_x,
+        label_w = label_w,
+        header_h = header_h,
+        footer_h = footer_h,
+        row_h = row_h,
+        area_w = area_w,
+        row_start_x = margin_x + label_w,
+        scale = scale,
+        card_w = card_w,
+        card_h = card_h,
+    }
+end
+
+function DeckViewUI._layout_row(nodes, m, row_y)
+    local n = #(nodes or {})
+    if n == 0 then return end
+    local step, _, rel_start = compute_fanned_step(n, m.area_w, m.card_w, ROW_GAP)
+    local card_y = row_y + math.floor((m.row_h - m.card_h) * 0.5 + 0.5)
+    local x = m.row_start_x + rel_start
+    for i, node in ipairs(nodes) do
+        if node and node.T then
+            local px = x + (i - 1) * step
+            node.T.x = px
+            node.T.y = card_y
+            node.T.r = 0
+            node.T.scale = m.scale
+            if not (node.states and node.states.drag and node.states.drag.is) then
+                node.VT.x = px
+                node.VT.y = card_y
+                node.VT.r = 0
+                node.VT.scale = m.scale
+            end
+        end
+    end
+end
+
+function DeckViewUI.layout(game)
+    local rows = game._deck_view_rows
+    if type(rows) ~= "table" then return end
+    local active = DeckViewUI.active_suits(rows)
+    local m = DeckViewUI._chrome_metrics(#active)
+    for row_i, suit in ipairs(active) do
+        local row_y = m.header_h + (row_i - 1) * m.row_h
+        DeckViewUI._layout_row(rows[suit], m, row_y)
+    end
+end
+
+function DeckViewUI.build(game)
+    DeckViewUI.destroy(game)
+    if not game or not game.deck then return end
+
+    game._deck_view_rows = {}
+    game._deck_view_nodes = {}
+    for _, suit in ipairs(SUITS) do
+        game._deck_view_rows[suit] = {}
+    end
+
+    local by_suit = DeckViewUI.group_by_suit(game.deck.cards)
+    for _, suit in ipairs(SUITS) do
+        for _, card_data in ipairs(by_suit[suit]) do
+            local copy = Deck.copy_card_data(card_data)
+            if copy and game.ensure_card_uid then
+                game:ensure_card_uid(copy)
+            end
+            local node = Card(0, 0, CARD_W, CARD_H, copy, nil, { face_up = true })
+            node._deck_view_card = true
+            node.states.click.can = true
+            node.states.drag.can = true
+            game:add(node)
+            game._deck_view_rows[suit][#game._deck_view_rows[suit] + 1] = node
+            game._deck_view_nodes[#game._deck_view_nodes + 1] = node
+        end
+    end
+
+    DeckViewUI.layout(game)
+
+    if game.hand and game.hand.card_nodes then
+        for _, node in ipairs(game.hand.card_nodes) do
+            node.states.visible = false
+            node._deck_view_hidden = true
+        end
+    end
+end
+
+function DeckViewUI.destroy(game)
+    if not game then return end
+    for _, node in ipairs(game._deck_view_nodes or {}) do
+        if node then
+            node.selected = false
+            game:remove(node)
+        end
+    end
+    game._deck_view_rows = nil
+    game._deck_view_nodes = nil
+
+    if game.hand and game.hand.card_nodes then
+        for _, node in ipairs(game.hand.card_nodes) do
+            if node and node._deck_view_hidden then
+                node.states.visible = true
+                node._deck_view_hidden = nil
+            end
+        end
+    end
+end
+
+function DeckViewUI.toggle_tooltip(game, node)
+    if not game or not node or not node._deck_view_card then return end
+    if game.active_tooltip_card == node then
+        game.active_tooltip_card = nil
+    else
+        game.active_tooltip_card = node
+        game.active_tooltip_joker = nil
+        game.active_tooltip_consumable_index = nil
+        if game.move_to_front then
+            game:move_to_front(node)
+        end
+    end
+end
+
+function DeckViewUI.get_node_at(game, x, y)
+    for i = #(game._deck_view_nodes or {}), 1, -1 do
+        local node = game._deck_view_nodes[i]
+        if node and node.states and node.states.click.can and game:point_in_rect(x, y, node) then
+            return node
+        end
+    end
+    return nil
+end
+
+function DeckViewUI.handle_touchpressed(game, id, x, y)
+    game.touch_start_x = x
+    game.touch_start_y = y
+    local node = DeckViewUI.get_node_at(game, x, y)
+    if node and node.touchpressed then
+        node:touchpressed(id, x, y)
+        game.dragging = node
+        game:move_to_front(node)
+    else
+        game.dragging = nil
+    end
+end
+
+function DeckViewUI.handle_touchmoved(game, id, x, y, dx, dy)
+    if game.dragging and game.dragging.touchmoved then
+        game.dragging:touchmoved(id, x, y, dx, dy)
+    end
+end
+
+function DeckViewUI.handle_touchreleased(game, id, x, y)
+    local released = game.dragging
+    if released and released.touchreleased then
+        released:touchreleased(id, x, y)
+    end
+    local start_x = game.touch_start_x or x
+    local start_y = game.touch_start_y or y
+    local dx = x - start_x
+    local dy = y - start_y
+    local dist = math.sqrt(dx * dx + dy * dy)
+    if released and released._deck_view_card and dist < TAP_THRESHOLD then
+        DeckViewUI.toggle_tooltip(game, released)
+    elseif released and released._deck_view_card and dist >= TAP_THRESHOLD then
+        DeckViewUI.layout(game)
+    elseif dist < TAP_THRESHOLD then
+        game.active_tooltip_card = nil
+    end
+    game.dragging = nil
+end
+
+function DeckViewUI.draw_bottom(game)
+    love.graphics.setColor(G.C.PANEL)
+    love.graphics.rectangle("fill", 0, 0, SCREEN_W, SCREEN_H)
+
+    local count = game.deck and game.deck:size() or #(game._deck_view_nodes or {})
+    love.graphics.setColor(game.C.WHITE)
+    love.graphics.setFont(game.FONTS.PIXEL.SMALL)
+    love.graphics.printf("Draw pile (" .. tostring(count) .. ")", 0, 4, SCREEN_W, "center")
+
+    local SUIT_COLORS = {
+        Hearts = G.C.Hearts or { 0.92, 0.25, 0.28 },
+        Diamonds = G.C.Diamonds or { 0.92, 0.25, 0.28 },
+        Clubs = G.C.Clubs or { 0.2, 0.2, 0.22 },
+        Spades = G.C.Spades or { 0.2, 0.2, 0.22 },
+    }
+
+    local rows = game._deck_view_rows or {}
+    local active = DeckViewUI.active_suits(rows)
+    local m = DeckViewUI._chrome_metrics(#active)
+    love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
+    local font_h = love.graphics.getFont():getHeight()
+    for row_i, suit in ipairs(active) do
+        local row_y = m.header_h + (row_i - 1) * m.row_h
+        local sc = SUIT_COLORS[suit]
+        love.graphics.setColor(sc[1], sc[2], sc[3], 1)
+        --[[ love.graphics.print(
+            SUIT_SYMBOLS[suit],
+            m.margin_x,
+            row_y + math.floor((m.row_h - font_h) * 0.5 + 0.5)
+        ) ]]
+    end
+
+    love.graphics.setColor(1, 1, 1, 1)
+    for _, node in ipairs(game._deck_view_nodes or {}) do
+        if node and node.draw then
+            node:draw()
+        end
+    end
+
+    love.graphics.setFont(game.FONTS.PIXEL.SMALL)
+    love.graphics.setColor(game.C.WHITE or { 0.65, 0.65, 0.65, 1 })
+    love.graphics.printf("SELECT / B to close", 0, SCREEN_H - m.footer_h + 8, SCREEN_W, "center")
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+local TOP_W, TOP_H = 400, 240
+
+local RANKS = {}
+local RANK_LABELS = {}
+for r = 2, 14 do
+    RANKS[#RANKS + 1] = r
+    if r <= 10 then
+        RANK_LABELS[r] = tostring(r)
+    elseif r == 11 then
+        RANK_LABELS[r] = "J"
+    elseif r == 12 then
+        RANK_LABELS[r] = "Q"
+    elseif r == 13 then
+        RANK_LABELS[r] = "K"
+    else
+        RANK_LABELS[r] = "A"
+    end
+end
+
+---@param cards table[]
+---@return table<number, integer>
+function DeckViewUI.count_ranks(cards)
+    local counts = {}
+    for _, r in ipairs(RANKS) do
+        counts[r] = 0
+    end
+    for _, card_data in ipairs(cards or {}) do
+        local rank = tonumber(card_data and card_data.rank)
+        if rank and counts[rank] ~= nil then
+            counts[rank] = counts[rank] + 1
+        end
+    end
+    return counts
+end
+
+local VOUCHER_CELL_W = 71
+local VOUCHER_CELL_H = 95
+local VOUCHER_ROW_H = VOUCHER_CELL_H
+local VOUCHER_GAP = 2
+
+local function draw_voucher_icon(game, voucher_id, x, y)
+    local def = VOUCHER_DEFS and voucher_id and VOUCHER_DEFS[voucher_id]
+    local pos = def and tonumber(def.pos)
+    if pos and game.ensure_asset_atlas_loaded and game.ASSET_ATLAS and game.ASSET_ATLAS.Voucher then
+        game:ensure_asset_atlas_loaded("Voucher")
+        local atlas = game.ASSET_ATLAS.Voucher
+        if atlas and atlas.image then
+            local cell_w = tonumber(atlas.px) or VOUCHER_CELL_W
+            local cell_h = tonumber(atlas.py) or VOUCHER_CELL_H
+            local iw, ih = atlas.image:getDimensions()
+            local cols = math.max(1, math.floor(iw / cell_w))
+            local idx = math.max(0, math.floor(pos))
+            local col = idx % cols
+            local row = math.floor(idx / cols)
+            local qx, qy = col * cell_w, row * cell_h
+            if qx + cell_w <= iw + 0.5 and qy + cell_h <= ih + 0.5 then
+                atlas._voucher_quads = atlas._voucher_quads or {}
+                local quad = atlas._voucher_quads[idx]
+                if not quad then
+                    quad = love.graphics.newQuad(qx, qy, cell_w, cell_h, iw, ih)
+                    atlas._voucher_quads[idx] = quad
+                end
+                love.graphics.setColor(1, 1, 1, 1)
+                love.graphics.draw(atlas.image, quad, x, y, 0, 1, 1)
+                return true
+            end
+        end
+    end
+    love.graphics.setColor(game.C.WHITE)
+    love.graphics.setFont(game.FONTS.PIXEL.SMALL)
+    local label = (def and def.name) or "?"
+    love.graphics.printf(label, x, y + math.floor(VOUCHER_CELL_H * 0.3), VOUCHER_CELL_W, "center")
+    return false
+end
+
+function DeckViewUI.draw_top(game)
+    local margin_x = 8
+    local panel_y = 84
+    local panel_h = TOP_H - panel_y
+
+    love.graphics.setColor(game.C.PANEL)
+    love.graphics.rectangle("fill", 0, panel_y, TOP_W, panel_h, 8, 8)
+
+    local inner_w = TOP_W - margin_x * 2
+    local vouchers = game.vouchers or {}
+    local n_vouchers = #vouchers
+    local voucher_row_y = panel_y + 14
+    local voucher_icon_y = voucher_row_y + math.floor((VOUCHER_ROW_H - VOUCHER_CELL_H) * 0.5 + 0.5)
+
+    love.graphics.setFont(game.FONTS.PIXEL.SMALL)
+    love.graphics.setColor(game.C.WHITE or game.C.GREY)
+    love.graphics.print("Vouchers", margin_x, panel_y + 2)
+
+    if n_vouchers > 0 then
+        local step, _, rel_start = compute_fanned_step(n_vouchers, inner_w, VOUCHER_CELL_W, VOUCHER_GAP)
+        local start_x = margin_x + rel_start
+        for i, vid in ipairs(vouchers) do
+            local x = start_x + (i - 1) * step
+            draw_voucher_icon(game, vid, x, voucher_icon_y)
+        end
+    else
+        love.graphics.setColor(game.C.WHITE)
+        love.graphics.printf("None", margin_x, voucher_row_y + math.floor(VOUCHER_ROW_H * 0.35), inner_w, "center")
+    end
+
+    local rank_section_y = voucher_row_y + VOUCHER_ROW_H + 8
+    local counts = DeckViewUI.count_ranks(game.deck and game.deck.cards or {})
+    local col_w = inner_w / #RANKS
+    local label_font = game.FONTS.PIXEL.SMALL
+    local count_font = game.FONTS.PIXEL.SMALL
+    local label_h = label_font:getHeight()
+    local count_h = count_font:getHeight()
+    local label_y = rank_section_y
+    local count_y = label_y + label_h + 6
+    local padding = 4
+    
+    love.graphics.setFont(label_font)
+    for i, rank in ipairs(RANKS) do
+        local cx = margin_x + (i - 1) * col_w
+        -- Draw rectangle
+        if draw_rect_with_shadow then
+            draw_rect_with_shadow(cx + padding, label_y - padding, col_w - 2 * padding, count_y - label_y + label_h + 2 * padding, 4, 4, game.C.BLOCK.BACK, game.C.BLOCK.SHADOW, 2)
+        end
+        love.graphics.setColor(game.C.WHITE)
+        love.graphics.printf(RANK_LABELS[rank], cx, label_y, col_w, "center")
+    end
+
+    for i, rank in ipairs(RANKS) do
+        local cx = margin_x + (i - 1) * col_w
+        love.graphics.setColor(game.C.WHITE)
+        love.graphics.rectangle("fill", cx + padding, count_y - padding/2, col_w - 2 * padding, label_h + padding, 4, 4)
+        
+        love.graphics.setColor(game.C.BLACK)
+        love.graphics.printf(tostring(counts[rank] or 0), cx, count_y, col_w, "center")
+    end
+
+    local total = game.deck and game.deck:size() or 0
+    love.graphics.setFont(game.FONTS.PIXEL.SMALL)
+    love.graphics.setColor(game.C.GREY or game.C.DARK_WHITE)
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+function DeckViewUI.draw_tooltips(game)
+    for _, node in ipairs(game._deck_view_nodes or {}) do
+        if node and node.draw_tooltip_overlay then
+            node:draw_tooltip_overlay()
+        end
+    end
+end
+
+return DeckViewUI

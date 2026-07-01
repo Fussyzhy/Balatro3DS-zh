@@ -236,4 +236,20 @@ VOUCHER_DEFS = {
         unlock = "Reduce your hand size down to 5 cards",
         depends_on = "v_paint_brush",
     },
+    v_grabber = {
+        id = "v_grabber",
+        name = "Grabber",
+        description = "Permanently gain +1 hand per round ",
+        pos = 5,
+        tier = 1
+    },
+    v_nacho = {
+        id = "v_nacho",
+        name = "Nacho Tongs",
+        description = "Permanently gain an additional +1 hand per round ",
+        pos = 14,
+        tier = 2,
+        unlock = "Play a total of 2500 cards",
+        depends_on = "v_grabber",
+    },
 }

@@ -92,8 +92,20 @@ local function add_round_win_money(ctx, joker, n)
     end
 end
 local function rank_is_face(rank) rank = tonumber(rank); return rank == 11 or rank == 12 or rank == 13 or G:hasJoker("j_pareidolia") end
-local function rank_is_even(rank) rank = tonumber(rank); return rank and rank ~= 14 and rank % 2 == 0 end
-local function rank_is_odd(rank) rank = tonumber(rank); return rank and (rank == 14 or rank % 2 == 1) end
+local function rank_is_even(rank) 
+    rank = tonumber(rank)
+    if rank and rank < 14 and rank > 10 then
+        return false
+    end
+    return rank and rank ~= 14 and rank % 2 == 0 
+end
+local function rank_is_odd(rank) 
+    rank = tonumber(rank);
+    if rank and rank < 14 and rank > 10 then
+        return false
+    end
+    return rank and (rank == 14 or rank % 2 == 1) 
+end
 local function count_full_deck(pred)
     if G and G.count_cards_in_full_deck then return G:count_cards_in_full_deck(pred) end
     return 0
@@ -869,7 +881,7 @@ local SPECIAL = {
                     j.runtime_counter = j.runtime_counter - 23
                     j.stored_xmult = (tonumber(j.stored_xmult) or 1) + 1
                 end
-            else
+            elseif ctx.event_name == "on_hand_scored" then
                 mul_mult(ctx, tonumber(j.stored_xmult) or 1)
             end
         end
@@ -943,7 +955,9 @@ local SPECIAL = {
                 mul_mult(ctx, 1.5)
             elseif ctx.event_name == "on_round_end" then
                 local suits = { "Hearts", "Clubs", "Diamonds", "Spades" }
-                j.random_suit = suits[math.random(1, #suits)]
+                if G and G.set_joker_shared_picks then
+                    G:set_joker_shared_picks("j_ancient_joker", { random_suit = suits[math.random(1, #suits)] })
+                end
                 mark_effect_applied(ctx)
             end
         end
@@ -1038,10 +1052,11 @@ local SPECIAL = {
                     end
                 end
             elseif ctx.event_name == "on_round_end" then
-                local deck = G and G.deck
-                if deck and deck.random_card then
-                    local card = deck:random_card()
-                    self.random_suit = card.suit
+                if G and G.roll_joker_shared_picks and G.set_joker_shared_picks then
+                    local picks = G:roll_joker_shared_picks("j_castle")
+                    if picks then
+                        G:set_joker_shared_picks("j_castle", picks)
+                    end
                 end
             end
         end
@@ -1366,17 +1381,11 @@ local SPECIAL = {
                     add_money(ctx, tonumber(j.config and j.config.extra and j.config.extra.dollars or 4))
                 end
             else
-                local found = false
-                while not found do
-                    local pos = math.random(1, #G.handlist)
-                    if (pos < 4) then -- Secret hands only show if played before
-                        if (G.hand_play_counts[pos] and G.hand_play_counts[pos] > 0) then
-                            found = true
-                        end
-                    else
-                        found = true
+                if G and G.roll_joker_shared_picks and G.set_joker_shared_picks then
+                    local picks = G:roll_joker_shared_picks("j_todo_list")
+                    if picks then
+                        G:set_joker_shared_picks("j_todo_list", picks)
                     end
-                    j.random_hand = G.handlist[pos]
                 end
             end
         end
@@ -1451,7 +1460,9 @@ local SPECIAL = {
                     end
                 end
             else
-                j.random_rank = math.random(2, 14)
+                if G and G.set_joker_shared_picks then
+                    G:set_joker_shared_picks("j_mail", { random_rank = math.random(2, 14) })
+                end
             end
         end
     },
@@ -1508,13 +1519,12 @@ local SPECIAL = {
                     mul_mult(ctx, 3)
                 end
             elseif ctx.event_name == "on_round_end" then
-                local deck = G and G.deck
-                if not deck or not deck.random_card then return end
-                local card = deck:random_card()
-                if card then
-                    j.random_rank = card.rank
-                    j.random_suit = card.suit
-                    mark_effect_applied(ctx)
+                if G and G.roll_joker_shared_picks and G.set_joker_shared_picks then
+                    local picks = G:roll_joker_shared_picks("j_idol")
+                    if picks then
+                        G:set_joker_shared_picks("j_idol", picks)
+                        mark_effect_applied(ctx)
+                    end
                 end
             end
         end

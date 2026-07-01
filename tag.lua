@@ -189,6 +189,7 @@ function Tag:Use()
                 picks_granted = 2,
             })
         end
+        return true
     elseif self.type == "topup" then
         if G and G.joker_has_room_for_new and G.add_joker_by_def and G.random_joker_def_id_by_rarity then
             for _ = 1, 2 do
@@ -212,13 +213,15 @@ function Tag:Use()
             G.money = G.money + G.handsPlayed
             Sfx.play_money()
         end
-
+        return true
     elseif self.type == "speed" then
         if G and G.skipsTaken and G.money then
-            G.money = G.money + G.skipTaken * 5
+            G.money = G.money + G.skipsTaken * 5
             Sfx.play_money()
         end
-        
+        return true
+    elseif self.type == "boss" then
+        G:roll_boss_blind()    
     end
 
     return false

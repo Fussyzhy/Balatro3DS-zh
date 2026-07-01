@@ -8,6 +8,12 @@ local TooltipDraw = require("tooltip_draw")
 
 local SHAKE_MAGNITUDE = 10
 local SHAKE_MAX_DURATION = (JokerEffects and JokerEffects.SHAKE_MAX_DURATION) or 0.22
+local JOKER_STICKER_ATLAS_NAME = "stickers"
+local JOKER_STICKER_INDICES = {
+    eternal = 0,
+    rental = 11,
+    perishable = 10,
+}
 
 local function lower(s)
     return string.lower(tostring(s or ""))
@@ -21,6 +27,10 @@ end
 
 local function text_has(s, needle)
     return lower(s):find(lower(needle), 1, true) ~= nil
+end
+
+local function as_truthy_flag(value)
+    return value == true or value == 1 or value == "true" or value == "1"
 end
 
 local function capture_joker_runtime_snapshot(joker)
@@ -38,7 +48,7 @@ local function capture_joker_runtime_snapshot(joker)
         joker_count = (type((G or {}).jokers) == "table") and #G.jokers or 0,
         consumable_count = (type((G or {}).consumables) == "table") and #G.consumables or 0,
         hand_count = (type(hand_cards) == "table") and #hand_cards or 0,
-        deck_count = (type(deck_cards) == "table") and #deck_cards or 0,
+        deck_count = (type(deck_cards) == "table") and #deck_cards or 0
     }
 end
 
@@ -159,6 +169,9 @@ local function compute_quad(atlas, index)
 end
 
 local function joker_is_debuffed_for_display(joker)
+    if joker and joker.is_sticker_debuffed and joker:is_sticker_debuffed() then
+        return true
+    end
     return G and G.boss_is_joker_debuffed and G:boss_is_joker_debuffed(joker) == true
 end
 
@@ -210,6 +223,18 @@ function Joker:init(X, Y, W, H, def, params)
 
     self.effect_config = self.def.config or {}
 
+    local sticker_def = self.params and self.params.stickers or self.def and self.def.stickers
+    if type(sticker_def) ~= "table" then sticker_def = nil end
+    self.perishable = as_truthy_flag(self.params.perishable)
+        or as_truthy_flag(self.def.perishable)
+        or as_truthy_flag(sticker_def and sticker_def.perishable)
+    self.rental = as_truthy_flag(self.params.rental)
+        or as_truthy_flag(self.def.rental)
+        or as_truthy_flag(sticker_def and sticker_def.rental)
+    self.eternal = as_truthy_flag(self.params.eternal)
+        or as_truthy_flag(self.def.eternal)
+        or as_truthy_flag(sticker_def and sticker_def.eternal)
+
     -- Runtime accumulator for effects that grow over time (e.g. Ceremonial Dagger).
     self.stored_mult = tonumber(self.effect_config.mult) or 0
     self.stored_chips = tonumber(self.effect_config.chips) or 0
@@ -217,6 +242,7 @@ function Joker:init(X, Y, W, H, def, params)
     self.runtime_counter = 0
     self.loyalty_remaining = nil
     self.free_joker_slots = nil
+    self.perishable_counter = 5
 
     -- Effect interpreter fields:
     -- Supported Balatro-like effect types:
@@ -268,17 +294,8 @@ function Joker:init(X, Y, W, H, def, params)
     self.effect_impl = JokerEffects.get(self)
 
     if type(self.def) == "table" then
-        if (self.def.id == "j_ancient_joker") then
-            local suits = { "Hearts", "Clubs", "Diamonds", "Spades" }
-            self.random_suit = suits[math.random(1, #suits)]
-        end
         if self.def.id == "j_castle" then
             self.runtime_counter = tonumber(self.runtime_counter) or 0
-            local deck = G and G.deck
-            if deck and deck.random_card then
-                local card = deck:random_card()
-                self.random_suit = card.suit
-            end
         elseif self.def.id == "j_ramen" then
             self.runtime_counter = self.def.config.Xmult or 2 -- Starts at 2
         elseif self.def.id == "j_seltzer" then
@@ -287,34 +304,9 @@ function Joker:init(X, Y, W, H, def, params)
             self.runtime_counter = self.def.config.chips or 100 -- Starts at 100
         elseif self.def.id == "j_turtle_bean" then
             self.runtime_counter = self.def.config.extra.h_size or 5
-        elseif self.def.id == "j_todo_list" then
-            local found = false
-            while not found do
-                local pos = math.random(1, #G.handlist)
-                if (pos < 4) then -- Secret hands only show if played before
-                    if (G.hand_play_counts[pos] and G.hand_play_counts[pos] > 0) then
-                        found = true
-                    end
-                else
-                    found = true
-                end
-                self.random_hand = G.handlist[pos]
-            end
         elseif self.def.id == "j_rocket" then
             local ex = type(self.def.config) == "table" and self.def.config.extra
             self.running_count = math.max(1, math.floor(tonumber(ex and ex.dollars) or 1))
-        elseif self.def.id == "j_mail" then
-            self.random_rank = math.random(2, 14)
-        elseif self.def.id == "j_idol" then
-            local card = G.deck and G.deck.random_card and G.deck:random_card()
-            if card then
-                self.random_rank = card.rank
-                self.random_suit = card.suit
-            else
-                local suits = { "Hearts", "Clubs", "Diamonds", "Spades" }
-                self.random_rank = math.random(2, 14)
-                self.random_suit = suits[math.random(1, #suits)]
-            end
         end
     end
 
@@ -367,6 +359,34 @@ function Joker:refresh_quads()
     end
     self.back_quad, self.back_w, self.back_h = compute_quad(self.back_atlas, self.back_index)
     self._front_atlas_ref_name = (self.front_atlas and self.front_atlas.name) or want_key or base_name
+
+    local sub = self.params.sub_pos or self.def.sub_pos
+    if type(sub) == "table" and sub.atlas and sub.index ~= nil then
+        self.sub_atlas_name = sub.atlas
+        self.sub_index = tonumber(sub.index) or 0
+        self.sub_atlas = resolve_atlas(self.sub_atlas_name)
+        self.sub_quad = compute_quad(self.sub_atlas, self.sub_index)
+    else
+        self.sub_atlas_name = nil
+        self.sub_index = nil
+        self.sub_atlas = nil
+        self.sub_quad = nil
+    end
+
+    self.sticker_atlas = resolve_atlas(JOKER_STICKER_ATLAS_NAME)
+    self.sticker_quads = {}
+    self.sticker_w = 0
+    self.sticker_h = 0
+    if self.sticker_atlas and self.sticker_atlas.image then
+        for name, index in pairs(JOKER_STICKER_INDICES) do
+            local quad, w, h = compute_quad(self.sticker_atlas, index)
+            self.sticker_quads[name] = quad
+            if quad and (w or 0) > 0 and (h or 0) > 0 then
+                self.sticker_w = math.max(self.sticker_w, w or 0)
+                self.sticker_h = math.max(self.sticker_h, h or 0)
+            end
+        end
+    end
 
     -- Sync node transform size with sprite cell so it doesn't render tiny.
     local base_w = self.front_w or self.back_w
@@ -739,7 +759,12 @@ function Joker:get_tooltip_body_lines()
     local def = self.def or {}
     local edition_lines = self:get_edition_tooltip_lines()
     local impl = self.effect_impl
-    local function append_edition(lines)
+    local function append_extra(lines)
+        if self.perishable == true then
+            local remaining = math.max(0, math.floor(tonumber(self.perishable_counter) or 5))
+            local unit = remaining == 1 and "round" or "rounds"
+            table.insert(lines, { kind = "text", text = string.format("Perishable: %d %s remaining", remaining, unit) })
+        end
         for _, el in ipairs(edition_lines) do
             table.insert(lines, el)
         end
@@ -767,12 +792,12 @@ function Joker:get_tooltip_body_lines()
                     end
                 end
             end
-            return append_edition(out)
+            return append_extra(out)
         end
     end
     if type(def.tooltip) == "string" then
         local lines = split_tooltip_override(def.tooltip)
-        if lines then return append_edition(lines) end
+        if lines then return append_extra(lines) end
     end
     local base_lines = describe_joker_effect_lines(self)
     if impl and type(impl.tooltip_lines) == "function" then
@@ -787,7 +812,7 @@ function Joker:get_tooltip_body_lines()
             end
         end
     end
-    return append_edition(base_lines)
+    return append_extra(base_lines)
 end
 
 function Joker:resolve_tooltip_line_segments(line_def)
@@ -873,6 +898,30 @@ function Joker:draw_tooltip_overlay()
     self:draw_tooltip(draw_x, draw_y)
 end
 
+function Joker:draw_sub_pos_overlay(draw_x, draw_y)
+    if not self.face_up then return end
+    if not self.sub_atlas or not self.sub_atlas.image or not self.sub_quad then return end
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.draw(self.sub_atlas.image, self.sub_quad, draw_x, draw_y, 0, 1, 1)
+end
+
+function Joker:draw_sticker_overlays(draw_x, draw_y)
+    if not self.sticker_atlas or not self.sticker_atlas.image then return end
+
+    local active_stickers = {}
+    if self.perishable then table.insert(active_stickers, "perishable") end
+    if self.rental then table.insert(active_stickers, "rental") end
+    if self.eternal then table.insert(active_stickers, "eternal") end
+    if #active_stickers == 0 then return end
+
+    for _, name in ipairs(active_stickers) do
+        local quad = self.sticker_quads and self.sticker_quads[name]
+        if quad then
+            love.graphics.draw(self.sticker_atlas.image, quad, draw_x, draw_y, 0, 1, 1)
+        end
+    end
+end
+
 function Joker:draw()
     if not self.states.visible then return end
 
@@ -912,11 +961,14 @@ function Joker:draw()
             end
             love.graphics.setColor(1, 1, 1, 1)
         end
+        self:draw_sub_pos_overlay(draw_x, draw_y)
     else
         if self.back_atlas and self.back_atlas.image and self.back_quad then
             love.graphics.draw(self.back_atlas.image, self.back_quad, draw_x, draw_y, 0, 1, 1)
         end
     end
+
+    self:draw_sticker_overlays(draw_x, draw_y)
 
     if joker_is_debuffed_for_display(self) then
         draw_debuff_x_overlay(draw_x, draw_y, self.VT.w, self.VT.h)
@@ -947,7 +999,14 @@ end
 -- Event-based trigger hook for data-driven joker effects.
 -- `event_name` is something like: "on_hand_scored"
 -- `ctx` is the runtime scoring context.
+function Joker:is_sticker_debuffed()
+    return self.perishable == true and (self.perishable_debuffed == true or tonumber(self.perishable_counter or 0) <= 0)
+end
+
 function Joker:matches_trigger(event_name, ctx)
+    if self:is_sticker_debuffed() then
+        return false
+    end
     if self.effect_impl and type(self.effect_impl.matches_trigger) == "function" then
         return self.effect_impl.matches_trigger(self, event_name, ctx) == true
     end

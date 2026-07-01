@@ -26,19 +26,31 @@ local SEAL_ATLAS_INDICES = {
 }
 
 ---@param self Card
+local function selected_deck_back_index()
+    if G and G.get_selected_deck_back_index then
+        return G:get_selected_deck_back_index()
+    end
+    return 0
+end
+
+--- Standard playing-card face cell in `centers` (rank/suit come from `cards_2`). Deck backs use `DECK_DEFS.pos` independently.
+local DEFAULT_PLAYING_CARD_FACE_INDEX = 1
+
+---@param self Card
 local function apply_enhancement_center_indices(self)
     local map = ENHANCEMENT_CENTER_INDICES
     if G and type(G.CARD_ENHANCEMENT_CENTER_INDICES) == "table" then
         map = G.CARD_ENHANCEMENT_CENTER_INDICES
     end
+    local deck_back = selected_deck_back_index()
     local enh = self.enhancement
     if enh and map[enh] then
         local m = map[enh]
-        self.back_index = m.back
+        self.back_index = (tonumber(m.back) or 0) == 0 and deck_back or m.back
         self.face_index = m.face
     else
-        self.back_index = self.params.back_index or 0
-        self.face_index = self.params.face_index or (self.back_index + 1)
+        self.back_index = self.params.back_index or deck_back
+        self.face_index = self.params.face_index or DEFAULT_PLAYING_CARD_FACE_INDEX
     end
 end
 
@@ -72,9 +84,8 @@ function Card:init(X, Y, W, H, card, center, params)
     end
 
     -- which atlases to use for each visual layer
-    -- back & front: both from 'centers' atlas
-    --   back_index  = N
-    --   face_index  = N + 1  (your rule: face is back + 1)
+    -- back: `centers` cell from selected deck (`DECK_DEFS.pos`) or enhancement
+    -- face: standard playing-card front in `centers` (rank/suit overlay from `cards_2`)
     self.back_atlas_name = self.params.back_atlas_name or "centers"
     self.face_atlas_name = self.params.face_atlas_name or self.back_atlas_name
 
@@ -692,6 +703,9 @@ function Card:should_draw_tooltip()
     end
     if self._booster_choice_index and G and G.STATE == G.STATES.OPEN_BOOSTER and G.booster_session then
         return tonumber(G.booster_session.active_choice_index) == self._booster_choice_index
+    end
+    if self._deck_view_card and G and G._deck_view_open then
+        return self.states.drag.is or G.active_tooltip_card == self
     end
     return self.states.drag.is or (G and G.active_tooltip_card == self)
 end

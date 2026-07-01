@@ -120,7 +120,7 @@ function ShopUI.draw_shop_offer_buy_button(game)
     if bx < margin then bx = margin end
     local by = rect.y + math.floor((rect.h - btn_h) * 0.5 + 0.5)
     if by < margin then by = margin end
-    local is_consumable_offer = offer.kind == "tarot" or offer.kind == "planet"
+    local is_consumable_offer = offer.kind == "tarot" or offer.kind == "planet" or offer.kind == "spectral"
     local is_playing_card = offer.kind == "playing_card"
     local can_buy = can_afford and ((not is_consumable_offer and not is_playing_card) or (is_consumable_offer and game:can_add_consumable()) or is_playing_card)
     local fill_c = can_buy and game.C.MONEY or game.C.GREY

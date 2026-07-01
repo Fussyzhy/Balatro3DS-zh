@@ -271,7 +271,27 @@ function Game:set_globals()
         [5] = 11000,
         [6] = 20000,
         [7] = 35000,
-        [8] = 50000
+        [8] = 50000,
+        -- Green Stake
+        [9] = 100,
+        [10] = 300,
+        [11] = 900,
+        [12] = 2600,
+        [13] = 8000,
+        [14] = 20000,
+        [15] = 36000,
+        [16] = 60000,
+        [17] = 100000,
+        -- Purple Stake
+        [18] = 100,
+        [19] = 300,
+        [20] = 1000,
+        [21] = 3200,
+        [22] = 9000,
+        [23] = 25000,
+        [24] = 60000,
+        [25] = 110000,
+        [26] = 200000
     }
     self.BLIND_DEFS = {
         { id = "small", name = "Small Blind", key = "Small", multiplier = 1.0, reward = 3 },
@@ -346,7 +366,7 @@ function Game:set_globals()
         PERISHABLE = HEX('4f5da1'),
         RENTAL = HEX('b18f43'),
         TOOLTIP = HEX('3f4a4d'),
-        PANEL = HEX('2e3a3c'),
+        PANEL = HEX('394f55'),
         BLOCK = {
             BACK = HEX('1b2629'),
             SHADOW = HEX('0b1415')

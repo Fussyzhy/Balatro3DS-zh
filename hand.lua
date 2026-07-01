@@ -1004,6 +1004,14 @@ function Hand:_update_play_sequence(dt)
         if seq.finalize_step == 2 then
             chips = tonumber(G.selectedHandChips) or 0
             mult = tonumber(G.selectedHandMult) or 1
+
+            if G._deck_special or nil == "plasma" then
+                local avg = math.floor((chips + mult)/2)
+                chips = avg
+                mult = avg
+                Sfx.play("resources/sounds/gong.ogg")
+            end
+
             G.selectedHandChips = chips
             G.selectedHandMult = mult
 

@@ -26,7 +26,9 @@ require "voucher_catalog"
 require "topUI"
 require "popup"
 require "tag"
+require("deck_catalog")
 local MainMenuUI = require "main_menu_ui"
+local DeckViewUI = require "deck_view_ui"
 Sfx = require "sfx"
 
 function love.load()
@@ -64,6 +66,8 @@ function love.draw(screen)
     else
         if G and G.STATE == G.STATES.MENU then
             MainMenuUI.draw_top(G)
+        elseif G._deck_view_open then
+            DeckViewUI.draw_top(G)
         else
             Top:draw()
         end
@@ -83,6 +87,24 @@ function love.keypressed(key)
         end
     end
 
+    if G.DEBUG then
+        if key == "1" then
+            G:add_joker_by_def(G:random_joker_def_id_by_rarity(1))
+        elseif key == "2" then
+            G:add_joker_by_def(G:random_joker_def_id_by_rarity(2))
+        elseif key == "3" then
+            G:add_joker_by_def(G:random_joker_def_id_by_rarity(3))
+        elseif key == "4" then
+            G:add_joker_by_def(G:random_joker_def_id_by_rarity(4))
+        elseif key =="5" then
+            G.money = G.money + 100
+        elseif key == "6" then
+            G:addTag("speed")
+        elseif key == "7" and G.give_random_unowned_voucher then
+            G:give_random_unowned_voucher()
+        end
+    end
+
     if not G then return end
     if key == "escape" then
         if G.toggle_pause then
@@ -90,19 +112,23 @@ function love.keypressed(key)
             return
         end
     end
-    if G.STATE == G.STATES.MENU then
-        if key == "return" or key == "space" or key == "z" then
-            if G.has_saved_run and G:has_saved_run() and G.continue_saved_run_from_main_menu then
-                G:continue_saved_run_from_main_menu()
-            elseif G.start_new_run_from_main_menu then
-                G:start_new_run_from_main_menu()
-            else
-                G:start_run_from_main_menu()
-            end
-            return
+
+    if key == "rshift" and G.toggle_deck_view then
+        G:toggle_deck_view()
+        return
+    end
+    if G._deck_view_open then
+        if key == "x" or key == "z" or key == "rshift" then
+            G:exit_deck_view()
         end
         return
     end
+
+    if G.STATE == G.STATES.MENU then
+        local MainMenuUI = require("main_menu_ui")
+        MainMenuUI.handle_button(G, key) 
+    end
+
     if G.STATE == G.STATES.PAUSED then
         if key == "return" or key == "space" or key == "z" then
             G:exit_pause_menu()
@@ -157,20 +183,23 @@ function love.gamepadpressed(_, button)
 
     if not G then return end
     if G.STATE == G.STATES.MENU then
-        if button == "a" or button == "y" then
-            if G.has_saved_run and G:has_saved_run() and G.continue_saved_run_from_main_menu then
-                G:continue_saved_run_from_main_menu()
-            elseif G.start_new_run_from_main_menu then
-                G:start_new_run_from_main_menu()
-            else
-                G:start_run_from_main_menu()
-            end
-        end
+        local MainMenuUI = require("main_menu_ui")
+        MainMenuUI.handle_button(G, button)
         return
     end
     if G.STATE == G.STATES.PAUSED then
         if button == "a" or button == "y" then
             G:exit_pause_menu()
+        end
+        return
+    end
+    if button == "back" and G.toggle_deck_view then
+        G:toggle_deck_view()
+        return
+    end
+    if G._deck_view_open then
+        if button == "b" or button == "a" or button == "select" then
+            G:exit_deck_view()
         end
         return
     end
