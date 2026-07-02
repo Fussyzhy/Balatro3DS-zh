@@ -728,42 +728,42 @@ function Card:draw()
     love.graphics.setColor(tr, tg, tb, ta)
 
     local draw_x, draw_y = self:get_layout_draw_xy()
+    local w, h = self.VT.w, self.VT.h
+    local s = self.VT.scale or 1
+    local r = self.VT.r or 0
 
     love.graphics.push()
-
-    local cx = draw_x + (self.VT.w * self.VT.scale) / 2
-    local cy = draw_y + (self.VT.h * self.VT.scale) / 2
-
-    love.graphics.translate(cx, cy)
-    love.graphics.rotate(self.VT.r)
-    love.graphics.scale(self.VT.scale, self.VT.scale)
-    love.graphics.translate(-cx, -cy)
+    love.graphics.translate(draw_x, draw_y)
+    love.graphics.scale(s, s)
+    love.graphics.translate(w * 0.5, h * 0.5)
+    love.graphics.rotate(r)
+    love.graphics.translate(-w * 0.5, -h * 0.5)
 
     -- base layer: back or face, depending on orientation
     if self.face_up then
         if self.face_quad then
-            self:draw_layer(self.face_atlas, self.face_quad, self.face_w, self.face_h, draw_x, draw_y)
+            self:draw_layer(self.face_atlas, self.face_quad, self.face_w, self.face_h, 0, 0)
         elseif self.back_quad then
-            self:draw_layer(self.back_atlas, self.back_quad, self.back_w, self.back_h, draw_x, draw_y)
+            self:draw_layer(self.back_atlas, self.back_quad, self.back_w, self.back_h, 0, 0)
         end
     else
         if self.back_quad then
-            self:draw_layer(self.back_atlas, self.back_quad, self.back_w, self.back_h, draw_x, draw_y)
+            self:draw_layer(self.back_atlas, self.back_quad, self.back_w, self.back_h, 0, 0)
         end
     end
 
     -- middle layer: rank + suit icon (only when face-up)
     if self.face_up and self.rank_quad then
-        self:draw_layer(self.rank_atlas, self.rank_quad, self.rank_w, self.rank_h, draw_x, draw_y)
+        self:draw_layer(self.rank_atlas, self.rank_quad, self.rank_w, self.rank_h, 0, 0)
     end
 
     -- top: seal overlay (`draw_layer` like rank; separate atlas + per-seal index)
     if self.face_up and self.seal_quad then
-        self:draw_layer(self.seal_atlas, self.seal_quad, self.seal_w, self.seal_h, draw_x, draw_y)
+        self:draw_layer(self.seal_atlas, self.seal_quad, self.seal_w, self.seal_h, 0, 0)
     end
 
     if card_is_debuffed_for_display(self) then
-        draw_debuff_x_overlay(draw_x, draw_y, self.VT.w, self.VT.h)
+        draw_debuff_x_overlay(0, 0, w, h)
     end
 
     love.graphics.pop()

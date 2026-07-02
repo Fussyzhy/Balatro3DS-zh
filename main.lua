@@ -266,23 +266,17 @@ function love.gamepadpressed(_, button)
         return
     end
 
-    -- D-pad left/right: L = navigate; L+R = sweep-select; otherwise sort
+    -- D-pad left/right: L / L+R repeat in Game:update_dpad_horizontal_repeat
     if (button == "l" or button == "dpleft") and G.hand then
-        if G._l_held and G.is_sweep_select_mode and G:is_sweep_select_mode() then
-            local node = G:dpad_cursor_move(-1)
-            if node then G.hand:toggle_selection(node) end
-        elseif G._l_held then
-            G:dpad_cursor_move(-1)
+        if G._l_held then
+            -- handled while held in update loop
         else
             G.hand:sort_by_rank()
         end
     end
     if (button == "r" or button == "dpright") and G.hand then
-        if G._l_held and G.is_sweep_select_mode and G:is_sweep_select_mode() then
-            local node = G:dpad_cursor_move(1)
-            if node then G.hand:toggle_selection(node) end
-        elseif G._l_held then
-            G:dpad_cursor_move(1)
+        if G._l_held then
+            -- handled while held in update loop
         else
             G.hand:sort_by_suit()
         end

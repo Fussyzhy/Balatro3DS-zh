@@ -79,9 +79,9 @@ end
 
 function DeckViewUI._chrome_metrics(row_count)
     local margin_x = 2
-    local label_w = -4
-    local header_h = 6
-    local footer_h = 22
+    local label_w = 2
+    local header_h = 16
+    local footer_h = 16
     row_count = tonumber(row_count) or 0
     local content_h = SCREEN_H - header_h - footer_h
     local row_h = row_count > 0 and (content_h / row_count) or 0
@@ -116,6 +116,10 @@ function DeckViewUI._layout_row(nodes, m, row_y)
             node.T.y = card_y
             node.T.r = 0
             node.T.scale = m.scale
+            if node.collision_offset then
+                node.collision_offset.x = 0
+                node.collision_offset.y = 0
+            end
             if not (node.states and node.states.drag and node.states.drag.is) then
                 node.VT.x = px
                 node.VT.y = card_y
@@ -299,7 +303,7 @@ function DeckViewUI.draw_bottom(game)
 
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
     love.graphics.setColor(game.C.WHITE or { 0.65, 0.65, 0.65, 1 })
-    love.graphics.printf("SELECT / B to close", 0, SCREEN_H - m.footer_h + 8, SCREEN_W, "center")
+    love.graphics.printf("SELECT / B to close", 0, SCREEN_H - m.footer_h, SCREEN_W, "center")
     love.graphics.setColor(1, 1, 1, 1)
 end
 

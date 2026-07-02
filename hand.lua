@@ -261,6 +261,22 @@ function Hand:clear()
     self._play_sequence = nil
 end
 
+--- Return every card in the hand and draw queue back to the deck draw pile (not discard).
+function Hand:return_all_cards_to_deck_draw_pile()
+    local deck = self.game and self.game.deck
+    if not deck or not deck.insert_random then
+        self:clear()
+        return
+    end
+    for _, c in ipairs(self._draw_queue or {}) do
+        deck:insert_random(c)
+    end
+    for _, c in ipairs(self.cards) do
+        deck:insert_random(c)
+    end
+    self:clear()
+end
+
 --- Push every card still in the hand (and queued draws) to the deck discard pile, then clear hand nodes. Used when a blind is beaten.
 function Hand:send_entire_hand_to_discard_pile()
     local deck = self.game and self.game.deck
@@ -297,6 +313,10 @@ function Hand:is_selected(node)
         if n == node then return true end
     end
     return false
+end
+
+function Hand:selection_at_capacity()
+    return #self.selected >= MAX_SELECTED
 end
 
 function Hand:toggle_selection(node)
@@ -409,13 +429,20 @@ function Hand:_discard_selected_impl(reason)
     local discarded_cards = {}
     if deck and deck.push_discard then
         for _, node in ipairs(self.selected) do
+            local pushed = false
             for i, n in ipairs(self.card_nodes) do
                 if n == node then
                     table.insert(discarded_nodes, node)
                     table.insert(discarded_cards, self.cards[i])
                     deck:push_discard(self.cards[i])
+                    pushed = true
                     break
                 end
+            end
+            if not pushed and node and node.card_data then
+                table.insert(discarded_nodes, node)
+                table.insert(discarded_cards, node.card_data)
+                deck:push_discard(node.card_data)
             end
         end
     end

@@ -2470,6 +2470,19 @@ function Game:random_planet_id_for_hand_name(hand_name)
     return pool[math.random(1, #pool)]
 end
 
+--- Gros Michel and Cavendish are mutually exclusive in random pools (shop, tags, effects).
+---@param joker_id string|nil
+---@return boolean
+function Game:joker_allowed_in_random_pool(joker_id)
+    if joker_id == "j_gros_michel" then
+        return self.gros_michel_extinct ~= true
+    end
+    if joker_id == "j_cavendish" then
+        return self.gros_michel_extinct == true
+    end
+    return true
+end
+
 function Game:random_joker_def_id()
     if not JOKER_DEFS then return nil end
     local pool = {}
@@ -2489,7 +2502,7 @@ function Game:random_joker_def_id_by_rarity(rarity)
     if not r or not JOKER_DEFS then return nil end
     local pool = {}
     for id, def in pairs(JOKER_DEFS) do
-        if type(def) == "table" and tonumber(def.rarity) == r then
+        if type(def) == "table" and tonumber(def.rarity) == r and self:joker_allowed_in_random_pool(id) then
             pool[#pool + 1] = id
         end
     end
@@ -3987,6 +4000,9 @@ function Game:update(dt)
     if self.sync_shoulder_input then
         self:sync_shoulder_input()
     end
+    if self.update_dpad_horizontal_repeat then
+        self:update_dpad_horizontal_repeat(dt)
+    end
     if self._deck_view_open then
         for _, node in ipairs(self._deck_view_nodes or {}) do
             if node and node.update then
@@ -4557,6 +4573,9 @@ function Game:count_cards_in_full_deck(predicate)
     if self.hand and type(self.hand.cards) == "table" then
         count_in(self.hand.cards)
     end
+    if self.hand and type(self.hand._draw_queue) == "table" then
+        count_in(self.hand._draw_queue)
+    end
     return total
 end
 
@@ -4962,14 +4981,46 @@ end
 
 --- End Round — call once when the current round finishes (e.g. blind beaten).
 --- Discards the hand, merges draw + discard piles, shuffles into the draw pile, then refills the hand.
-function Game:end_round()
-    if self.hand and self.hand.send_entire_hand_to_discard_pile then
-        self.hand:send_entire_hand_to_discard_pile()
+function Game:_clear_pending_discard_nodes()
+    for _, entry in ipairs(self.pending_discard or {}) do
+        if entry and entry.node then
+            self:remove(entry.node)
+        end
     end
+    self.pending_discard = {}
+end
+
+function Game:recycle_full_deck()
+    if self.hand then
+        self.hand._play_sequence = nil
+    end
+    self:_clear_pending_discard_nodes()
+
+    local hand_cards, hand_queue = {}, {}
+    if self.hand then
+        hand_cards = self.hand.cards or {}
+        hand_queue = self.hand._draw_queue or {}
+        if self.hand.clear then
+            self.hand:clear()
+        end
+    end
+
     local deck = self.deck
-    if deck and deck.end_round then
+    if deck and deck.recycle_all then
+        deck:recycle_all(hand_cards, hand_queue)
+    elseif deck and deck.end_round then
+        for _, c in ipairs(hand_queue) do
+            if deck.push_discard then deck:push_discard(c) end
+        end
+        for _, c in ipairs(hand_cards) do
+            if deck.push_discard then deck:push_discard(c) end
+        end
         deck:end_round()
     end
+end
+
+function Game:end_round()
+    self:recycle_full_deck()
     if self.hand and self.hand.fill_from_deck then
         self.hand:fill_from_deck()
     end
@@ -4977,13 +5028,7 @@ end
 
 --- After beating a blind: return all cards to the deck and reshuffle; hand stays empty until the next blind starts.
 function Game:recycle_full_deck_after_blind_win()
-    if self.hand and self.hand.send_entire_hand_to_discard_pile then
-        self.hand:send_entire_hand_to_discard_pile()
-    end
-    local deck = self.deck
-    if deck and deck.end_round then
-        deck:end_round()
-    end
+    self:recycle_full_deck()
 end
 
 function Game:prepare_hand_for_new_blind()
@@ -5077,7 +5122,9 @@ function Game:enter_blind_select()
     self.current_blind_target = 0
     self.current_blind_reward = 0
     self._blind_resolution_pending = false
-    if self.hand and self.hand.clear then
+    if self.hand and self.hand.return_all_cards_to_deck_draw_pile then
+        self.hand:return_all_cards_to_deck_draw_pile()
+    elseif self.hand and self.hand.clear then
         self.hand:clear()
     end
 end
@@ -5615,18 +5662,8 @@ function Game:_pick_joker_id_shop_rarity_distribution(rand_int)
     for id, def in pairs(JOKER_DEFS) do
         if type(def) == "table" and type(id) == "string" then
             local rv = tonumber(def.rarity) or 1
-            if rv == target_rar and rv >= 1 and rv <= 3 then
-                if id == "j_gros_michel" then
-                    if not G.gros_michel_extinct then
-                        candidates[#candidates + 1] = id
-                    end
-                elseif id == "j_cavendish" then
-                    if G.gros_michel_extinct then
-                        candidates[#candidates + 1] = id
-                    end
-                else
-                    candidates[#candidates + 1] = id
-                end
+            if rv == target_rar and rv >= 1 and rv <= 3 and self:joker_allowed_in_random_pool(id) then
+                candidates[#candidates + 1] = id
             end
         end
     end
@@ -5635,7 +5672,7 @@ function Game:_pick_joker_id_shop_rarity_distribution(rand_int)
         for id, def in pairs(JOKER_DEFS) do
             if type(def) == "table" and type(id) == "string" then
                 local rv = tonumber(def.rarity) or 1
-                if rv >= 1 and rv <= 3 then
+                if rv >= 1 and rv <= 3 and self:joker_allowed_in_random_pool(id) then
                     candidates[#candidates + 1] = id
                 end
             end
@@ -6404,7 +6441,9 @@ function Game:begin_booster_session(offer)
     self:set_state(self.STATES.OPEN_BOOSTER)
 
     if needs_hand then
-        if self.hand and self.hand.clear then
+        if self.hand and self.hand.return_all_cards_to_deck_draw_pile then
+            self.hand:return_all_cards_to_deck_draw_pile()
+        elseif self.hand and self.hand.clear then
             self.hand:clear()
         end
         if self.hand and self.hand.fill_from_deck then
@@ -6419,7 +6458,9 @@ function Game:end_booster_session()
         if self.hand and self.hand.clear_selection then
             self.hand:clear_selection()
         end
-        if self.hand and self.hand.clear then
+        if self.hand and self.hand.return_all_cards_to_deck_draw_pile then
+            self.hand:return_all_cards_to_deck_draw_pile()
+        elseif self.hand and self.hand.clear then
             self.hand:clear()
         end
         self.active_tooltip_card = nil
@@ -7690,8 +7731,85 @@ function Game:dpad_cursor_move(delta)
     local n = #self.hand.card_nodes
     if n == 0 then return nil end
     self:ensure_dpad_cursor()
-    self._dpad_cursor_index = math.max(1, math.min(n, self._dpad_cursor_index + delta))
+    local idx = self._dpad_cursor_index + delta
+    if idx < 1 then
+        idx = n
+    elseif idx > n then
+        idx = 1
+    end
+    self._dpad_cursor_index = idx
     return self:dpad_cursor_node()
+end
+
+function Game:_dpad_horizontal_dir()
+    if self.STATE ~= self.STATES.SELECTING_HAND then return 0 end
+    local joysticks = love.joystick.getJoysticks()
+    local joy = joysticks and joysticks[1]
+    if joy and joy.isGamepad and joy:isGamepad() then
+        if joy:isGamepadDown("dpleft") then return -1 end
+        if joy:isGamepadDown("dpright") then return 1 end
+    end
+    if love.keyboard.isDown then
+        if love.keyboard.isDown("left") or love.keyboard.isDown("l") then return -1 end
+        if love.keyboard.isDown("right") or love.keyboard.isDown("r") then return 1 end
+    end
+    return 0
+end
+
+function Game:_reset_dpad_horizontal_repeat()
+    self._dpad_h_repeat_dir = nil
+    self._dpad_h_repeat_timer = 0
+    self._dpad_h_repeat_initial = true
+end
+
+function Game:_dpad_sweep_toggle(node)
+    if not self.hand or not node then return end
+    if self.hand:is_selected(node) then
+        self.hand:toggle_selection(node)
+    elseif not self.hand:selection_at_capacity() then
+        self.hand:toggle_selection(node)
+    end
+end
+
+function Game:_dpad_horizontal_step(dir, sweep)
+    local node = self:dpad_cursor_move(dir)
+    if not node or not self.hand then return end
+    if sweep then
+        self:_dpad_sweep_toggle(node)
+    end
+end
+
+--- Repeat D-pad left/right while held: navigate in card-select (L), sweep-select in L+R.
+function Game:update_dpad_horizontal_repeat(dt)
+    if self.STATE ~= self.STATES.SELECTING_HAND or not self.hand then
+        self:_reset_dpad_horizontal_repeat()
+        return
+    end
+    local sweep = self:is_sweep_select_mode()
+    local navigate = self:is_card_select_mode() and not sweep
+    if not sweep and not navigate then
+        self:_reset_dpad_horizontal_repeat()
+        return
+    end
+    local dir = self:_dpad_horizontal_dir()
+    if dir == 0 then
+        self:_reset_dpad_horizontal_repeat()
+        return
+    end
+    if self._dpad_h_repeat_dir ~= dir then
+        self._dpad_h_repeat_dir = dir
+        self._dpad_h_repeat_timer = 0
+        self._dpad_h_repeat_initial = true
+        self:_dpad_horizontal_step(dir, sweep)
+        return
+    end
+    self._dpad_h_repeat_timer = (self._dpad_h_repeat_timer or 0) + dt
+    local threshold = self._dpad_h_repeat_initial and 0.35 or 0.09
+    if self._dpad_h_repeat_timer >= threshold then
+        self._dpad_h_repeat_timer = 0
+        self._dpad_h_repeat_initial = false
+        self:_dpad_horizontal_step(dir, sweep)
+    end
 end
 
 function Game:is_sweep_select_mode()
