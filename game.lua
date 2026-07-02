@@ -13,6 +13,7 @@ local TooltipDraw = require("tooltip_draw")
 local ROUND_WIN_LINE_DELAY = 0.38
 local RUN_SAVE_PATH = "sdmc/Balatro3DS_run_save_1.lua"
 local RUN_SAVE_DIR = "sdmc"
+local SETTINGS_SAVE_PATH = "sdmc/Balatro3DS_settings.lua"
 
 local function table_shallow_copy(src)
     if type(src) ~= "table" then return nil end
@@ -80,6 +81,7 @@ function Game:init(seed)
     self.popups = {}
     self.tags = {}
     self.skips = {}
+    self.skip_tag_orbital_hand = {}
     self._atlas_owner_counts = {}
     self.dragging = nil
     self.touch_start_x = 0
@@ -94,6 +96,7 @@ function Game:init(seed)
     self.active_tooltip_card = nil
     self.active_tooltip_joker = nil
     self.active_tooltip_consumable_index = nil
+    self.active_tooltip_skip_blind_index = nil
     --- Hit rect + payload for the optional Sell control (`draw_sell_button` / `try_sell_button_press`).
     self._sell_button_hit = nil
     --- Hit rect + payload for the optional Use control (`draw_use_button` / `try_use_button_press`).
@@ -111,9 +114,12 @@ function Game:init(seed)
     self._pause_settings_rect = nil
     self._pause_show_settings = false
     self._pause_speed_rects = {}
-    -- D-pad card cursor (hold L + left/right to sweep-select cards)
+    self._pause_music_slider_rect = nil
+    self._pause_music_slider_drag = false
+    -- D-pad card cursor (hold L = navigate; L+R = sweep-select)
     self._dpad_cursor_index = nil
     self._l_held = false
+    self._r_held = false
     self._main_menu_continue_rect = nil
     self.round_score = 0
     self.last_hand_score = 0
@@ -191,6 +197,9 @@ function Game:init(seed)
     -- Pull all shared globals from globals.lua
     if self.set_globals then
         self:set_globals()
+    end
+    if self.load_settings then
+        self:load_settings()
     end
 
     -- Unlock all Stakes and Decks
@@ -839,7 +848,7 @@ function Game:addPopup(node)
     end
 end
 
-function Game:addTag(type)
+function Game:addTag(type, opts)
     local double_count = 0
     if type ~= "double" then
         for i = #self.tags, 1, -1 do
@@ -855,10 +864,13 @@ function Game:addTag(type)
     end
 
     t = Tag(type)
+    if type(opts) == "table" and opts.orbital_hand_index then
+        t.orbital_hand_index = opts.orbital_hand_index
+    end
     if t.Use and t:Use() then
         if double_count > 0 then
             for _ = 1, double_count do
-                self:addTag(type)
+                self:addTag(type, opts)
             end
         end
         return
@@ -868,7 +880,7 @@ function Game:addTag(type)
 
     if double_count > 0 then
         for _ = 1, double_count do
-            self:addTag(type)
+            self:addTag(type, opts)
         end
     end
 end
@@ -998,6 +1010,8 @@ function Game:enter_pause_menu()
     self._pause_settings_rect = nil
     self._pause_show_settings = false
     self._pause_speed_rects = {}
+    self._pause_music_slider_rect = nil
+    self._pause_music_slider_drag = false
     self:set_state(self.STATES.PAUSED)
     return true
 end
@@ -1013,8 +1027,128 @@ function Game:exit_pause_menu()
     self._pause_settings_rect = nil
     self._pause_show_settings = false
     self._pause_speed_rects = {}
+    self._pause_music_slider_rect = nil
+    self._pause_music_slider_drag = false
     self:set_state(resume)
     return true
+end
+
+function Game:default_settings()
+    return {
+        GAMESPEED = 1,
+        SOUND = { music_volume = 100 },
+        GRAPHICS = { texture_scaling = 1 },
+    }
+end
+
+function Game:normalize_settings(data)
+    local out = copy_table(self:default_settings())
+    if type(data) ~= "table" then return out end
+
+    local allowed_speeds = { [0.5] = true, [1] = true, [1.5] = true, [2] = true, [2.5] = true, [3] = true }
+    local speed = tonumber(data.GAMESPEED)
+    if speed and allowed_speeds[speed] then
+        out.GAMESPEED = speed
+    end
+
+    if type(data.SOUND) == "table" then
+        local mv = tonumber(data.SOUND.music_volume)
+        if mv ~= nil then
+            out.SOUND.music_volume = math.max(0, math.min(100, math.floor(mv)))
+        end
+    end
+
+    if type(data.GRAPHICS) == "table" then
+        local ts = tonumber(data.GRAPHICS.texture_scaling)
+        if ts == 1 or ts == 2 then
+            out.GRAPHICS.texture_scaling = ts
+        end
+    end
+
+    return out
+end
+
+function Game:snapshot_settings()
+    return {
+        GAMESPEED = tonumber(self.SETTINGS and self.SETTINGS.GAMESPEED) or 1,
+        SOUND = { music_volume = self:get_music_volume() },
+        GRAPHICS = {
+            texture_scaling = tonumber(self.SETTINGS and self.SETTINGS.GRAPHICS and self.SETTINGS.GRAPHICS.texture_scaling) or 1,
+        },
+    }
+end
+
+function Game:load_settings()
+    self.SETTINGS = copy_table(self:default_settings())
+    if not (love and love.filesystem and love.filesystem.load and love.filesystem.getInfo) then
+        return false
+    end
+    if not love.filesystem.getInfo(SETTINGS_SAVE_PATH, "file") then
+        return false
+    end
+    local chunk, err = love.filesystem.load(SETTINGS_SAVE_PATH)
+    if not chunk then return false, tostring(err or "load_failed") end
+    local ok, data = pcall(chunk)
+    if not ok or type(data) ~= "table" then
+        return false, "decode_failed"
+    end
+    self.SETTINGS = self:normalize_settings(data)
+    return true
+end
+
+function Game:save_settings()
+    if not (love and love.filesystem and love.filesystem.write and love.filesystem.createDirectory) then
+        return false
+    end
+    love.filesystem.createDirectory(RUN_SAVE_DIR)
+    local encoded = "return " .. serialize_lua_value(self:snapshot_settings())
+    local ok, err = love.filesystem.write(SETTINGS_SAVE_PATH, encoded)
+    if not ok then
+        return false, tostring(err or "write_failed")
+    end
+    return true
+end
+
+function Game:set_game_speed(speed)
+    if not self.SETTINGS then return end
+    local allowed_speeds = { [0.5] = true, [1] = true, [1.5] = true, [2] = true, [2.5] = true, [3] = true }
+    local s = tonumber(speed)
+    if not s or not allowed_speeds[s] then return end
+    self.SETTINGS.GAMESPEED = s
+    self:save_settings()
+end
+
+function Game:get_music_volume()
+    local sound = self.SETTINGS and self.SETTINGS.SOUND
+    return math.max(0, math.min(100, math.floor(tonumber(sound and sound.music_volume) or 100)))
+end
+
+function Game:set_music_volume(pct)
+    if not self.SETTINGS then return end
+    if type(self.SETTINGS.SOUND) ~= "table" then self.SETTINGS.SOUND = {} end
+    self.SETTINGS.SOUND.music_volume = math.max(0, math.min(100, math.floor(tonumber(pct) or 0)))
+    self:apply_music_volume()
+    self:save_settings()
+end
+
+function Game:apply_music_volume()
+    if not self.music then return end
+    local vol_pct = self:get_music_volume()
+    local vol = vol_pct / 100
+    self.music:setVolume(vol)
+    if vol <= 0 then
+        self.music:pause()
+    elseif not self.music:isPlaying() then
+        self.music:play()
+    end
+end
+
+function Game:_music_volume_from_slider_x(x)
+    local r = self._pause_music_slider_rect
+    if type(r) ~= "table" then return nil end
+    local t = (tonumber(x) - r.track_x) / r.track_w
+    t = math.max(0, math.min(1, t))
+    return math.floor(t * 100 + 0.5)
 end
 
 function Game:toggle_pause()
@@ -1200,6 +1334,7 @@ function Game:build_run_snapshot()
         hand_stats = copy_table(self.hand_stats or {}),
         gros_michel_extinct = self.gros_michel_extinct,
         skips = self.skips,
+        skip_tag_orbital_hand = copy_table(self.skip_tag_orbital_hand or {}),
         handsPlayed = self.handsPlayed,
         discardsUnused = self.discardsUnused,
         skipsTaken = self.skipsTaken,
@@ -1346,6 +1481,7 @@ function Game:load_run_snapshot(snapshot)
     self.hand_stats = copy_table(snapshot.hand_stats or {})
     self.gros_michel_extinct = snapshot.gros_michel_extinct == true
     self.skips = snapshot.skips
+    self.skip_tag_orbital_hand = copy_table(snapshot.skip_tag_orbital_hand or {})
     self.handsPlayed = snapshot.handsPlayed
     self.discardsUnused = snapshot.discardsUnused
     self.skipsTaken = snapshot.skipsTaken
@@ -1926,6 +2062,13 @@ end
 --- Draw all bottom-screen card / joker / consumable tooltips after other UI.
 function Game:draw_tooltips_on_top()
     love.graphics.setColor(1, 1, 1, 1)
+    if self:is_card_select_mode() then
+        local node = self:dpad_cursor_node()
+        if node and node.draw_tooltip_overlay then
+            node:draw_tooltip_overlay()
+        end
+        return
+    end
     local is_booster = (self.STATE == self.STATES.OPEN_BOOSTER)
     if self.nodes then
         for _, node in ipairs(self.nodes) do
@@ -1962,6 +2105,9 @@ function Game:draw_tooltips_on_top()
     end
     if self._deck_view_open then
         DeckViewUI.draw_tooltips(self)
+    end
+    if self.STATE == self.STATES.BLIND_SELECT and self.active_tooltip_skip_blind_index then
+        self:_draw_skip_tag_tooltip()
     end
     if self.STATE == self.STATES.SHOP and self.active_tooltip_shop_voucher and self.shop_voucher_offer then
         self:_draw_shop_voucher_tooltip()
@@ -2269,13 +2415,36 @@ function Game:deep_copy_card_data(data)
     return c
 end
 
+function Game:has_played_hand_name(hand_name)
+    if type(hand_name) ~= "string" or hand_name == "" then return false end
+    if type(self.handlist) ~= "table" then return false end
+    local idx = nil
+    for i, name in ipairs(self.handlist) do
+        if name == hand_name then
+            idx = i
+            break
+        end
+    end
+    if not idx then return false end
+    return (self.hand_play_counts and tonumber(self.hand_play_counts[idx]) or 0) >= 1
+end
+
+function Game:planet_consumable_unlocked(def_id, def)
+    if def_id == "planet_x" or def_id == "planet_ceres" or def_id == "planet_eris" then
+        return self:has_played_hand_name(def and def.hand)
+    end
+    return true
+end
+
 function Game:random_consumable_id_of_kind(kind, exclude)
     exclude = exclude or {}
     local pool = {}
     if not CONSUMABLE_DEFS then return nil end
     for def_id, def in pairs(CONSUMABLE_DEFS) do
         if type(def) == "table" and def.kind == kind and not exclude[def_id] then
-            pool[#pool + 1] = def_id
+            if kind ~= "planet" or self:planet_consumable_unlocked(def_id, def) then
+                pool[#pool + 1] = def_id
+            end
         end
     end
     if #pool == 0 then return nil end
@@ -3199,6 +3368,66 @@ function Game:tag_type_for_id(tag_id)
     return nil
 end
 
+function Game:ensure_skip_orbital_hand(blind_index)
+    blind_index = tonumber(blind_index)
+    if not blind_index or not self.skips or self.skips[blind_index] ~= 17 then return end
+    if type(self.skip_tag_orbital_hand) ~= "table" then
+        self.skip_tag_orbital_hand = {}
+    end
+    if not self.skip_tag_orbital_hand[blind_index] then
+        self.skip_tag_orbital_hand[blind_index] = self:roll_orbital_hand_index()
+    end
+end
+
+function Game:roll_orbital_hand_index()
+    local handlist = self.handlist or {}
+    local n = #handlist
+    if n == 0 then return 1 end
+
+    local eligible = {}
+    for i = 1, n do
+        if i <= 3 then
+            if (tonumber(self.hand_play_counts and self.hand_play_counts[i]) or 0) > 0 then
+                eligible[#eligible + 1] = i
+            end
+        else
+            eligible[#eligible + 1] = i
+        end
+    end
+    if #eligible == 0 then
+        for i = 4, n do
+            eligible[#eligible + 1] = i
+        end
+    end
+    if #eligible == 0 then return math.min(4, n) end
+    return eligible[math.random(1, #eligible)]
+end
+
+function Game:tag_key_for_id(tag_id)
+    local type_name = self:tag_type_for_id(tag_id)
+    if not type_name then return nil end
+    if type_name == "d6" then return "tag_d_six" end
+    return "tag_" .. type_name
+end
+
+function Game:get_skip_tag_tooltip(skip_id, blind_index)
+    local type_name = self:tag_type_for_id(skip_id)
+    if not type_name then return nil end
+    local key = self:tag_key_for_id(skip_id)
+    local def = key and self.P_TAGS and self.P_TAGS[key]
+    local name = (def and def.name) or (type_name:sub(1, 1):upper() .. type_name:sub(2) .. " Tag")
+    local description = Tag and Tag.get_description and Tag.get_description(type_name) or ""
+    if type_name == "orbital" and blind_index then
+        self:ensure_skip_orbital_hand(blind_index)
+        local idx = self.skip_tag_orbital_hand and self.skip_tag_orbital_hand[blind_index]
+        local hand_name = idx and self.handlist and self.handlist[idx]
+        if hand_name then
+            description = Tag.get_description(type_name, hand_name)
+        end
+    end
+    return { name = name, description = description, type = type_name }
+end
+
 function Game:draw_skip_tag_icon(tag_type, x, y, scale)
     if type(tag_type) ~= "string" or tag_type == "" or not Tag then return end
     love.graphics.push()
@@ -3220,7 +3449,13 @@ function Game:skip_blind(index)
     if tag_type then
         if type(self.tags) ~= "table" then self.tags = {} end
         self.skipsTaken = self.skipsTaken + 1
-        self:addTag(tag_type)
+        self:ensure_skip_orbital_hand(blind_index)
+        local orbital_idx = self.skip_tag_orbital_hand and self.skip_tag_orbital_hand[blind_index]
+        if orbital_idx then
+            self:addTag(tag_type, { orbital_hand_index = orbital_idx })
+        else
+            self:addTag(tag_type)
+        end
     end
     self.current_blind_index = math.min(3, blind_index + 1)
     self.selected_blind_index = self.current_blind_index
@@ -3233,6 +3468,7 @@ function Game:draw_bottom_blind_select()
     local start_x = 6
     local y = 8
     self._blind_select_tap_rects = {}
+    self._blind_skip_tag_tap_rects = {}
     for i = 1, 3 do
         local def = self:get_blind_def(i)
         local x = start_x + (i - 1) * (card_w + gap)
@@ -3329,7 +3565,7 @@ function Game:draw_bottom_blind_select()
 
         love.graphics.setColor(self.C.WHITE)
         ty = y + scorePosY + 3
-        love.graphics.print("Score at Least", tx + 6, ty)
+        love.graphics.printf("Score at Least", tx, ty, scoreWidth, "center")
         love.graphics.setColor(self.C.RED)
         local req = tostring(target)
         local rx = x + math.floor(card_w / 2) - math.floor(scoreWidth / 2)
@@ -3366,9 +3602,16 @@ function Game:draw_bottom_blind_select()
             if skip_id ~= nil then
                 local tag_type = self:tag_type_for_id(skip_id)
                 if tag_type then
+                    local icon_scale = 0.85
                     local icon_x = sx + p
                     local icon_y = sy + p
-                    self:draw_skip_tag_icon(tag_type, icon_x, icon_y, 0.85)
+                    self:draw_skip_tag_icon(tag_type, icon_x, icon_y, icon_scale)
+                    local tag_probe = Tag(tag_type)
+                    local icon_w = math.floor((tag_probe.w or 34) * icon_scale)
+                    local icon_h = math.floor((tag_probe.h or 34) * icon_scale)
+                    self._blind_skip_tag_tap_rects[i] = {
+                        x = icon_x, y = icon_y, w = icon_w, h = icon_h, blind_index = i,
+                    }
                 end
             end
 
@@ -3427,12 +3670,44 @@ function Game:draw_bottom_shop()
     ShopUI.draw_bottom_shop(self)
 end
 
+function Game:_draw_skip_tag_tooltip()
+    local blind_index = tonumber(self.active_tooltip_skip_blind_index)
+    if not blind_index then return end
+    local skip_id = self.skips and self.skips[blind_index]
+    local info = skip_id ~= nil and self:get_skip_tag_tooltip(skip_id, blind_index) or nil
+    local rect = self._blind_skip_tag_tap_rects and self._blind_skip_tag_tap_rects[blind_index]
+    if not info or not rect then return end
+    local title = tostring(info.name or "Tag")
+    local desc = tostring(info.description or "")
+    local font = (self.FONTS and self.FONTS.PIXEL and self.FONTS.PIXEL.SMALL) or love.graphics.getFont()
+    local resolved = TooltipDraw.resolved_lines_from_multiline(desc)
+    TooltipDraw.draw_tooltip_layout(font, title, resolved, rect.x, rect.y, rect.w, rect.h)
+end
+
 function Game:handle_blind_select_touch(x, y)
+    for _, r in ipairs(self._blind_skip_tag_tap_rects or {}) do
+        if self:_point_in_rect_simple(x, y, r) then
+            local blind_index = tonumber(r.blind_index)
+            if blind_index and self.skips and self.skips[blind_index] ~= nil then
+                if self.active_tooltip_skip_blind_index == blind_index then
+                    self.active_tooltip_skip_blind_index = nil
+                else
+                    self.active_tooltip_skip_blind_index = blind_index
+                    self.active_tooltip_joker = nil
+                    self.active_tooltip_card = nil
+                    self.active_tooltip_consumable_index = nil
+                end
+                return true
+            end
+        end
+    end
+
     for _, r in ipairs(self._blind_skip_tap_rects or {}) do
         if self:_point_in_rect_simple(x, y, r) then
             local blind_index = tonumber(r.blind_index)
             local skip_id = self.skips and self.skips[blind_index]
             if blind_index and skip_id ~= nil and self:is_blind_selectable(blind_index) then
+                self.active_tooltip_skip_blind_index = nil
                 self:skip_blind(blind_index)
                 return true
             end
@@ -3449,9 +3724,11 @@ function Game:handle_blind_select_touch(x, y)
             else
                 self.selected_blind_index = i
             end
+            self.active_tooltip_skip_blind_index = nil
             return true
         end
     end
+    self.active_tooltip_skip_blind_index = nil
     return false
 end
 
@@ -3474,7 +3751,7 @@ function Game:draw_bottom_pause()
 
     local function draw_btn(r, label, color)
         love.graphics.setColor(color)
-        love.graphics.rectangle("fill", r.x, r.y, r.w, r.h, 4, 4)
+        draw_rect_with_shadow(r.x, r.y, r.w, r.h, 4, 4, color, self.C.BLOCK.SHADOW, 2)
         love.graphics.setColor(self.C.WHITE)
         love.graphics.setFont(self.FONTS.PIXEL.MEDIUM)
         local ty = r.y + math.floor((r.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
@@ -3491,10 +3768,10 @@ function Game:draw_bottom_pause()
         love.graphics.setFont(self.FONTS.PIXEL.SMALL)
         love.graphics.printf("Game Speed", panel_x, panel_y + 38, panel_w, "center")
 
-        local speeds = { 0.5, 1, 2, 3, 4 }
-        local speed_labels = { "0.5x", "1x", "2x", "3x", "4x" }
+        local speeds = { 0.5, 1, 1.5, 2, 2.5, 3}
+        local speed_labels = { "x0.5", "x1", "x1.5", "x2", "x2.5", "x3"}
         local cur_speed = (self.SETTINGS and self.SETTINGS.GAMESPEED) or 1
-        local sb_w = 44
+        local sb_w = 38
         local sb_h = 28
         local sb_gap = 6
         local total_sb = #speeds * sb_w + (#speeds - 1) * sb_gap
@@ -3506,9 +3783,9 @@ function Game:draw_bottom_pause()
             local r = { x = rx, y = sb_y, w = sb_w, h = sb_h, speed = spd }
             self._pause_speed_rects[i] = r
             local is_active = math.abs(cur_speed - spd) < 0.01
-            local btn_color = is_active and self.C.ORANGE or self.C.BLOCK.BACK
+            local btn_color = is_active and self.C.ORANGE or self.C.PANEL
             love.graphics.setColor(btn_color)
-            love.graphics.rectangle("fill", rx, sb_y, sb_w, sb_h, 4, 4)
+            draw_rect_with_shadow(rx, sb_y, sb_w, sb_h, 4, 4, btn_color, self.C.BLOCK.SHADOW, 4)
             if is_active then
                 love.graphics.setColor(self.C.WHITE)
             else
@@ -3521,14 +3798,40 @@ function Game:draw_bottom_pause()
 
         love.graphics.setColor(self.C.WHITE)
         love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-        local speed_str = string.format("Current: %.4g x", cur_speed)
+        local speed_str = string.format("Current: x%.4g", cur_speed)
         love.graphics.printf(speed_str, panel_x, panel_y + 96, panel_w, "center")
+
+        love.graphics.setColor(self.C.GREY)
+        love.graphics.printf("Music Volume", panel_x, panel_y + 114, panel_w, "center")
+
+        local track_x = panel_x + 36
+        local track_w = panel_w - 72
+        local track_y = panel_y + 136
+        local knob_r = 7
+        local vol = self:get_music_volume()
+        local knob_x = track_x + (vol / 100) * track_w
+        local prev_lw = love.graphics.getLineWidth()
+        love.graphics.setColor(self.C.GREY)
+        love.graphics.setLineWidth(2)
+        love.graphics.line(track_x, track_y, track_x + track_w, track_y)
+        love.graphics.setColor(self.C.WHITE)
+        love.graphics.circle("fill", knob_x, track_y, knob_r)
+        love.graphics.setLineWidth(prev_lw)
+        self._pause_music_slider_rect = {
+            x = track_x - knob_r,
+            y = track_y - 14,
+            w = track_w + knob_r * 2,
+            h = 28,
+            track_x = track_x,
+            track_w = track_w,
+            track_y = track_y,
+        }
 
         -- Back button
         local back_w, back_h = 120, 28
         local back_x = panel_x + math.floor((panel_w - back_w) * 0.5 + 0.5)
-        self._pause_back_rect = { x = back_x, y = panel_y + 148, w = back_w, h = back_h }
-        draw_btn(self._pause_back_rect, "Back", self.C.PANEL)
+        self._pause_back_rect = { x = back_x, y = panel_y + 156, w = back_w, h = back_h }
+        draw_btn(self._pause_back_rect, "Back", self.C.MULT)
     else
         -- ===== MAIN PAUSE PAGE =====
         love.graphics.setColor(self.C.WHITE)
@@ -3597,6 +3900,9 @@ function Game:enter_main_menu()
     self.dragging = nil
     self._main_menu_start_rect = nil
     self._main_menu_continue_rect = nil
+    self._main_menu_how_to_play_rect = nil
+    self._how_to_play_back_rect = nil
+    self._how_to_play_rects = nil
     self._pause_prev_state = nil
     self._blind_resolution_pending = false
     if self.hand and self.hand.clear then
@@ -3677,6 +3983,9 @@ end
 function Game:update(dt)
     if self.STATE == self.STATES.PAUSED then
         return
+    end
+    if self.sync_shoulder_input then
+        self:sync_shoulder_input()
     end
     if self._deck_view_open then
         for _, node in ipairs(self._deck_view_nodes or {}) do
@@ -4756,6 +5065,7 @@ end
 
 function Game:enter_blind_select()
     self:set_state(self.STATES.BLIND_SELECT)
+    self.active_tooltip_skip_blind_index = nil
     self.selected_blind_index = self.current_blind_index or 1
     if self.selected_blind_index == 3 then
         if not self.current_boss_blind_id then
@@ -5364,34 +5674,9 @@ end
 function Game:_roll_shop_queue_consumable_offer(wanted_kind)
     if type(CONSUMABLE_DEFS) ~= "table" then return nil end
     local ids = {}
-    local function has_played_hand(hand_name)
-        if type(hand_name) ~= "string" or hand_name == "" then return false end
-        if type(self.handlist) ~= "table" then return false end
-        local idx = nil
-        for i, name in ipairs(self.handlist) do
-            if name == hand_name then
-                idx = i
-                break
-            end
-        end
-        if not idx then return false end
-        return (self.hand_play_counts and tonumber(self.hand_play_counts[idx]) or 0) >= 1
-    end
     for id, def in pairs(CONSUMABLE_DEFS) do
         if type(def) == "table" and def.kind == wanted_kind and type(id) == "string" then
-            if id == "planet_x" then
-                if has_played_hand(def.hand) then
-                    ids[#ids + 1] = id
-                end
-            elseif id == "planet_ceres" then
-                if has_played_hand(def.hand) then
-                    ids[#ids + 1] = id
-                end
-            elseif id == "planet_eris" then
-                if has_played_hand(def.hand) then
-                    ids[#ids + 1] = id
-                end
-            else
+            if wanted_kind ~= "planet" or self:planet_consumable_unlocked(id, def) then
                 ids[#ids + 1] = id
             end
         end
@@ -5694,9 +5979,13 @@ function Game:roll_skips()
     end
 
     self.skips = {}
-    for _ = 1, 2 do
+    self.skip_tag_orbital_hand = {}
+    for slot = 1, 2 do
         local tag_key = eligible_tags[math.random(1, #eligible_tags)]
-        self.skips[#self.skips + 1] = tag_key_to_id(tag_key)
+        self.skips[slot] = tag_key_to_id(tag_key)
+        if self.skips[slot] == 17 then
+            self.skip_tag_orbital_hand[slot] = self:roll_orbital_hand_index()
+        end
     end
 end
 
@@ -5861,19 +6150,6 @@ end
 function Game:_shop_pick_unique_consumable_ids(wanted_kind, count)
     local pool = {}
     local allow_duplicates = self:hasJoker("j_ring_master")
-    local function has_played_hand(hand_name)
-        if type(hand_name) ~= "string" or hand_name == "" then return false end
-        if type(self.handlist) ~= "table" then return false end
-        local idx = nil
-        for i, name in ipairs(self.handlist) do
-            if name == hand_name then
-                idx = i
-                break
-            end
-        end
-        if not idx then return false end
-        return (self.hand_play_counts and tonumber(self.hand_play_counts[idx]) or 0) >= 1
-    end
     if not CONSUMABLE_DEFS then return pool end
     for id, def in pairs(CONSUMABLE_DEFS) do
         if type(def) == "table" and type(id) == "string" and def.kind == wanted_kind then
@@ -5882,14 +6158,8 @@ function Game:_shop_pick_unique_consumable_ids(wanted_kind, count)
                 -- Soul / Black Hole are replacement-only in booster packs.
                 incl = false
             end
-            if wanted_kind == "planet" then
-                if id == "planet_x" then
-                    incl = has_played_hand(def.hand)
-                elseif id == "planet_ceres" then
-                    incl = has_played_hand(def.hand)
-                elseif id == "planet_eris" then
-                    incl = has_played_hand(def.hand)
-                end
+            if wanted_kind == "planet" and not self:planet_consumable_unlocked(id, def) then
+                incl = false
             end
             if incl then
                 pool[#pool + 1] = id
@@ -6530,7 +6800,7 @@ function Game:remove_owned_joker_at(index, force)
     if self.active_tooltip_joker == joker then
         self.active_tooltip_joker = nil
     end
-    if joker.eternal then
+    if joker.eternal and not force then
         return nil
     end
     table.remove(self.jokers, index)
@@ -6748,7 +7018,7 @@ function Game:handle_failed_blind_reset()
         end
     end
     if mr_bones_index then
-        self:remove_owned_joker_at(mr_bones_index)
+        self:remove_owned_joker_at(mr_bones_index,true)
         if Sfx and Sfx.play then
             Sfx.play("resources/sounds/slice1.ogg")
         end
@@ -6971,14 +7241,24 @@ function Game:touchpressed(id, x, y)
             -- Settings page touch
             for _, r in ipairs(self._pause_speed_rects or {}) do
                 if self:_point_in_rect_simple(x, y, r) then
-                    if self.SETTINGS then
+                    if self.set_game_speed then
+                        self:set_game_speed(r.speed)
+                    elseif self.SETTINGS then
                         self.SETTINGS.GAMESPEED = r.speed
                     end
                     return
                 end
             end
+            local slider = self._pause_music_slider_rect
+            if slider and self:_point_in_rect_simple(x, y, slider) then
+                self._pause_music_slider_drag = true
+                local vol = self:_music_volume_from_slider_x(x)
+                if vol ~= nil then self:set_music_volume(vol) end
+                return
+            end
             if self._pause_back_rect and self:_point_in_rect_simple(x, y, self._pause_back_rect) then
                 self._pause_show_settings = false
+                self._pause_music_slider_drag = false
                 return
             end
             return
@@ -7174,6 +7454,10 @@ function Game:touchmoved(id, x, y, dx, dy)
         return
     end
     if self.STATE == self.STATES.PAUSED then
+        if self._pause_show_settings and self._pause_music_slider_drag then
+            local vol = self:_music_volume_from_slider_x(x)
+            if vol ~= nil then self:set_music_volume(vol) end
+        end
         return
     end
     if self.STATE == self.STATES.GAME_OVER then
@@ -7209,6 +7493,7 @@ function Game:touchreleased(id, x, y)
         return
     end
     if self.STATE == self.STATES.PAUSED then
+        self._pause_music_slider_drag = false
         self.dragging = nil
         return
     end
@@ -7281,6 +7566,7 @@ function Game:touchreleased(id, x, y)
             self.active_tooltip_joker = released
             self.active_tooltip_card = nil
             self.active_tooltip_consumable_index = nil
+            self.active_tooltip_skip_blind_index = nil
             self:move_to_front(released)
         end
     end
@@ -7300,6 +7586,7 @@ function Game:touchreleased(id, x, y)
     if released and self.hand and not reordered and dist < TAP_THRESHOLD then
         for _, node in ipairs(self.hand.card_nodes) do
             if node == released then
+                self:set_dpad_cursor_for_node(node)
                 self.hand:toggle_selection(node)
                 self.active_tooltip_consumable_index = nil
                 break
@@ -7367,6 +7654,81 @@ function Game:restore_hand_draw_order()
         table.insert(ordered, node)
     end
     self.nodes = ordered
+end
+
+--- Hold L in hand-select: D-pad moves this cursor; up/down toggles selection.
+function Game:ensure_dpad_cursor()
+    if not self.hand or not self.hand.card_nodes then return nil end
+    local n = #(self.hand.card_nodes)
+    if n == 0 then return nil end
+    if not self._dpad_cursor_index then
+        self._dpad_cursor_index = 1
+    else
+        self._dpad_cursor_index = math.max(1, math.min(n, self._dpad_cursor_index))
+    end
+    return self._dpad_cursor_index
+end
+
+function Game:dpad_cursor_node()
+    local idx = self:ensure_dpad_cursor()
+    if not idx then return nil end
+    return self.hand.card_nodes[idx]
+end
+
+function Game:set_dpad_cursor_for_node(node)
+    if not self.hand or not self.hand.card_nodes or not node then return end
+    for i, n in ipairs(self.hand.card_nodes) do
+        if n == node then
+            self._dpad_cursor_index = i
+            return
+        end
+    end
+end
+
+function Game:dpad_cursor_move(delta)
+    if not self.hand or not self.hand.card_nodes then return nil end
+    local n = #self.hand.card_nodes
+    if n == 0 then return nil end
+    self:ensure_dpad_cursor()
+    self._dpad_cursor_index = math.max(1, math.min(n, self._dpad_cursor_index + delta))
+    return self:dpad_cursor_node()
+end
+
+function Game:is_sweep_select_mode()
+    return self._l_held == true and self._r_held == true
+        and self.STATE == self.STATES.SELECTING_HAND
+end
+
+function Game:is_card_select_mode()
+    return self._l_held == true and self.STATE == self.STATES.SELECTING_HAND
+end
+
+function Game:enter_card_select_mode()
+    self.active_tooltip_card = nil
+    self.active_tooltip_joker = nil
+    self.active_tooltip_consumable_index = nil
+    self:ensure_dpad_cursor()
+end
+
+--- Keep shoulder flags aligned with hardware (release events can be dropped mid-play).
+function Game:sync_shoulder_input()
+    local l_down, r_down = false, false
+    local joysticks = love.joystick.getJoysticks()
+    local joy = joysticks and joysticks[1]
+    if joy and joy.isGamepad and joy:isGamepad() then
+        l_down = joy:isGamepadDown("leftshoulder")
+        r_down = joy:isGamepadDown("rightshoulder")
+    elseif love.keyboard.isDown then
+        l_down = love.keyboard.isDown("q")
+        r_down = love.keyboard.isDown("e")
+    end
+    if not l_down then
+        self._l_held = false
+        self._l_press_time = nil
+    end
+    if not r_down then
+        self._r_held = false
+    end
 end
 
 --- Puts selected hand cards at the end of the draw list so they render on top.

@@ -1,11 +1,68 @@
 
 local MainMenuUI = {}
 
+MainMenuUI.HOW_TO_PLAY_PAGES = {
+    {
+        title = "Touch Controls",
+        lines = {
+            "Tap hand cards to select or deselect them.",
+            "Tap jokers, tarots, planets, and shop",
+            "items to show tooltips and action buttons.",
+            "Drag cards or jokers to reorder them.",
+            "",
+            "   Pause & Menus",
+            "Start opens the Pause menu.",
+            "Blind select, shop, and round win screens",
+            "Use on-screen buttons or A/Y to continue.",
+        },
+    },
+    {
+        title = "Gamepad - Hand",
+        lines = {
+            "Quick tap L or X: Discard Selection",
+            "R or Y: Play hand",
+            "B: Back, Close, Skip Booster",
+            "D-pad L/R alone: Sort by Rank or Suit",
+            "",
+            "   Card select mode (hold L)",
+            "D-pad Left/Right moves the cursor.",
+            "D-pad Up/Down toggles selection.",
+            "The cursor card gets a black outline and shows its tooltip",
+            "",
+            "   Sweep select (hold L + R)",
+            "With both shoulders held, D-pad Left/Right selects each card as you move.",
+        },
+    },
+    {
+        title = "Gamepad - Other",
+        lines = {
+            "D-pad Up/Down: Move the Joker Row",
+            "between the top and bottom of the screen.",
+            "",
+            "Select: Open Deck View",
+            "Start: Pause Menu",
+            "",
+            "   Main menu",
+            "A/Y or tap: Start or Continue a Run",
+            "X or How to Play: This screen",
+            "",
+            "   Deck select",
+            "Left/Right: Pick deck   Up/Down: Pick Stake",
+            "A/Y or PLAY: Begin   B/X: Back",
+        },
+    },
+}
+
+function MainMenuUI.open_how_to_play(game)
+    game._menu_sub_state = "how_to_play"
+    game._how_to_play_page = game._how_to_play_page or 1
+end
+
 function MainMenuUI.draw_background(game, screen)
     local w = (screen == "bottom") and 320 or 400
     local h = 240
-    local top = G.C.BLOCK.BACK
-    local bottom = G.C.PANEL
+    local top = G.C.MULT
+    local bottom = G.C.BOOSTER
     local steps = 48
 
     love.graphics.setColor(top)
@@ -32,31 +89,15 @@ function MainMenuUI.draw_top(game)
 
     if atlas and atlas.image then
         local iw, ih = atlas.image:getDimensions()
-        local max_w, max_h = panel_w - 24, 132
+        local max_w, max_h = 336, 216
         local s = math.min(max_w / iw, max_h / ih)
         if s > 1 then s = 1 end
         local draw_w = iw * s
         local draw_h = ih * s
         local dx = panel_x + math.floor((panel_w - draw_w) * 0.5 + 0.5)
-        local dy = panel_y + 16
+        local dy = panel_y 
         love.graphics.setColor(game.C.WHITE)
         love.graphics.draw(atlas.image, dx, dy, 0, s, s)
-    end
-
-    love.graphics.setColor(game.C.WHITE)
-    love.graphics.setFont(game.FONTS.PIXEL.LARGE)
-    love.graphics.printf("Balatro 3DS", panel_x, panel_y + 152, panel_w, "center")
-    love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
-    love.graphics.setColor(game.C.BLACK)
-    love.graphics.printf("Press A / Y", panel_x, panel_y + 184, panel_w, "center")
-
-    if game.SEED then
-        love.graphics.setFont(game.FONTS.PIXEL.SMALL)
-        love.graphics.setColor(game.C.DARK_WHITE or game.C.GREY)
-        love.graphics.printf(
-            "Seed " .. tostring(math.floor(tonumber(game.SEED) or 0)),
-            panel_x, panel_y + 204, panel_w, "center"
-        )
     end
 end
 
@@ -69,6 +110,8 @@ end
 function MainMenuUI.draw_bottom(game)
     if game._menu_sub_state == "deck_select" then
         MainMenuUI.draw_deck_select(game)
+    elseif game._menu_sub_state == "how_to_play" then
+        MainMenuUI.draw_how_to_play(game)
     else
         MainMenuUI.draw_main(game)
     end
@@ -87,15 +130,18 @@ function MainMenuUI.draw_main(game)
 
     love.graphics.setColor(game.C.WHITE)
     love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
-    love.graphics.printf("Main Menu", panel_x, panel_y + 16, panel_w, "center")
 
     local has_save = game.has_saved_run and game:has_saved_run() == true
-    local btn_w, btn_h = 160, 32
+    local btn_w, btn_h = 160, 28
+    local btn_gap = 6
     local btn_x = panel_x + math.floor((panel_w - btn_w) * 0.5 + 0.5)
+    game._main_menu_how_to_play_rect = nil
 
     if has_save then
-        game._main_menu_continue_rect = { x = btn_x, y = panel_y + 78, w = btn_w, h = btn_h }
-        game._main_menu_start_rect    = { x = btn_x, y = panel_y + 118, w = btn_w, h = btn_h }
+        local y0 = panel_y + 44
+        game._main_menu_continue_rect = { x = btn_x, y = y0, w = btn_w, h = btn_h }
+        game._main_menu_start_rect    = { x = btn_x, y = y0 + btn_h + btn_gap, w = btn_w, h = btn_h }
+        game._main_menu_how_to_play_rect = { x = btn_x, y = y0 + (btn_h + btn_gap) * 2, w = btn_w, h = btn_h }
 
         draw_rect_with_shadow(
             game._main_menu_continue_rect.x, game._main_menu_continue_rect.y,
@@ -107,35 +153,165 @@ function MainMenuUI.draw_main(game)
             game._main_menu_start_rect.w, game._main_menu_start_rect.h, 4, 4,
             game.C.GREEN, game.C.BLOCK.SHADOW, 2)
 
+        draw_rect_with_shadow(
+            game._main_menu_how_to_play_rect.x, game._main_menu_how_to_play_rect.y,
+            game._main_menu_how_to_play_rect.w, game._main_menu_how_to_play_rect.h, 4, 4,
+            game.C.MULT, game.C.BLOCK.SHADOW, 2)
+
         love.graphics.setColor(game.C.WHITE)
         love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
 
-        local cy = game._main_menu_continue_rect.y +
-                   math.floor((game._main_menu_continue_rect.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
-        love.graphics.printf("Continue Run",
-            game._main_menu_continue_rect.x, cy, game._main_menu_continue_rect.w, "center")
+        local function btn_label_y(r)
+            return r.y + math.floor((r.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
+        end
 
-        local sy = game._main_menu_start_rect.y +
-                   math.floor((game._main_menu_start_rect.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
+        love.graphics.printf("Continue Run",
+            game._main_menu_continue_rect.x, btn_label_y(game._main_menu_continue_rect),
+            game._main_menu_continue_rect.w, "center")
+
         love.graphics.printf("New Run",
-            game._main_menu_start_rect.x, sy, game._main_menu_start_rect.w, "center")
+            game._main_menu_start_rect.x, btn_label_y(game._main_menu_start_rect),
+            game._main_menu_start_rect.w, "center")
+
+        love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
+        love.graphics.printf("How to Play",
+            game._main_menu_how_to_play_rect.x, btn_label_y(game._main_menu_how_to_play_rect),
+            game._main_menu_how_to_play_rect.w, "center")
     else
         game._main_menu_continue_rect = nil
-        game._main_menu_start_rect    = { x = btn_x, y = panel_y + 98, w = btn_w, h = btn_h }
+        local y0 = panel_y + 56
+        game._main_menu_start_rect = { x = btn_x, y = y0, w = btn_w, h = btn_h }
+        game._main_menu_how_to_play_rect = { x = btn_x, y = y0 + btn_h + btn_gap, w = btn_w, h = btn_h }
 
-        love.graphics.setColor(game.C.GREEN)
         draw_rect_with_shadow(
             game._main_menu_start_rect.x, game._main_menu_start_rect.y,
             game._main_menu_start_rect.w, game._main_menu_start_rect.h, 4, 4,
             game.C.GREEN, game.C.BLOCK.SHADOW, 2)
 
+        draw_rect_with_shadow(
+            game._main_menu_how_to_play_rect.x, game._main_menu_how_to_play_rect.y,
+            game._main_menu_how_to_play_rect.w, game._main_menu_how_to_play_rect.h, 4, 4,
+            game.C.MULT, game.C.BLOCK.SHADOW, 2)
+
         love.graphics.setColor(game.C.WHITE)
         love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
-        local by = game._main_menu_start_rect.y +
-                   math.floor((game._main_menu_start_rect.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
+        local function btn_label_y(r)
+            return r.y + math.floor((r.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
+        end
         love.graphics.printf("Start Run",
-            game._main_menu_start_rect.x, by, game._main_menu_start_rect.w, "center")
+            game._main_menu_start_rect.x, btn_label_y(game._main_menu_start_rect),
+            game._main_menu_start_rect.w, "center")
+
+        love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
+        love.graphics.printf("How to Play",
+            game._main_menu_how_to_play_rect.x, btn_label_y(game._main_menu_how_to_play_rect),
+            game._main_menu_how_to_play_rect.w, "center")
+
+        if game.SEED then
+            love.graphics.setFont(game.FONTS.PIXEL.SMALL)
+            love.graphics.setColor(game.C.DARK_WHITE or game.C.GREY)
+            love.graphics.printf(
+                "Seed " .. tostring(math.floor(tonumber(game.SEED) or 0)),
+                panel_x, panel_y + 204, panel_w, "center"
+            )
+        end
     end
+end
+
+function MainMenuUI.draw_how_to_play(game)
+    local W, H = 320, 240
+    local font_s = game.FONTS.PIXEL.SMALL
+    local font_m = game.FONTS.PIXEL.MEDIUM
+    local C = game.C
+    local pages = MainMenuUI.HOW_TO_PLAY_PAGES
+    local page_count = #pages
+    local page_idx = tonumber(game._how_to_play_page) or 1
+    page_idx = math.max(1, math.min(page_count, page_idx))
+    game._how_to_play_page = page_idx
+    local page = pages[page_idx]
+
+    love.graphics.setColor(C.PANEL)
+    draw_rect_with_shadow(0, 0, W, H, 6, 6, C.PANEL, C.BLOCK.SHADOW, 2)
+
+    local margin = 12
+    local nav_h = 24
+    local back_h = 24
+    local content_y = margin + 4
+    local content_h = H - content_y - nav_h - back_h - margin - 8
+    local content_x = margin
+    local content_w = W - margin * 2
+
+    love.graphics.setFont(font_m)
+    love.graphics.setColor(C.WHITE)
+    love.graphics.printf("How to Play", 0, margin, W, "center")
+
+    love.graphics.setColor(C.BLOCK.BACK)
+    love.graphics.rectangle("fill", content_x, content_y, content_w, content_h, 6, 6)
+
+    love.graphics.setFont(font_m)
+    love.graphics.setColor(C.WHITE)
+    love.graphics.printf(page.title, content_x, content_y + 6, content_w, "center")
+
+    love.graphics.setFont(font_s)
+    love.graphics.setColor(C.DARK_WHITE or C.GREY)
+    local line_h = love.graphics.getFont():getHeight() + 2
+    local text_y = content_y + 32
+    for _, line in ipairs(page.lines) do
+        if text_y + line_h <= content_y + content_h - 4 then
+            love.graphics.printf(line, content_x + 8, text_y, content_w - 16, "left")
+        end
+        text_y = text_y + line_h
+    end
+
+    local nav_y = content_y + content_h + 6
+    local arrow_w = 28
+    local prev_x = content_x
+    local next_x = content_x + content_w - arrow_w
+
+    game._how_to_play_rects = {
+        prev = { x = prev_x, y = nav_y, w = arrow_w, h = nav_h },
+        next = { x = next_x, y = nav_y, w = arrow_w, h = nav_h },
+    }
+
+    if page_idx > 1 then
+        draw_rect_with_shadow(prev_x, nav_y, arrow_w, nav_h, 4, 4, C.MULT, C.BLOCK.SHADOW, 2)
+        love.graphics.setColor(C.WHITE)
+        love.graphics.setFont(font_s)
+        love.graphics.printf("<", prev_x, nav_y + 4, arrow_w, "center")
+    end
+
+    if page_idx < page_count then
+        draw_rect_with_shadow(next_x, nav_y, arrow_w, nav_h, 4, 4, C.MULT, C.BLOCK.SHADOW, 2)
+        love.graphics.setColor(C.WHITE)
+        love.graphics.setFont(font_s)
+        love.graphics.printf(">", next_x, nav_y + 4, arrow_w, "center")
+    end
+
+    local dot_y = nav_y + math.floor(nav_h * 0.5)
+    local dot_mid = math.floor(W * 0.5)
+    local dot_gap = 10
+    for i = 1, page_count do
+        local dx = dot_mid + (i - math.floor(page_count / 2) - 1) * dot_gap
+        if i == page_idx then
+            love.graphics.setColor(C.WHITE)
+        else
+            love.graphics.setColor(C.BLOCK.BACK)
+        end
+        love.graphics.circle("fill", dx, dot_y, 2)
+    end
+
+    local back_w = 120
+    local back_x = math.floor((W - back_w) * 0.5)
+    local back_y = H - margin - back_h - 4
+    game._how_to_play_back_rect = { x = back_x, y = back_y, w = back_w, h = back_h }
+    draw_rect_with_shadow(back_x, back_y, back_w, back_h, 4, 4, C.MULT, C.BLOCK.SHADOW, 2)
+    love.graphics.setColor(C.WHITE)
+    love.graphics.setFont(font_s)
+    love.graphics.printf("Back", back_x, back_y + 5, back_w, "center")
+
+    love.graphics.setFont(font_s)
+    love.graphics.setColor(C.GREY)
+    love.graphics.printf("B/X: Back   LEFT/RIGHT: Pages", 0, H - 14, W, "center")
 end
 
 function MainMenuUI.draw_deck_carousel_sprite(game, def, x, y, w, h, p)
@@ -426,6 +602,9 @@ function MainMenuUI.handle_touch(game, x, y)
     if game._menu_sub_state == "deck_select" then
         return MainMenuUI._touch_deck_select(game, x, y)
     end
+    if game._menu_sub_state == "how_to_play" then
+        return MainMenuUI._touch_how_to_play(game, x, y)
+    end
     return MainMenuUI._touch_main(game, x, y)
 end
 
@@ -441,6 +620,36 @@ function MainMenuUI._touch_main(game, x, y)
     local r = game._main_menu_start_rect
     if r and game:_point_in_rect_simple(x, y, r) then
         MainMenuUI.open_deck_select(game)
+        return true
+    end
+
+    local hr = game._main_menu_how_to_play_rect
+    if hr and game:_point_in_rect_simple(x, y, hr) then
+        MainMenuUI.open_how_to_play(game)
+        return true
+    end
+
+    return false
+end
+
+function MainMenuUI._touch_how_to_play(game, x, y)
+    local rects = game._how_to_play_rects or {}
+    local page_count = #(MainMenuUI.HOW_TO_PLAY_PAGES or {})
+    local page_idx = tonumber(game._how_to_play_page) or 1
+
+    if rects.prev and page_idx > 1 and game:_point_in_rect_simple(x, y, rects.prev) then
+        game._how_to_play_page = page_idx - 1
+        return true
+    end
+
+    if rects.next and page_idx < page_count and game:_point_in_rect_simple(x, y, rects.next) then
+        game._how_to_play_page = page_idx + 1
+        return true
+    end
+
+    local back = game._how_to_play_back_rect
+    if back and game:_point_in_rect_simple(x, y, back) then
+        game._menu_sub_state = "main"
         return true
     end
 
@@ -486,13 +695,34 @@ end
 function MainMenuUI.handle_button(game, btn)
     if game._menu_sub_state == "deck_select" then
         MainMenuUI._button_deck_select(game, btn)
+    elseif game._menu_sub_state == "how_to_play" then
+        MainMenuUI._button_how_to_play(game, btn)
     else
         MainMenuUI._button_main(game, btn)
     end
 end
 
+function MainMenuUI._button_how_to_play(game, btn)
+    local page_count = #(MainMenuUI.HOW_TO_PLAY_PAGES or {})
+    local page_idx = tonumber(game._how_to_play_page) or 1
+
+    if btn == "dpleft" or btn == "left" then
+        if page_idx > 1 then
+            game._how_to_play_page = page_idx - 1
+        end
+    elseif btn == "dpright" or btn == "right" then
+        if page_idx < page_count then
+            game._how_to_play_page = page_idx + 1
+        end
+    elseif btn == "b" or btn == "x" then
+        game._menu_sub_state = "main"
+    end
+end
+
 function MainMenuUI._button_main(game, btn)
-    if btn == "a" or btn == "y" or btn == "z" then
+    if btn == "x" then
+        MainMenuUI.open_how_to_play(game)
+    elseif btn == "a" or btn == "y" then
         MainMenuUI.open_deck_select(game)
     end
 end

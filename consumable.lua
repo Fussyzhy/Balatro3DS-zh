@@ -180,6 +180,7 @@ end
 
 function Consumable:tooltip_is_active()
     if not G then return false end
+    if G.is_card_select_mode and G:is_card_select_mode() then return false end
     if self.shop_offer_slot and G.STATE == G.STATES.SHOP and G.active_tooltip_joker == self then
         return true
     end

@@ -400,24 +400,66 @@ local function is_blueprint_copy_target(src)
     return def.blueprint_compat == true
 end
 
+local function joker_def_id(joker)
+    local def = type(joker) == "table" and joker.def
+    return type(def) == "table" and def.id or nil
+end
+
+local function blueprint_immediate_target(joker)
+    if type(G and G.jokers) ~= "table" then return nil end
+    for i, jj in ipairs(G.jokers) do
+        if jj == joker then
+            return G.jokers[i + 1]
+        end
+    end
+    return nil
+end
+
+local function brainstorm_immediate_target(joker)
+    return G and G.jokers and G.jokers[1]
+end
+
+--- Walk Blueprint/Brainstorm links to the real joker; nil on cycle or incompatible target.
+local function resolve_copy_target(src, visited)
+    if type(src) ~= "table" then return nil end
+    visited = visited or {}
+    if visited[src] then return nil end
+    visited[src] = true
+
+    local id = joker_def_id(src)
+    if id == "j_brainstorm" then
+        local next_src = brainstorm_immediate_target(src)
+        if type(next_src) ~= "table" or next_src == src then return nil end
+        return resolve_copy_target(next_src, visited)
+    end
+    if id == "j_blueprint" then
+        local next_src = blueprint_immediate_target(src)
+        return resolve_copy_target(next_src, visited)
+    end
+
+    if not is_blueprint_copy_target(src) then return nil end
+    return src
+end
+
 local function delegate_joker_effect(delegator, src, ctx)
-    if not is_blueprint_copy_target(src) then return end
-    if type(src) ~= "table" or type(src.apply_effect) ~= "function" then return end
+    local resolved = resolve_copy_target(src)
+    if type(resolved) ~= "table" or resolved == delegator then return end
+    if type(resolved.apply_effect) ~= "function" then return end
     local en = type(ctx) == "table" and ctx.event_name or nil
-    if type(en) == "string" and en ~= "" and type(src.matches_trigger) == "function" then
-        if src:matches_trigger(en, ctx) ~= true then return end
+    if type(en) == "string" and en ~= "" and type(resolved.matches_trigger) == "function" then
+        if resolved:matches_trigger(en, ctx) ~= true then return end
     end
     local prev_suppress = type(ctx) == "table" and ctx._suppress_joker_apply_shake or nil
     if type(ctx) == "table" then ctx._suppress_joker_apply_shake = true end
-    src:apply_effect(ctx)
+    resolved:apply_effect(ctx)
     if type(ctx) == "table" then ctx._suppress_joker_apply_shake = prev_suppress end
 end
 
 local function delegate_joker_retrigger(delegator, src, ctx)
-    if type(src) ~= "table" or src == delegator then return 0 end
-    if not is_blueprint_copy_target(src) then return 0 end
-    if type(src.query_retrigger) ~= "function" then return 0 end
-    return tonumber(src:query_retrigger(ctx)) or 0
+    local resolved = resolve_copy_target(src)
+    if type(resolved) ~= "table" or resolved == delegator then return 0 end
+    if type(resolved.query_retrigger) ~= "function" then return 0 end
+    return tonumber(resolved:query_retrigger(ctx)) or 0
 end
 
 local function first_scoring_play_node(played_cards)
@@ -518,7 +560,7 @@ local SPECIAL = {
             for i, jj in ipairs(G.jokers) do
                 if jj == joker then
                     local src = G.jokers[i + 1]
-                    if type(src) == "table" and not is_blueprint_copy_target(src) then
+                    if type(src) == "table" and not resolve_copy_target(src) then
                         return { "Incompatible" }
                     end
                     break
@@ -542,7 +584,7 @@ local SPECIAL = {
             if type(G and G.jokers) ~= "table" then return {} end
             local src = G.jokers[1]
             if src == joker then return {} end
-            if type(src) == "table" and not is_blueprint_copy_target(src) then
+            if type(src) == "table" and not resolve_copy_target(src) then
                 return { "Incompatible" }
             end
             return {}
