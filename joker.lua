@@ -885,6 +885,8 @@ end
 
 function Joker:should_draw_tooltip()
     if not self.face_up or not G then return false end
+    if G.is_card_select_mode and G:is_card_select_mode() then return false end
+    if G.STATE == G.STATES.BLIND_SELECT and G.active_tooltip_skip_blind_index then return false end
     if self._booster_choice_index and G.STATE == G.STATES.OPEN_BOOSTER and G.booster_session then
         return tonumber(G.booster_session.active_choice_index) == self._booster_choice_index
     end

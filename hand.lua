@@ -314,7 +314,11 @@ function Hand:toggle_selection(node)
             node.selected = false
             Sfx.play("resources/sounds/card3.ogg")
             table.remove(self.selected, i)
-            if self.game then self.game.active_tooltip_card = nil end
+            if self.game then
+                if not (self.game.is_card_select_mode and self.game:is_card_select_mode()) then
+                    self.game.active_tooltip_card = nil
+                end
+            end
             if self.game.move_selected_hand_cards_to_front then self.game:move_selected_hand_cards_to_front() end
             self:calculate_play()
             return
@@ -325,8 +329,10 @@ function Hand:toggle_selection(node)
     Sfx.play("resources/sounds/card1.ogg")
     table.insert(self.selected, node)
     if self.game then
-        self.game.active_tooltip_card = node
-        self.game.active_tooltip_joker = nil
+        if not (self.game.is_card_select_mode and self.game:is_card_select_mode()) then
+            self.game.active_tooltip_card = node
+            self.game.active_tooltip_joker = nil
+        end
     end
     if self.game.move_selected_hand_cards_to_front then self.game:move_selected_hand_cards_to_front() end
     self:calculate_play()
@@ -1178,7 +1184,10 @@ function Hand:play_selected()
     if #self.selected == 0 or G.hands <= 0 then return end
     if self._play_sequence then return end
 
-    if self.game then self.game.active_tooltip_card = nil end
+    if self.game then
+        self.game._r_held = false
+        self.game.active_tooltip_card = nil
+    end
 
     self:calculate_play()
     local cards = self:ordered_selected_nodes()

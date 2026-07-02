@@ -201,10 +201,15 @@ function Tag:Use()
         end
         return true
     elseif self.type == "orbital" then
-        if G and G.upgrade_hand_level_at_index and type(G.hand_stats) == "table" and #G.hand_stats > 0 then
-            local idx = math.random(1, #G.hand_stats)
-            for _ = 1, 3 do
-                G:upgrade_hand_level_at_index(idx)
+        if G and G.upgrade_hand_level_at_index then
+            local idx = tonumber(self.orbital_hand_index)
+            if not idx and G.roll_orbital_hand_index then
+                idx = G:roll_orbital_hand_index()
+            end
+            if idx then
+                for _ = 1, 3 do
+                    G:upgrade_hand_level_at_index(idx)
+                end
             end
         end
         return true
@@ -225,4 +230,39 @@ function Tag:Use()
     end
 
     return false
+end
+
+Tag.DESCRIPTIONS = {
+    uncommon = "Gives a free Uncommon Joker in the next Shop",
+    rare = "Gives a free Rare Joker in the next Shop",
+    negative = "Next base-edition Joker in the Shop is Negative",
+    foil = "Next base-edition Joker in the Shop is Foil",
+    holo = "Next base-edition Joker in the Shop is Holographic",
+    polychrome = "Next base-edition Joker in the Shop is Polychrome",
+    investment = "Earn $25 at end of the Boss Blind",
+    voucher = "Adds a Voucher to the next Shop",
+    boss = "Reroll the Boss Blind",
+    standard = "Open a Mega Standard Pack",
+    charm = "Open a Mega Arcana Pack",
+    meteor = "Open a Mega Celestial Pack",
+    buffoon = "Open a Mega Buffoon Pack",
+    handy = "Earn $1 for each hand played this run",
+    garbage = "Earn $1 for each unused discard this run",
+    ethereal = "Open a Mega Spectral Pack",
+    coupon = "All initial items are free in the next Shop",
+    double = "Gives a copy of the next selected Tag",
+    juggle = "+3 hand size next round",
+    d6 = "Shop rerolls start at $0 next Shop",
+    topup = "Create up to 2 Common Jokers (Must have room)",
+    speed = "Earn $5 for each skipped Blind this run",
+    orbital = "Upgrade a poker hand by 3 levels",
+    economy = "Double money (Max of $40)",
+}
+
+function Tag.get_description(type_name, hand_name)
+    if type(type_name) ~= "string" then return "" end
+    if type_name == "orbital" and type(hand_name) == "string" and hand_name ~= "" then
+        return "Upgrade " .. hand_name .. " by 3 levels"
+    end
+    return Tag.DESCRIPTIONS[type_name] or ""
 end

@@ -45,7 +45,11 @@ function love.load()
     G.music = love.audio.newSource("resources/sounds/music1_low.ogg", "stream")
     if G.music then
         G.music:setLooping(true)
-        G.music:play()
+        if G.apply_music_volume then
+            G:apply_music_volume()
+        else
+            G.music:play()
+        end
     end
 end
 
@@ -183,9 +187,16 @@ function love.gamepadpressed(_, button)
         end
     end
 
-    -- Track L shoulder hold for sweep-select
+    -- Hold L = card select mode; quick tap at release discards
     if button == "leftshoulder" and G then
         G._l_held = true
+        G._l_press_time = love.timer.getTime()
+        if G.STATE == G.STATES.SELECTING_HAND and G.enter_card_select_mode then
+            G:enter_card_select_mode()
+        end
+    end
+    if button == "rightshoulder" and G then
+        G._r_held = true
     end
 
     if not G then return end
@@ -210,16 +221,23 @@ function love.gamepadpressed(_, button)
         end
         return
     end
-    if G.set_jokers_location then
-        if button == "up" or button == "dpup" then
+
+    if button == "up" or button == "dpup" then
+        if G._l_held and G.STATE == G.STATES.SELECTING_HAND and G.hand then
+            local node = G.dpad_cursor_node and G:dpad_cursor_node()
+            if node then G.hand:toggle_selection(node) end
+        elseif G.set_jokers_location then
             G:set_jokers_location(true)
-            return
         end
-        if button == "down" or button == "dpdown" then
+    elseif button == "down" or button == "dpdown" then
+        if G._l_held and G.STATE == G.STATES.SELECTING_HAND and G.hand then
+            local node = G.dpad_cursor_node and G:dpad_cursor_node()
+            if node then G.hand:toggle_selection(node) end
+        elseif G.set_jokers_location then
             G:set_jokers_location(false)
-            return
         end
     end
+
     if G.STATE == G.STATES.BLIND_SELECT then
         if button == "y" or button == "a" then
             G:start_selected_blind()
@@ -248,45 +266,40 @@ function love.gamepadpressed(_, button)
         return
     end
 
-    -- D-pad left/right: if L is held, sweep-select; otherwise sort
+    -- D-pad left/right: L = navigate; L+R = sweep-select; otherwise sort
     if (button == "l" or button == "dpleft") and G.hand then
-        if G._l_held then
-            local n = #(G.hand.card_nodes or {})
-            if n > 0 then
-                if not G._dpad_cursor_index then
-                    G._dpad_cursor_index = n
-                else
-                    G._dpad_cursor_index = math.max(1, G._dpad_cursor_index - 1)
-                end
-                local node = G.hand.card_nodes[G._dpad_cursor_index]
-                if node then G.hand:toggle_selection(node) end
-            end
+        if G._l_held and G.is_sweep_select_mode and G:is_sweep_select_mode() then
+            local node = G:dpad_cursor_move(-1)
+            if node then G.hand:toggle_selection(node) end
+        elseif G._l_held then
+            G:dpad_cursor_move(-1)
         else
             G.hand:sort_by_rank()
         end
     end
     if (button == "r" or button == "dpright") and G.hand then
-        if G._l_held then
-            local n = #(G.hand.card_nodes or {})
-            if n > 0 then
-                if not G._dpad_cursor_index then
-                    G._dpad_cursor_index = 1
-                else
-                    G._dpad_cursor_index = math.min(n, G._dpad_cursor_index + 1)
-                end
-                local node = G.hand.card_nodes[G._dpad_cursor_index]
-                if node then G.hand:toggle_selection(node) end
-            end
+        if G._l_held and G.is_sweep_select_mode and G:is_sweep_select_mode() then
+            local node = G:dpad_cursor_move(1)
+            if node then G.hand:toggle_selection(node) end
+        elseif G._l_held then
+            G:dpad_cursor_move(1)
         else
             G.hand:sort_by_suit()
         end
     end
-    if (button == "leftshoulder" or button == "x") and G.hand and G.hand:has_selection() then
+    if (button == "rightshoulder" and G._l_held) then
+            local node = G:dpad_cursor_move(0)
+            if node then G.hand:toggle_selection(node) end
+    end
+    if button == "x" and G.hand and G.hand:has_selection() then
         G.hand:discard_selected()
     end
     if (button == "rightshoulder" or button == "y") and G.hand and G.hand:has_selection() then
-        G:set_jokers_location(false)
-        G.hand:play_selected()
+        if not (button == "rightshoulder" and G._l_held) then
+            G:set_jokers_location(false)
+            G.hand:play_selected()
+            G._r_held = false
+        end
     end
     if (button == "b") and G and G.deck and G.hand and not G.deck:empty() and not G.hand:is_full() then
         local card = G.deck:draw()
@@ -297,8 +310,18 @@ end
 function love.gamepadreleased(_, button)
     if not G then return end
     if button == "leftshoulder" then
+        local tap_threshold = 0.25
+        local press_time = G._l_press_time
+        if press_time and (love.timer.getTime() - press_time) < tap_threshold then
+            if G.STATE == G.STATES.SELECTING_HAND and G.hand and G.hand:has_selection() then
+                G.hand:discard_selected()
+            end
+        end
         G._l_held = false
-        G._dpad_cursor_index = nil
+        G._l_press_time = nil
+    end
+    if button == "rightshoulder" then
+        G._r_held = false
     end
 end
 
