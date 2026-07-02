@@ -50,8 +50,10 @@ function love.load()
 end
 
 function love.update(dt)
-    G:update(dt)
-    Top:update(dt)
+    local speed = (G and G.SETTINGS and tonumber(G.SETTINGS.GAMESPEED)) or 1
+    if speed <= 0 then speed = 1 end
+    G:update(dt * speed)
+    Top:update(dt * speed)
 end
 
 function love.draw(screen)
@@ -181,6 +183,11 @@ function love.gamepadpressed(_, button)
         end
     end
 
+    -- Track L shoulder hold for sweep-select
+    if button == "leftshoulder" and G then
+        G._l_held = true
+    end
+
     if not G then return end
     if G.STATE == G.STATES.MENU then
         local MainMenuUI = require("main_menu_ui")
@@ -241,11 +248,38 @@ function love.gamepadpressed(_, button)
         return
     end
 
+    -- D-pad left/right: if L is held, sweep-select; otherwise sort
     if (button == "l" or button == "dpleft") and G.hand then
-        G.hand:sort_by_rank()
+        if G._l_held then
+            local n = #(G.hand.card_nodes or {})
+            if n > 0 then
+                if not G._dpad_cursor_index then
+                    G._dpad_cursor_index = n
+                else
+                    G._dpad_cursor_index = math.max(1, G._dpad_cursor_index - 1)
+                end
+                local node = G.hand.card_nodes[G._dpad_cursor_index]
+                if node then G.hand:toggle_selection(node) end
+            end
+        else
+            G.hand:sort_by_rank()
+        end
     end
     if (button == "r" or button == "dpright") and G.hand then
-        G.hand:sort_by_suit()
+        if G._l_held then
+            local n = #(G.hand.card_nodes or {})
+            if n > 0 then
+                if not G._dpad_cursor_index then
+                    G._dpad_cursor_index = 1
+                else
+                    G._dpad_cursor_index = math.min(n, G._dpad_cursor_index + 1)
+                end
+                local node = G.hand.card_nodes[G._dpad_cursor_index]
+                if node then G.hand:toggle_selection(node) end
+            end
+        else
+            G.hand:sort_by_suit()
+        end
     end
     if (button == "leftshoulder" or button == "x") and G.hand and G.hand:has_selection() then
         G.hand:discard_selected()
@@ -257,6 +291,14 @@ function love.gamepadpressed(_, button)
     if (button == "b") and G and G.deck and G.hand and not G.deck:empty() and not G.hand:is_full() then
         local card = G.deck:draw()
         if card then G.hand:add_card(card) end
+    end
+end
+
+function love.gamepadreleased(_, button)
+    if not G then return end
+    if button == "leftshoulder" then
+        G._l_held = false
+        G._dpad_cursor_index = nil
     end
 end
 
