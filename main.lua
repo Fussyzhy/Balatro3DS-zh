@@ -18,6 +18,7 @@ require "deck"
 require "hand"
 require "joker"
 require "joker_catalog"
+require "shop_nodes"
 require "consumable"
 require "game"
 require "globals"
@@ -27,6 +28,7 @@ require "topUI"
 require "popup"
 require "tag"
 require("deck_catalog")
+local YouWinUI = require "you_win"
 local MainMenuUI = require "main_menu_ui"
 local DeckViewUI = require "deck_view_ui"
 Sfx = require "sfx"
@@ -72,6 +74,8 @@ function love.draw(screen)
     else
         if G and G.STATE == G.STATES.MENU then
             MainMenuUI.draw_top(G)
+        elseif G and G.STATE == G.STATES.YOU_WIN then
+            YouWinUI.drawTop(G)
         elseif G._deck_view_open then
             DeckViewUI.draw_top(G)
         else
@@ -105,9 +109,11 @@ function love.keypressed(key)
         elseif key =="5" then
             G.money = G.money + 100
         elseif key == "6" then
-            G:addTag("speed")
+            G:addTag("voucher")
         elseif key == "7" and G.give_random_unowned_voucher then
             G:give_random_unowned_voucher()
+        elseif key == "8" and G.round_score then
+            G.round_score = G.round_score + 100000000
         end
     end
 
@@ -132,7 +138,12 @@ function love.keypressed(key)
 
     if G.STATE == G.STATES.MENU then
         local MainMenuUI = require("main_menu_ui")
-        MainMenuUI.handle_button(G, key) 
+        MainMenuUI.handle_button(G, key)
+        return
+    end
+    if G.STATE == G.STATES.YOU_WIN then
+        YouWinUI.handle_button(G, key)
+        return
     end
 
     if G.STATE == G.STATES.PAUSED then
@@ -203,6 +214,10 @@ function love.gamepadpressed(_, button)
     if G.STATE == G.STATES.MENU then
         local MainMenuUI = require("main_menu_ui")
         MainMenuUI.handle_button(G, button)
+        return
+    end
+    if G.STATE == G.STATES.YOU_WIN then
+        YouWinUI.handle_button(G, button)
         return
     end
     if G.STATE == G.STATES.PAUSED then

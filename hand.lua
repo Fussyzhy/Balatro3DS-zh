@@ -458,6 +458,9 @@ function Hand:_discard_selected_impl(reason)
         })
     end
     if reason == "discard" then
+        if self.game.record_cards_discarded then
+            self.game:record_cards_discarded(#discarded_nodes)
+        end
         for _, node in ipairs(discarded_nodes) do
             if node and node.emit_hand_event then
                 node:emit_hand_event("on_discard", {
@@ -1051,6 +1054,9 @@ function Hand:_update_play_sequence(dt)
             local final_score = math.floor(chips * mult)
             G.last_hand_score = final_score
             G.round_score = (G.round_score or 0) + final_score
+            if G.record_hand_score then
+                G:record_hand_score(final_score)
+            end
             seq.phase = "discard_wait"
             seq.timer = 0
         end
@@ -1243,6 +1249,9 @@ function Hand:play_selected()
 
     G.hands = G.hands - 1
     G.handsPlayed = G.handsPlayed + 1
+    if G.record_cards_played then
+        G:record_cards_played(#cards)
+    end
     if self.game and self.game.boss_apply_on_hand_submitted then
         self.game:boss_apply_on_hand_submitted(cards)
     end

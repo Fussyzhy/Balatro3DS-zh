@@ -202,6 +202,8 @@ function Game:set_globals()
         OPEN_BOOSTER = 20,
         --- In-run pause menu overlay.
         PAUSED = 21,
+        --- Run won (Ante 8 boss beaten).
+        YOU_WIN = 22,
     }
 
     self.STAGES = {
@@ -310,6 +312,7 @@ function Game:set_globals()
         BLACK = HEX("374244"),--4f6367"),
         L_BLACK = HEX("4f6367"),
         GREY = HEX("5f7377"),
+        LIGHT_GREY = HEX("9aa2ab"),
         CHANCE = HEX("4BC292"),
         JOKER_GREY = HEX('bfc7d5'),
         VOUCHER = HEX("cb724c"),
