@@ -1038,7 +1038,7 @@ function Hand:_update_play_sequence(dt)
             chips = tonumber(G.selectedHandChips) or 0
             mult = tonumber(G.selectedHandMult) or 1
 
-            if G._deck_special or nil == "plasma" then
+            if (G._deck_special or nil) == "plasma" then
                 local avg = math.floor((chips + mult)/2)
                 chips = avg
                 mult = avg

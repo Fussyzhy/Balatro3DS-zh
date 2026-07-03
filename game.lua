@@ -848,9 +848,9 @@ function Game:addPopup(node)
     end
 end
 
-function Game:addTag(type, opts)
+function Game:addTag(tag_type, opts)
     local double_count = 0
-    if type ~= "double" then
+    if tag_type ~= "double" then
         for i = #self.tags, 1, -1 do
             local tag = self.tags[i]
             if tag and tag.type == "double" then
@@ -863,14 +863,14 @@ function Game:addTag(type, opts)
         end
     end
 
-    t = Tag(type)
+    t = Tag(tag_type)
     if type(opts) == "table" and opts.orbital_hand_index then
         t.orbital_hand_index = opts.orbital_hand_index
     end
     if t.Use and t:Use() then
         if double_count > 0 then
             for _ = 1, double_count do
-                self:addTag(type, opts)
+                self:addTag(tag_type, opts)
             end
         end
         return
@@ -880,14 +880,14 @@ function Game:addTag(type, opts)
 
     if double_count > 0 then
         for _ = 1, double_count do
-            self:addTag(type, opts)
+            self:addTag(tag_type, opts)
         end
     end
 end
 
-function Game:hasTag(type)
+function Game:hasTag(tag_type)
     for i, t in ipairs(self.tags) do
-        if t and t.type == type then return i end
+        if t and t.type == tag_type then return i end
     end
     return -1
 end
@@ -7804,7 +7804,7 @@ function Game:update_dpad_horizontal_repeat(dt)
         return
     end
     self._dpad_h_repeat_timer = (self._dpad_h_repeat_timer or 0) + dt
-    local threshold = self._dpad_h_repeat_initial and 0.35 or 0.09
+    local threshold = self._dpad_h_repeat_initial and 0.35 or 0.2
     if self._dpad_h_repeat_timer >= threshold then
         self._dpad_h_repeat_timer = 0
         self._dpad_h_repeat_initial = false
