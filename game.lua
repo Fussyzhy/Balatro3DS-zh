@@ -1299,6 +1299,9 @@ end
 
 function Game:exit_pause_menu()
     if self.STATE ~= self.STATES.PAUSED then return false end
+    if self._pause_music_slider_drag then
+        self:save_settings()
+    end
     local resume = self._pause_prev_state or self.STATES.SELECTING_HAND
     self._pause_continue_rect = nil
     self._pause_new_run_rect = nil
@@ -1404,23 +1407,34 @@ function Game:get_music_volume()
     return math.max(0, math.min(100, math.floor(tonumber(sound and sound.music_volume) or 100)))
 end
 
-function Game:set_music_volume(pct)
+---@param pct number volume 0–100
+---@param opts table|nil `{ skip_save = true }` to avoid SD writes while dragging the slider
+function Game:set_music_volume(pct, opts)
     if not self.SETTINGS then return end
     if type(self.SETTINGS.SOUND) ~= "table" then self.SETTINGS.SOUND = {} end
     self.SETTINGS.SOUND.music_volume = math.max(0, math.min(100, math.floor(tonumber(pct) or 0)))
     self:apply_music_volume()
-    self:save_settings()
+    -- Writing settings on every drag frame freezes/stutters on 3DS SD I/O.
+    if not (opts and opts.skip_save) then
+        self:save_settings()
+    end
 end
 
 function Game:apply_music_volume()
     if not self.music then return end
-    local vol_pct = self:get_music_volume()
-    local vol = vol_pct / 100
-    self.music:setVolume(vol)
-    if vol <= 0 then
-        self.music:pause()
-    elseif not self.music:isPlaying() then
-        self.music:play()
+    local vol = self:get_music_volume() / 100
+    -- Mute with volume only. Source:pause/stop can freeze streaming audio on LovePotion/3DS.
+    pcall(function()
+        self.music:setVolume(vol)
+    end)
+    local playing = false
+    pcall(function()
+        playing = self.music:isPlaying() == true
+    end)
+    if not playing then
+        pcall(function()
+            self.music:play()
+        end)
     end
 end
 
@@ -5275,6 +5289,7 @@ function Game:advance_after_shop()
         self._ante_played_card_uids = {}
         self.current_boss_blind_id = nil
         self.current_blind_index = 1
+        self:roll_skips()
     else
         self.current_blind_index = math.min(3, (tonumber(self.current_blind_index) or 1) + 1)
     end
@@ -7547,10 +7562,13 @@ function Game:touchpressed(id, x, y)
             if slider and self:_point_in_rect_simple(x, y, slider) then
                 self._pause_music_slider_drag = true
                 local vol = self:_music_volume_from_slider_x(x)
-                if vol ~= nil then self:set_music_volume(vol) end
+                if vol ~= nil then self:set_music_volume(vol, { skip_save = true }) end
                 return
             end
             if self._pause_back_rect and self:_point_in_rect_simple(x, y, self._pause_back_rect) then
+                if self._pause_music_slider_drag then
+                    self:save_settings()
+                end
                 self._pause_show_settings = false
                 self._pause_music_slider_drag = false
                 return
@@ -7715,7 +7733,7 @@ function Game:touchmoved(id, x, y, dx, dy)
     if self.STATE == self.STATES.PAUSED then
         if self._pause_show_settings and self._pause_music_slider_drag then
             local vol = self:_music_volume_from_slider_x(x)
-            if vol ~= nil then self:set_music_volume(vol) end
+            if vol ~= nil then self:set_music_volume(vol, { skip_save = true }) end
         end
         return
     end
@@ -7765,6 +7783,9 @@ function Game:touchreleased(id, x, y)
         return
     end
     if self.STATE == self.STATES.PAUSED then
+        if self._pause_music_slider_drag then
+            self:save_settings()
+        end
         self._pause_music_slider_drag = false
         self.dragging = nil
         return
