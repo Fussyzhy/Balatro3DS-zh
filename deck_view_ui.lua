@@ -346,6 +346,38 @@ local VOUCHER_CELL_W = 71
 local VOUCHER_CELL_H = 95
 local VOUCHER_ROW_H = VOUCHER_CELL_H
 local VOUCHER_GAP = 2
+local DECK_HEADER_H = 84
+local DECK_SPRITE_BOX_W = 52
+local DECK_SPRITE_BOX_H = 68
+
+local function draw_deck_sprite(game, def, x, y, w, h)
+    if not def then return nil end
+    if game.ensure_asset_atlas_loaded then
+        game:ensure_asset_atlas_loaded("centers")
+    end
+    local atlas = game.ASSET_ATLAS and game.ASSET_ATLAS.centers
+    if not atlas or not atlas.image then return nil end
+
+    local index = tonumber(def.pos) or 0
+    local cell_w = tonumber(atlas.px) or 72
+    local cell_h = tonumber(atlas.py) or 95
+    local iw, ih = atlas.image:getDimensions()
+    local cols = math.max(1, math.floor(iw / cell_w))
+    local col = index % cols
+    local row = math.floor(index / cols)
+    local quad = love.graphics.newQuad(col * cell_w, row * cell_h, cell_w, cell_h, iw, ih)
+
+    local scale = math.min(w / cell_w, h / cell_h)
+    if scale > 1 then scale = 1 end
+    local draw_w = cell_w * scale
+    local draw_h = cell_h * scale
+    local dx = x + math.floor((w - draw_w) * 0.5 + 0.5)
+    local dy = y + math.floor((h - draw_h) * 0.5 + 0.5)
+
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.draw(atlas.image, quad, dx, dy, 0, scale, scale)
+    return dx, dy, draw_w, draw_h
+end
 
 local function draw_voucher_icon(game, voucher_id, x, y)
     local def = VOUCHER_DEFS and voucher_id and VOUCHER_DEFS[voucher_id]
@@ -384,8 +416,86 @@ end
 
 function DeckViewUI.draw_top(game)
     local margin_x = 8
-    local panel_y = 84
+    local panel_y = DECK_HEADER_H
     local panel_h = TOP_H - panel_y
+    local padding = 4
+    local deck_width = 100
+    local currentY = padding
+    -- Deck (and blind header row above the stats panel)
+    local deck_id = game.selected_deck_id or game._pending_deck_id or "b_red"
+    local deck_def = DECK_DEFS_BY_ID and DECK_DEFS_BY_ID[deck_id]
+    if not deck_def and DECK_DEFS then
+        deck_def = DECK_DEFS[1]
+    end
+
+    love.graphics.setColor(game.C.BLOCK.BACK)
+    love.graphics.rectangle("fill", 0, 0, TOP_W, DECK_HEADER_H, 8, 8)
+
+    local deck_sprite_x = margin_x
+    local deck_sprite_y = math.floor((DECK_HEADER_H - DECK_SPRITE_BOX_H) * 0.5 + 0.5)
+    draw_deck_sprite(game, deck_def, deck_sprite_x, deck_sprite_y, DECK_SPRITE_BOX_W, DECK_SPRITE_BOX_H)
+
+    love.graphics.setFont(game.FONTS.PIXEL.SMALL)
+    local label_x = deck_sprite_x + DECK_SPRITE_BOX_W + padding * 2
+    
+    love.graphics.setColor(game.C.PANEL)
+    draw_rect_with_shadow(label_x - padding, currentY, deck_width, DECK_HEADER_H - 2 * padding, 4, 4, game.C.PANEL, game.C.BLOCK.SHADOW, 2)
+    currentY = currentY + padding
+
+    love.graphics.setColor(game.C.WHITE)
+    love.graphics.print(deck_def and deck_def.name or "Deck", label_x + padding, currentY)
+    currentY = currentY + love.graphics.getFont():getHeight() + padding
+
+    if deck_def and deck_def.description then
+        love.graphics.setColor(game.C.PANEL)
+        draw_rect_with_shadow(label_x, currentY, deck_width - 2 * padding, DECK_HEADER_H - currentY - 2 * padding, 4, 4, game.C.BLOCK.BACK, game.C.BLOCK.SHADOW, 2)
+        
+        love.graphics.setColor(game.C.WHITE)
+        love.graphics.printf(deck_def.description, label_x + padding, deck_sprite_y + 18, deck_width - padding * 2, "left")
+        currentY = currentY + love.graphics.getFont():getHeight() + padding
+    end
+
+    -- Stake Information
+    currentY = padding
+    local stake_label_x = margin_x + deck_width + DECK_SPRITE_BOX_W + 2 * padding
+    local stake_width = 120
+
+    draw_rect_with_shadow(stake_label_x, currentY, stake_width, DECK_HEADER_H - 2 * padding, 4, 4, game.C.PANEL, game.C.BLOCK.SHADOW, 2)
+    currentY = currentY + padding
+
+    local stake_id = game.selected_stake_id or game._pending_stake_id or "stake_white"
+    local stake_def = STAKE_DEFS_BY_ID and STAKE_DEFS_BY_ID[stake_id]
+    if stake_def and stake_def.name then
+        love.graphics.setColor(game.C.WHITE)
+        love.graphics.print(stake_def.name, stake_label_x + padding * 2, currentY)
+        currentY = currentY + love.graphics.getFont():getHeight() + padding
+        draw_rect_with_shadow(stake_label_x + padding, currentY, stake_width - 2 * padding, DECK_HEADER_H - currentY - 2 * padding, 4, 4, game.C.BLOCK.BACK, game.C.BLOCK.SHADOW, 2)
+        currentY = currentY + padding
+
+        love.graphics.setColor(game.C.WHITE)
+        love.graphics.printf(stake_def.description, stake_label_x + padding * 2, currentY, stake_width - 2 * padding, "left")
+        currentY = currentY + love.graphics.getFont():getHeight() + padding
+    end
+
+    -- Blind Information
+    currentY = padding
+    local blind_label_x = stake_label_x + stake_width + padding
+    local blind_width = 104
+    draw_rect_with_shadow(blind_label_x, currentY, blind_width, DECK_HEADER_H - 2 * padding, 4, 4, game.C.PANEL, game.C.BLOCK.SHADOW, 2)
+    currentY = currentY + padding
+
+    local blind_index = game.current_blind_index or game.selected_blind_index or 1
+    local blind_name = (game.get_blind_display_name and game:get_blind_display_name(blind_index)) or "Blind"
+    local blind_desc = (game.get_blind_description and game:get_blind_description(blind_index)) or ""
+
+    love.graphics.setColor(game.C.WHITE)
+    love.graphics.print(blind_name, blind_label_x + padding * 2, currentY)
+    currentY = currentY + love.graphics.getFont():getHeight() + padding
+    draw_rect_with_shadow(blind_label_x + padding, currentY, blind_width - 2 * padding, DECK_HEADER_H - currentY - 2 * padding, 4, 4, game.C.BLOCK.BACK, game.C.BLOCK.SHADOW, 2)
+    currentY = currentY + padding
+
+    love.graphics.setColor(game.C.WHITE)
+    love.graphics.printf(blind_desc, blind_label_x + padding * 2, currentY, blind_width - 4 * padding, "left")
 
     love.graphics.setColor(game.C.PANEL)
     love.graphics.rectangle("fill", 0, panel_y, TOP_W, panel_h, 8, 8)

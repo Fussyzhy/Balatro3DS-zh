@@ -404,12 +404,9 @@ function Game:set_globals()
         },
         BLIND_COLORS = {
             Small = HEX("0068ad"),
-            SmallDark = HEX("003f6f"),
             Big = HEX("a56c00"),
-            BigDark = HEX("6a4200"),
             BigSign = HEX("54451a"),
             Boss = HEX("b44430"),
-            BossDark = HEX("6a2015"),
             won = HEX("4f6367")
         },
         HAND_LEVELS = {

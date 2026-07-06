@@ -67,8 +67,8 @@ function TopUI:draw()
     if not is_blind_select then
         blind_color = (G.get_blind_color and G:get_blind_color(blind_index)) or G.C.BLIND_COLORS.Big
     end
-    local blind_dark = is_blind_select and G.C.BLIND_COLORS.BigDark
-        or (G.C.BLIND_COLORS[blind_key .. "Dark"] or G.C.BLIND_COLORS.BigDark)
+    local factor = 0.5
+    local blind_dark = {blind_color[1] * factor, blind_color[2] * factor, blind_color[3] * factor, blind_color[4]}
     local blind_sign = blind_dark
 
     -- Panel

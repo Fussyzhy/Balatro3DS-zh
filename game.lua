@@ -198,9 +198,17 @@ function Game:init(seed)
         self:load_settings()
     end
 
-    -- -- Unlock all Stakes and Decks
-    -- for _, d in ipairs(DECK_DEFS)  do d.unlocked = true end
-    -- for _, s in ipairs(STAKE_DEFS) do s.unlocked = true end
+    -- Unlock all decks/stakes for testing
+    -- if self.unlocks then
+    --     for _, deck_entry in pairs(self.unlocks) do
+    --         deck_entry.unlocked = true
+    --         if type(deck_entry.stakes) == "table" then
+    --             for _, stake_entry in pairs(deck_entry.stakes) do
+    --                 stake_entry.unlocked = true
+    --             end
+    --         end
+    --     end
+    -- end
 
     if self.init_item_prototypes then
         self:init_item_prototypes()
@@ -2310,6 +2318,29 @@ function Game:get_boss_effect_text()
         bl_final_bell = "Forces 1 selected card each hand.",
     }
     return t[boss_id] or ""
+end
+
+function Game:get_blind_description(index)
+    index = tonumber(index) or tonumber(self.current_blind_index) or tonumber(self.selected_blind_index) or 1
+    local def = self:get_blind_def(index)
+    if not def then return "" end
+    if def.id == "boss" then
+        if self.boss_runtime and self.boss_runtime.disable_current_boss_ability == true then
+            return "Boss ability disabled this round."
+        end
+        local text = self:get_boss_effect_text()
+        if text ~= "" then return text end
+        local proto = self:get_boss_blind_prototype()
+        if proto and proto.debuff_text and proto.debuff_text ~= "" then
+            return proto.debuff_text
+        end
+        return "Boss blind effect."
+    end
+    local target = self:get_blind_target(index, self.ante)
+    if target and target > 0 then
+        return string.format("Score at least %d chips.", math.floor(target))
+    end
+    return def.name or "Blind"
 end
 
 function Game:get_blind_color(index)
