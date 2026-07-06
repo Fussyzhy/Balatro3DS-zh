@@ -1138,7 +1138,9 @@ local SPECIAL = {
                         for i, jj in ipairs(G.jokers) do
                             if jj == j then
                                 Sfx.play("resources/sounds/slice1.ogg")
-                                G.gros_michel_extinct = true
+                                if G.activate_joker_pool_swap then
+                                    G:activate_joker_pool_swap("j_gros_michel", "j_cavendish")
+                                end
                                 G:remove_owned_joker_at(i)
                                 break
                             end
@@ -1466,7 +1468,7 @@ local SPECIAL = {
     j_vagabond = {
         matches_trigger = function(_, e) return e == "on_hand_played" end,
         apply_effect = function(_,ctx)
-            if G and G.money and G.money < 4 then
+            if G and G.money and G.money <= 4 then
                 local tid = G:random_consumable_id_of_kind("tarot")
                 if tid then
                     G:add_consumable(tid)

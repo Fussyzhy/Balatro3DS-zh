@@ -183,7 +183,10 @@ function Game:init(seed)
     --- Last consumable id used this run (Tarot except Fool, or Planet); for The Fool duplicate.
     self.last_consumable_use_id = nil
 
-    self.gros_michel_extinct = false
+    self.joker_pool_replacements = {}
+    self.joker_pool_swap_pairs = {
+        { from = "j_gros_michel", to = "j_cavendish" },
+    }
 
     self.handsPlayed = 0
     self.discardsUnused = 0
@@ -1873,7 +1876,8 @@ function Game:build_run_snapshot()
         voucher_hands_delta = tonumber(self.voucher_hands_delta) or 0,
         boss_rerolls_used_this_ante = tonumber(self.boss_rerolls_used_this_ante) or 0,
         hand_stats = copy_table(self.hand_stats or {}),
-        gros_michel_extinct = self.gros_michel_extinct,
+        joker_pool_replacements = copy_table(self.joker_pool_replacements or {}),
+        gros_michel_extinct = self:is_joker_pool_swap_active("j_gros_michel", "j_cavendish"),
         skips = self.skips,
         skip_tag_orbital_hand = copy_table(self.skip_tag_orbital_hand or {}),
         handsPlayed = self.handsPlayed,
@@ -2034,7 +2038,10 @@ function Game:load_run_snapshot(snapshot)
     self.voucher_hands_delta = tonumber(snapshot.voucher_hands_delta) or 0
     self.boss_rerolls_used_this_ante = tonumber(snapshot.boss_rerolls_used_this_ante) or 0
     self.hand_stats = copy_table(snapshot.hand_stats or {})
-    self.gros_michel_extinct = snapshot.gros_michel_extinct == true
+    self.joker_pool_replacements = copy_table(snapshot.joker_pool_replacements or {})
+    if snapshot.gros_michel_extinct == true then
+        self.joker_pool_replacements.j_gros_michel = "j_cavendish"
+    end
     self.skips = snapshot.skips
     self.skip_tag_orbital_hand = copy_table(snapshot.skip_tag_orbital_hand or {})
     self.handsPlayed = snapshot.handsPlayed
@@ -2116,6 +2123,7 @@ function Game:load_run_snapshot(snapshot)
     end
 
     if self.sync_shop_offer_nodes then
+        self:purge_all_joker_pool_swaps_from_shop()
         self:sync_shop_offer_nodes()
     end
     if self.sync_shop_booster_nodes then
@@ -3077,17 +3085,129 @@ function Game:random_planet_id_for_hand_name(hand_name)
     return pool[math.random(1, #pool)]
 end
 
---- Gros Michel and Cavendish are mutually exclusive in random pools (shop, tags, effects).
+--- Register a joker pair that are mutually exclusive in random pools (only one may appear).
+---@param from_id string
+---@param to_id string
+function Game:register_joker_pool_swap_pair(from_id, to_id)
+    if type(from_id) ~= "string" or type(to_id) ~= "string" or from_id == "" or to_id == "" then
+        return
+    end
+    self.joker_pool_swap_pairs = self.joker_pool_swap_pairs or {}
+    for _, pair in ipairs(self.joker_pool_swap_pairs) do
+        if pair.from == from_id and pair.to == to_id then
+            return
+        end
+    end
+    self.joker_pool_swap_pairs[#self.joker_pool_swap_pairs + 1] = { from = from_id, to = to_id }
+end
+
+---@param from_id string
+---@param to_id string
+---@return boolean
+function Game:is_joker_pool_swap_active(from_id, to_id)
+    return self.joker_pool_replacements
+        and self.joker_pool_replacements[from_id] == to_id
+end
+
+--- Gros Michel / Cavendish and other registered pairs are mutually exclusive in random pools.
 ---@param joker_id string|nil
 ---@return boolean
 function Game:joker_allowed_in_random_pool(joker_id)
-    if joker_id == "j_gros_michel" then
-        return self.gros_michel_extinct ~= true
+    if type(joker_id) ~= "string" then return true end
+    for from_id, to_id in pairs(self.joker_pool_replacements or {}) do
+        if joker_id == from_id then return false end
+        if joker_id == to_id then return true end
     end
-    if joker_id == "j_cavendish" then
-        return self.gros_michel_extinct == true
+    for _, pair in ipairs(self.joker_pool_swap_pairs or {}) do
+        if joker_id == pair.to then return false end
     end
     return true
+end
+
+--- Rebuild a shop offer as `to_id`, preserving edition and free-price tags when possible.
+---@param offer table
+---@param from_id string
+---@param to_id string
+---@return table
+function Game:replace_shop_joker_offer(offer, from_id, to_id)
+    if type(offer) ~= "table" then return offer end
+    if offer.kind ~= "joker" and offer.kind ~= nil then return offer end
+    if offer.id ~= from_id then return offer end
+    local def = JOKER_DEFS and JOKER_DEFS[to_id]
+    if type(def) ~= "table" then return offer end
+
+    local edition = offer.edition or "base"
+    local sticker_params = offer.stickers or self:_build_joker_sticker_params(def)
+    local preserved_price = tonumber(offer.price)
+    offer.id = to_id
+    offer.name = def.name or to_id
+    offer.edition = edition
+    offer.stickers = sticker_params
+    offer.create_params = self:_build_joker_create_params(def, { edition = edition }, sticker_params)
+    if preserved_price == 0 then
+        offer.price = 0
+    else
+        offer.price = self:shop_price_for_joker_offer(def, edition, sticker_params)
+    end
+    offer.eternal = sticker_params.eternal == true or nil
+    offer.perishable = sticker_params.perishable == true or nil
+    offer.rental = sticker_params.rental == true or nil
+    return offer
+end
+
+--- Apply any active joker pool swap to a queued or visible shop offer.
+---@param offer table|nil
+---@return table|nil
+function Game:remap_shop_joker_offer(offer)
+    if type(offer) ~= "table" then return offer end
+    local from_id = offer.id
+    if type(from_id) ~= "string" then return offer end
+    local to_id = self.joker_pool_replacements and self.joker_pool_replacements[from_id]
+    if not to_id then return offer end
+    return self:replace_shop_joker_offer(offer, from_id, to_id)
+end
+
+--- Replace `from_id` with `to_id` in the shop queue and current offers.
+---@param from_id string
+---@param to_id string
+function Game:purge_joker_pool_swap_from_shop(from_id, to_id)
+    if not self:is_joker_pool_swap_active(from_id, to_id) then return end
+    if type(self.shop_offer_queue) == "table" then
+        for _, entry in ipairs(self.shop_offer_queue) do
+            self:replace_shop_joker_offer(entry, from_id, to_id)
+        end
+    end
+    if type(self.shop_offers) == "table" then
+        for _, entry in ipairs(self.shop_offers) do
+            self:replace_shop_joker_offer(entry, from_id, to_id)
+        end
+    end
+end
+
+function Game:purge_all_joker_pool_swaps_from_shop()
+    for from_id, to_id in pairs(self.joker_pool_replacements or {}) do
+        self:purge_joker_pool_swap_from_shop(from_id, to_id)
+    end
+end
+
+--- Activate a joker pool swap (e.g. Gros Michel -> Cavendish after extinction).
+---@param from_id string
+---@param to_id string
+function Game:activate_joker_pool_swap(from_id, to_id)
+    if type(from_id) ~= "string" or type(to_id) ~= "string" or from_id == "" or to_id == "" then
+        return
+    end
+    self:register_joker_pool_swap_pair(from_id, to_id)
+    self.joker_pool_replacements = self.joker_pool_replacements or {}
+    if self.joker_pool_replacements[from_id] == to_id then
+        self:purge_joker_pool_swap_from_shop(from_id, to_id)
+        return
+    end
+    self.joker_pool_replacements[from_id] = to_id
+    self:purge_joker_pool_swap_from_shop(from_id, to_id)
+    if self.sync_shop_offer_nodes then
+        self:sync_shop_offer_nodes()
+    end
 end
 
 function Game:random_joker_def_id()
@@ -5496,7 +5616,7 @@ function Game:initialize_run_loop()
     self:init_shop_offer_queue()
     self:roll_skips()
     self:set_state(self.STATES.BLIND_SELECT)
-    self.gros_michel_extinct = false
+    self.joker_pool_replacements = {}
 end
 
 function Game:enter_blind_select()
@@ -6041,7 +6161,11 @@ end
 
 function Game:_pop_shop_queue_entry()
     self:_refill_shop_offer_queue(64)
-    return table.remove(self.shop_offer_queue, 1)
+    local entry = table.remove(self.shop_offer_queue, 1)
+    if entry then
+        self:remap_shop_joker_offer(entry)
+    end
+    return entry
 end
 
 function Game:_shop_queue_emergency_joker_offer()
