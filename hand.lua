@@ -54,6 +54,15 @@ function Hand:is_scoring_active()
     return self._play_sequence ~= nil
 end
 
+--- Keep `self.cards` aligned with each node's `card_data` (tarots may replace node tables).
+function Hand:sync_cards_from_nodes()
+    for i, node in ipairs(self.card_nodes or {}) do
+        if node and node.card_data then
+            self.cards[i] = node.card_data
+        end
+    end
+end
+
 ---@param bypass_limit boolean|nil if true, allow one card over normal hand cap (e.g. Certificate)
 function Hand:add_card(card_data, bypass_limit)
     if not card_data or not self.game then return nil end
@@ -263,6 +272,7 @@ end
 
 --- Return every card in the hand and draw queue back to the deck draw pile (not discard).
 function Hand:return_all_cards_to_deck_draw_pile()
+    self:sync_cards_from_nodes()
     local deck = self.game and self.game.deck
     if not deck or not deck.insert_random then
         self:clear()
@@ -279,6 +289,7 @@ end
 
 --- Push every card still in the hand (and queued draws) to the deck discard pile, then clear hand nodes. Used when a blind is beaten.
 function Hand:send_entire_hand_to_discard_pile()
+    self:sync_cards_from_nodes()
     local deck = self.game and self.game.deck
     if not deck or not deck.push_discard then
         self:clear()
@@ -386,6 +397,7 @@ end
 --- Internal discard used after play sequence (or directly when not scoring).
 function Hand:_discard_selected_impl(reason)
     if not self.game then return end
+    self:sync_cards_from_nodes()
     -- Played cards may have been destroyed during scoring (e.g. Sixth Sense); still finish the play.
     if #self.selected == 0 then
         if reason == "play" then

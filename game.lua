@@ -3030,6 +3030,25 @@ function Game:deep_copy_card_data(data)
     return c
 end
 
+--- Deep-copy `src` into existing table `dest` (keeps `dest` reference for hand/deck tracking).
+---@param dest table
+---@param src table
+---@return table|nil
+function Game:copy_card_data_into(dest, src)
+    if type(dest) ~= "table" or type(src) ~= "table" then return dest end
+    for k in pairs(dest) do
+        dest[k] = nil
+    end
+    for k, v in pairs(src) do
+        if type(v) == "table" then
+            dest[k] = self:deep_copy_card_data(v)
+        else
+            dest[k] = v
+        end
+    end
+    return dest
+end
+
 function Game:has_played_hand_name(hand_name)
     if type(hand_name) ~= "string" or hand_name == "" then return false end
     if type(self.handlist) ~= "table" then return false end
@@ -3584,8 +3603,8 @@ function Game:apply_consumable_effect(c)
     elseif id == "tarot_death" then
         if #ord >= 2 then
             local left, right = ord[1], ord[2]
-            if right.card_data then
-                left.card_data = self:deep_copy_card_data(right.card_data)
+            if right.card_data and left.card_data and self.copy_card_data_into then
+                self:copy_card_data_into(left.card_data, right.card_data)
                 left:sync_visual_from_card_data()
             end
         end
@@ -5502,6 +5521,9 @@ function Game:recycle_full_deck()
 
     local hand_cards, hand_queue = {}, {}
     if self.hand then
+        if self.hand.sync_cards_from_nodes then
+            self.hand:sync_cards_from_nodes()
+        end
         hand_cards = self.hand.cards or {}
         hand_queue = self.hand._draw_queue or {}
         if self.hand.clear then
