@@ -272,6 +272,7 @@ function Game:set_globals()
     }
     self.ANIMATION_ATLAS = {}
     self.ASSET_ATLAS = {}
+    self.JOKER_SPRITES = {}
     self.MOVEABLES = {}
     self.ANIMATIONS = {}
     self.DRAW_HASH = {}

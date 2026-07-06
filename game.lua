@@ -198,9 +198,9 @@ function Game:init(seed)
         self:load_settings()
     end
 
-    -- Unlock all Stakes and Decks
-    for _, d in ipairs(DECK_DEFS)  do d.unlocked = true end
-    for _, s in ipairs(STAKE_DEFS) do s.unlocked = true end
+    -- -- Unlock all Stakes and Decks
+    -- for _, d in ipairs(DECK_DEFS)  do d.unlocked = true end
+    -- for _, s in ipairs(STAKE_DEFS) do s.unlocked = true end
 
     if self.init_item_prototypes then
         self:init_item_prototypes()
@@ -1192,18 +1192,18 @@ function Game:updateTagList()
     end
 end
 
-function Game:_is_managed_joker_atlas_name(name)
-    return type(name) == "string" and string.sub(name, 1, 5) == "Joker"
+function Game:_is_managed_joker_sprite_key(name)
+    return type(name) == "string" and string.sub(name, 1, 6) == "Jokers"
 end
 
 function Game:_inc_atlas_owner(name)
-    if not self:_is_managed_joker_atlas_name(name) then return end
+    if not self:_is_managed_joker_sprite_key(name) then return end
     if type(self._atlas_owner_counts) ~= "table" then self._atlas_owner_counts = {} end
     self._atlas_owner_counts[name] = (tonumber(self._atlas_owner_counts[name]) or 0) + 1
 end
 
 function Game:_dec_atlas_owner(name)
-    if not self:_is_managed_joker_atlas_name(name) then return end
+    if not self:_is_managed_joker_sprite_key(name) then return end
     if type(self._atlas_owner_counts) ~= "table" then self._atlas_owner_counts = {} end
     local n = (tonumber(self._atlas_owner_counts[name]) or 0) - 1
     if n > 0 then
@@ -1212,13 +1212,13 @@ function Game:_dec_atlas_owner(name)
     end
     self._atlas_owner_counts[name] = nil
 
-    local atlas = self.ASSET_ATLAS and self.ASSET_ATLAS[name]
-    if atlas and atlas.image then
-        if atlas.image.release then
-            pcall(function() atlas.image:release() end)
+    local entry = self.JOKER_SPRITES and self.JOKER_SPRITES[name]
+    if entry and entry.image then
+        if entry.image.release then
+            pcall(function() entry.image:release() end)
         end
-        atlas.image = nil
-        atlas.load_error = nil
+        entry.image = nil
+        entry.load_error = nil
     end
 end
 
@@ -1226,7 +1226,7 @@ function Game:_register_joker_front_atlas_owner(joker)
     if not joker or joker._atlas_ref_registered == true then return end
     local name = joker._front_atlas_ref_name
     if type(name) ~= "string" or name == "" then
-        name = joker.front_atlas and joker.front_atlas.name
+        name = joker.front_sprite_key
     end
     if type(name) == "string" and name ~= "" then
         self:_inc_atlas_owner(name)
@@ -1263,6 +1263,225 @@ end
 
 function Game:is_hand_scoring_active()
     return self.hand and self.hand.is_scoring_active and self.hand:is_scoring_active() == true
+end
+
+function Game:build_unlocks()
+    local unlocks = {}
+    for _, d in ipairs(DECK_DEFS or {}) do
+        local deck_entry = {
+            id = d.id,
+            name = d.name,
+            stakes = {},
+            unlocked = d.id == "b_red",
+        }
+        for _, s in ipairs(STAKE_DEFS or {}) do
+            deck_entry.stakes[s.id] = {
+                id = s.id,
+                name = s.name,
+                unlocked = s.id == "stake_white",
+                defeated = false,
+            }
+        end
+        unlocks[d.id] = deck_entry
+    end
+    return unlocks
+end
+
+function Game:normalize_unlocks(data)
+    local unlocks = self:build_unlocks()
+    if type(data) ~= "table" then return unlocks end
+    for deck_id, deck_entry in pairs(unlocks) do
+        local saved_deck = data[deck_id]
+        if type(saved_deck) == "table" then
+            if saved_deck.unlocked ~= nil then
+                deck_entry.unlocked = saved_deck.unlocked == true
+            end
+            if type(saved_deck.stakes) == "table" and type(deck_entry.stakes) == "table" then
+                for stake_id, stake_entry in pairs(deck_entry.stakes) do
+                    local saved_stake = saved_deck.stakes[stake_id]
+                    if type(saved_stake) == "table" then
+                        if saved_stake.unlocked ~= nil then
+                            stake_entry.unlocked = saved_stake.unlocked == true
+                        end
+                        if saved_stake.defeated ~= nil then
+                            stake_entry.defeated = saved_stake.defeated == true
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return unlocks
+end
+
+function Game:apply_unlocks(unlocks)
+    self.unlocks = self:normalize_unlocks(unlocks)
+    if self.SETTINGS then
+        self.SETTINGS.UNLOCKS = self.unlocks
+    end
+    for _, d in ipairs(DECK_DEFS or {}) do
+        local entry = self.unlocks[d.id]
+        if entry then
+            d.unlocked = entry.unlocked == true
+        end
+    end
+end
+
+function Game:is_deck_unlocked(deck_id)
+    local deck = self.unlocks and self.unlocks[deck_id or ""]
+    return deck and deck.unlocked == true
+end
+
+function Game:is_stake_unlocked(deck_id, stake_id)
+    local deck = self.unlocks and self.unlocks[deck_id or ""]
+    local stake = deck and deck.stakes and deck.stakes[stake_id or ""]
+    return stake and stake.unlocked == true
+end
+
+function Game:is_stake_defeated(deck_id, stake_id)
+    local deck = self.unlocks and self.unlocks[deck_id or ""]
+    local stake = deck and deck.stakes and deck.stakes[stake_id or ""]
+    return stake and stake.defeated == true
+end
+
+local DISCOVERY_DECK_THRESHOLDS = {
+    b_blue = 20,
+    b_yellow = 50,
+    b_green = 75,
+    b_black = 100,
+}
+
+function Game:build_discovered()
+    return { j_joker = true }
+end
+
+function Game:normalize_discovered(data)
+    local out = self:build_discovered()
+    if type(data) ~= "table" then return out end
+    for id, flag in pairs(data) do
+        if type(id) == "string" and flag == true then
+            out[id] = true
+        end
+    end
+    return out
+end
+
+function Game:is_trackable_discovery_id(id)
+    if type(id) ~= "string" or id == "" then return false end
+    if JOKER_DEFS and JOKER_DEFS[id] then return true end
+    local def = CONSUMABLE_DEFS and CONSUMABLE_DEFS[id]
+    if not def then return false end
+    local kind = def.kind
+    return kind == "tarot" or kind == "planet" or kind == "spectral"
+end
+
+function Game:apply_discovered(discovered)
+    self.Discovered = self:normalize_discovered(discovered)
+    if self.SETTINGS then
+        self.SETTINGS.DISCOVERED = self.Discovered
+    end
+    self:refresh_discovery_deck_unlocks()
+end
+
+function Game:count_discoveries()
+    local n = 0
+    for id, flag in pairs(self.Discovered or {}) do
+        if flag == true and self:is_trackable_discovery_id(id) then
+            n = n + 1
+        end
+    end
+    return n
+end
+
+function Game:is_discovered(id)
+    return type(id) == "string" and self.Discovered and self.Discovered[id] == true
+end
+
+function Game:refresh_discovery_deck_unlocks()
+    if not self.unlocks then self:apply_unlocks(self:build_unlocks()) end
+    local count = self:count_discoveries()
+    for deck_id, required in pairs(DISCOVERY_DECK_THRESHOLDS) do
+        if count >= required then
+            local deck = self.unlocks[deck_id]
+            if deck then deck.unlocked = true end
+        end
+    end
+    for _, d in ipairs(DECK_DEFS or {}) do
+        local entry = self.unlocks[d.id]
+        if entry then
+            d.unlocked = entry.unlocked == true
+        end
+    end
+    if self.SETTINGS then
+        self.SETTINGS.UNLOCKS = self.unlocks
+    end
+end
+
+--- Record first-time discovery of a Joker, Tarot, Planet, or Spectral card.
+---@return boolean true when newly discovered
+function Game:discover_item(id)
+    if not self:is_trackable_discovery_id(id) then return false end
+    if not self.Discovered then self.Discovered = {} end
+    if self.Discovered[id] == true then return false end
+
+    self.Discovered[id] = true
+    if self.SETTINGS then
+        self.SETTINGS.DISCOVERED = self.Discovered
+    end
+    self:refresh_discovery_deck_unlocks()
+    self:save_settings()
+    return true
+end
+
+function Game:record_stake_victory()
+    local deck_id = self.selected_deck_id or self._pending_deck_id
+    local stake_id = self.selected_stake_id or self._pending_stake_id
+    if type(deck_id) ~= "string" or type(stake_id) ~= "string" then return false end
+    if not self.unlocks then self:apply_unlocks(self:build_unlocks()) end
+
+    local deck = self.unlocks[deck_id]
+    local stake = deck and deck.stakes and deck.stakes[stake_id]
+    if not stake then return false end
+    if stake.defeated == true then return true end
+
+    stake.defeated = true
+    local unlock_next = false
+    for _, s in ipairs(STAKE_DEFS or {}) do
+        if unlock_next then
+            local next_stake = deck.stakes[s.id]
+            if next_stake then next_stake.unlocked = true end
+            break
+        end
+        if s.id == stake_id then unlock_next = true end
+    end
+
+    -- Deck Unlocks
+    if deck.id == "b_red" then
+        self.unlocks["b_magic"].unlocked = true
+    elseif deck.id == "b_blue" then
+        self.unlocks["b_nebula"].unlocked = true
+    elseif deck.id == "b_yellow" then
+        self.unlocks["b_ghost"].unlocked = true
+    elseif deck.id == "b_green" then
+        self.unlocks["b_abandoned"].unlocked = true
+    elseif deck.id == "b_black" then
+        self.unlocks["b_checkered"].unlocked = true
+    end
+    if stake.id == "stake_red" then
+        self.unlocks["b_zodiac"].unlocked = true
+    elseif stake.id == "stake_green" then
+        self.unlocks["b_painted"].unlocked = true
+    elseif stake.id == "stake_black" then
+        self.unlocks["b_anaglyph"].unlocked = true
+    elseif stake.id == "stake_blue" then
+        self.unlocks["b_plasma"].unlocked = true
+    elseif stake.id == "stake_orange" then
+        self.unlocks["b_erratic"].unlocked = true
+    end
+
+    self:apply_unlocks(self.unlocks)
+    self:save_settings()
+    return true
 end
 
 function Game:can_pause_now()
@@ -1322,6 +1541,8 @@ function Game:default_settings()
         GAMESPEED = 1,
         SOUND = { music_volume = 100 },
         GRAPHICS = { texture_scaling = 1 },
+        UNLOCKS = self:build_unlocks(),
+        DISCOVERED = self:build_discovered(),
     }
 end
 
@@ -1349,6 +1570,9 @@ function Game:normalize_settings(data)
         end
     end
 
+    out.UNLOCKS = self:normalize_unlocks(data.UNLOCKS)
+    out.DISCOVERED = self:normalize_discovered(data.DISCOVERED)
+
     return out
 end
 
@@ -1359,24 +1583,37 @@ function Game:snapshot_settings()
         GRAPHICS = {
             texture_scaling = tonumber(self.SETTINGS and self.SETTINGS.GRAPHICS and self.SETTINGS.GRAPHICS.texture_scaling) or 1,
         },
+        UNLOCKS = self:normalize_unlocks(self.unlocks or (self.SETTINGS and self.SETTINGS.UNLOCKS)),
+        DISCOVERED = self:normalize_discovered(self.Discovered or (self.SETTINGS and self.SETTINGS.DISCOVERED)),
     }
 end
 
 function Game:load_settings()
     self.SETTINGS = copy_table(self:default_settings())
+    local function finish_load()
+        self:apply_unlocks(self.SETTINGS.UNLOCKS)
+        self:apply_discovered(self.SETTINGS.DISCOVERED)
+    end
     if not (love and love.filesystem and love.filesystem.load and love.filesystem.getInfo) then
+        finish_load()
         return false
     end
     if not love.filesystem.getInfo(SETTINGS_SAVE_PATH, "file") then
+        finish_load()
         return false
     end
     local chunk, err = love.filesystem.load(SETTINGS_SAVE_PATH)
-    if not chunk then return false, tostring(err or "load_failed") end
+    if not chunk then
+        finish_load()
+        return false, tostring(err or "load_failed")
+    end
     local ok, data = pcall(chunk)
     if not ok or type(data) ~= "table" then
+        finish_load()
         return false, "decode_failed"
     end
     self.SETTINGS = self:normalize_settings(data)
+    finish_load()
     return true
 end
 
@@ -2238,8 +2475,8 @@ function Game:draw()
     -- Dark panel behind the joker row (bottom screen): only as wide as owned jokers.
     -- Draw this after bottom-state UI so it remains visible, but before nodes.
     if self.jokers_on_bottom == true and self.jokers and #self.jokers > 0 then
-        local slot_w = self.joker_slot_w or 71
-        local slot_h = self.joker_slot_h or 95
+        local slot_w = self.joker_slot_w or 70
+        local slot_h = self.joker_slot_h or 94
         local slot_gap = self.joker_slot_gap or 8
         local s = self.joker_slot_scale_bottom or 1
 
@@ -2493,6 +2730,7 @@ function Game:add_consumable(def_id, create_params)
     self:add(node)
     self:refresh_consumable_capacity_from_negatives()
 
+    self:discover_item(def_id)
     self:draw_consumables_row()
     return true
 end
@@ -2883,6 +3121,7 @@ function Game:apply_consumable_effect(c)
     if type(c) ~= "table" then return end
     local kind = c.kind
     local id = c.id
+    if id then self:discover_item(id) end
     local hand = self.hand
     local function ordered_nodes()
         return (hand and hand.ordered_selected_nodes and hand:ordered_selected_nodes()) or {}
@@ -3039,24 +3278,32 @@ function Game:apply_consumable_effect(c)
                 local src = self.jokers[math.random(1, #self.jokers)]
                 local src_id = src and src.def and src.def.id
                 local src_edition = Joker and Joker.normalize_edition(src and src.edition) or "base"
-                local src_copy = self.deep_copy_card_data and self:deep_copy_card_data(src or {}) or nil
-                for i = #self.jokers, 1, -1 do
-                    self:remove_owned_joker_at(i)
-                end
-                if src_id and self:joker_has_room_for_new(src_edition) and self:add_joker_by_def(src_id, { edition = src_edition }) then
-                    local clone = self.jokers[#self.jokers]
-                    if clone and src_copy then
-                        for k, v in pairs(src_copy) do
-                            if type(v) ~= "function" and k ~= "def" and k ~= "params" and k ~= "effect_impl"
-                                and k ~= "T" and k ~= "VT" and k ~= "velocity" and k ~= "drag"
-                                and k ~= "hovering" and k ~= "_hover_last" and k ~= "_touch_state"
-                                and k ~= "children" and k ~= "parent" and k ~= "front_quads"
-                                and k ~= "back_quads" and k ~= "sprite_batch" then
-                                clone[k] = v
-                            end
+                if src_id and src then
+                    for i = #self.jokers, 1, -1 do
+                        local j = self.jokers[i]
+                        if j ~= src then
+                            self:remove_owned_joker_at(i)
                         end
-                        clone.edition = src_edition
-                        if clone.refresh_quads then clone:refresh_quads() end
+                    end
+                    if self:joker_has_room_for_new(src_edition) and self:add_joker_by_def(src_id, { edition = src_edition }) then
+                        local clone = self.jokers[#self.jokers]
+                        if clone then
+                            for k, v in pairs(src) do
+                                if type(v) ~= "function" and k ~= "def" and k ~= "params" and k ~= "effect_impl"
+                                    and k ~= "T" and k ~= "VT" and k ~= "velocity" and k ~= "drag"
+                                    and k ~= "hovering" and k ~= "_hover_last" and k ~= "_touch_state"
+                                    and k ~= "children" and k ~= "parent" and k ~= "front_quads"
+                                    and k ~= "back_quads" and k ~= "sprite_batch" then
+                                    if type(v) == "table" then
+                                        clone[k] = self:deep_copy_card_data(v)
+                                    else
+                                        clone[k] = v
+                                    end
+                                end
+                            end
+                            clone.edition = src_edition
+                            if clone.refresh_quads then clone:refresh_quads() end
+                        end
                     end
                 end
             end
@@ -4345,8 +4592,8 @@ end
 
 --- Rough top/bottom start positions before `_apply_joker_layout` (uses owned count).
 function Game:recompute_joker_slot_layout()
-    self.joker_slot_w = self.joker_slot_w or 71
-    self.joker_slot_h = self.joker_slot_h or 95
+    self.joker_slot_w = self.joker_slot_w or 70
+    self.joker_slot_h = self.joker_slot_h or 94
     self.joker_slot_gap = self.joker_slot_gap or 8
     self.joker_slot_y_top = self.joker_slot_y_top or 124
     self.joker_slot_y_bottom = self.joker_slot_y_bottom or 20
@@ -4355,7 +4602,7 @@ function Game:recompute_joker_slot_layout()
     local TOP_SCREEN_W = 400
     local n = #(self.jokers or {})
     local eff_n = math.max(n, 1)
-    local card_w = self.joker_slot_w or 71
+    local card_w = self.joker_slot_w or 70
     local gap = self.joker_slot_gap or 8
 
     local _, _, top_x = self:_compute_fanned_joker_row(eff_n, TOP_SCREEN_W, card_w, gap, 8)
@@ -4404,7 +4651,7 @@ function Game:init_jokers()
     self.jokers_sliding = false
     self.jokers_slide_time_left = 0
 
-    self.joker_slot_w, self.joker_slot_h = 71, 95
+    self.joker_slot_w, self.joker_slot_h = 70, 94
     self.joker_slot_gap = 8
     self.joker_slot_y_top = 124 - 10
     self.joker_slot_y_bottom = 20
@@ -4587,6 +4834,8 @@ function Game:add_joker_by_def(def_id, create_params)
 
     self:refresh_joker_capacity_from_negatives()
 
+    self:discover_item(def_id)
+
     -- Snap immediately if we're not in a DPAD slide transition.
     if self.jokers_sliding ~= true then
         for _, jj in ipairs(self.jokers) do
@@ -4707,8 +4956,8 @@ function Game:_apply_joker_layout()
 
     local TOP_SCREEN_W = 400
     local BOTTOM_SCREEN_W = 320
-    local slot_w = self.joker_slot_w or 71
-    local slot_h = self.joker_slot_h or 95
+    local slot_w = self.joker_slot_w or 70
+    local slot_h = self.joker_slot_h or 94
     local gap = self.joker_slot_gap or 8
 
     if self.jokers_on_bottom == true then
@@ -7023,6 +7272,7 @@ function Game:enter_you_win()
     self.active_tooltip_consumable_index = nil
     self.dragging = nil
     self._you_win_button_rects = nil
+    self:record_stake_victory()
     self:set_state(self.STATES.YOU_WIN)
 end
 
@@ -7362,14 +7612,14 @@ function Game:set_jokers_location(on_bottom)
         if to_bottom then
             -- Start above the bottom screen so it feels like sliding down from the top.
             local s = self.joker_slot_scale_bottom or 1
-            local slot_h = self.joker_slot_h or 95
+            local slot_h = self.joker_slot_h or 94
             local h = slot_h * s
             local delta_y = (slot_h * s * (1 - s)) / 2
             start_y = -(h + 60) - delta_y -- guaranteed < 0 (effective visible)
         else
             -- Start below the bottom slots so it feels like sliding up.
             local s = self.joker_slot_scale_bottom or 1
-            local slot_h = self.joker_slot_h or 95
+            local slot_h = self.joker_slot_h or 94
             local h = slot_h * s
             local delta_y = (slot_h * s * (1 - s)) / 2
             start_y = (self.joker_slot_y_bottom or 20) + h + 60 - delta_y
@@ -8185,6 +8435,46 @@ function Game:move_selected_hand_cards_to_front()
     self.nodes = ordered
 end
 
+function Game:ensure_joker_sprite_loaded(key)
+    if not key then return nil end
+    if type(self.JOKER_SPRITES) ~= "table" then self.JOKER_SPRITES = {} end
+    local entry = self.JOKER_SPRITES[key]
+    if entry and entry.image then return entry end
+    if not entry then
+        entry = {
+            name = key,
+            path = "resources/textures/1x/Jokers/" .. key .. ".png",
+            image = nil,
+            w = (Joker and Joker.SPRITE_W) or 70,
+            h = (Joker and Joker.SPRITE_H) or 94,
+        }
+        self.JOKER_SPRITES[key] = entry
+    end
+    if not entry.path then return entry end
+
+    local ok, img = pcall(love.graphics.newImage, entry.path, { dpiscale = self.SETTINGS.GRAPHICS.texture_scaling, mipmaps = false })
+    local err = ok and nil or img
+    if not ok then
+        ok, img = pcall(love.graphics.newImage, entry.path, {})
+        if not ok then err = img end
+    end
+    entry.image = ok and img or nil
+    entry.load_error = ok and nil or tostring(err)
+    return entry
+end
+
+function Game:unload_joker_sprite(key)
+    if not key or type(self.JOKER_SPRITES) ~= "table" then return false end
+    local entry = self.JOKER_SPRITES[key]
+    if not entry or not entry.image then return false end
+    if entry.image.release then
+        pcall(function() entry.image:release() end)
+    end
+    entry.image = nil
+    entry.load_error = nil
+    return true
+end
+
 function Game:ensure_asset_atlas_loaded(name)
     if not name or not self.ASSET_ATLAS then return nil end
     local atlas = self.ASSET_ATLAS[name]
@@ -8233,20 +8523,6 @@ function Game:set_render_settings()
             {name = "cards_1", path = "resources/textures/1x/8BitDeck.png",px=72,py=95},
             {name = "cards_2", path = "resources/textures/1x/8BitDeck_opt2.png",px=72,py=95},
             {name = "centers", path = "resources/textures/1x/Enhancers.png",px=72,py=95},
-            {name = "Joker1_p1", path = "resources/textures/1x/Jokers1_p1.png",px=71,py=95},
-            {name = "Joker1_p2", path = "resources/textures/1x/Jokers1_p2.png",px=71,py=95},
-            {name = "Joker1_p3", path = "resources/textures/1x/Jokers1_p3.png",px=71,py=95},
-            {name = "Joker1_p4", path = "resources/textures/1x/Jokers1_p4.png",px=71,py=95},
-            {name = "Joker2_p1", path = "resources/textures/1x/Jokers2_p1.png",px=71,py=95},
-            {name = "Joker2_p2", path = "resources/textures/1x/Jokers2_p2.png",px=71,py=95},
-            {name = "Joker2_p3", path = "resources/textures/1x/Jokers2_p3.png",px=71,py=95},
-            {name = "Joker1_negative_p1", path = "resources/textures/1x/Jokers1_negative_p1.png",px=71,py=95},
-            {name = "Joker1_negative_p2", path = "resources/textures/1x/Jokers1_negative_p2.png",px=71,py=95},
-            {name = "Joker1_negative_p3", path = "resources/textures/1x/Jokers1_negative_p3.png",px=71,py=95},
-            {name = "Joker1_negative_p4", path = "resources/textures/1x/Jokers1_negative_p4.png",px=71,py=95},
-            {name = "Joker2_negative_p1", path = "resources/textures/1x/Jokers2_negative_p1.png",px=71,py=95},
-            {name = "Joker2_negative_p2", path = "resources/textures/1x/Jokers2_negative_p2.png",px=71,py=95},
-            {name = "Joker2_negative_p3", path = "resources/textures/1x/Jokers2_negative_p3.png",px=71,py=95},
             {name = "Tarot", path = "resources/textures/1x/Tarots.png",px=64,py=96},
             {name = "Voucher", path = "resources/textures/1x/Vouchers.png",px=72,py=95},
             {name = "Booster", path = "resources/textures/1x/boosters.png",px=72,py=95},
@@ -8360,11 +8636,6 @@ function Game:set_render_settings()
 
         self.ASSET_ATLAS.Planet = self.ASSET_ATLAS.Tarot
         self.ASSET_ATLAS.Spectral = self.ASSET_ATLAS.Tarot
-        -- Compatibility aliases for any legacy joker defs still using unsuffixed atlas names.
-        self.ASSET_ATLAS.Joker1 = self.ASSET_ATLAS.Joker1_p1
-        self.ASSET_ATLAS.Joker2 = self.ASSET_ATLAS.Joker2_p1
-        self.ASSET_ATLAS.Joker1_negative = self.ASSET_ATLAS.Joker1_negative_p1
-        self.ASSET_ATLAS.Joker2_negative = self.ASSET_ATLAS.Joker2_negative_p1
 
         for _, v in pairs(G.I.SPRITE) do
             v:reset()

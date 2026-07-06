@@ -71,6 +71,19 @@ function love.draw(screen)
     if screen == "bottom" then
         love.graphics.setColor(1, 1, 1)
         G:draw()
+        --[[ local stats = love.graphics.getStats()
+        if stats then
+            love.graphics.setFont(G.FONTS.PIXEL.MEDIUM)
+            if stats.images then
+                love.graphics.print(stats.images, 6, 0)
+            end
+            if stats.canvases then
+                love.graphics.print(stats.canvases, 6, 20)
+            end
+            if stats.texturememory then
+                love.graphics.print(stats.texturememory, 6, 40)
+            end
+        end ]]
     else
         if G and G.STATE == G.STATES.MENU then
             MainMenuUI.draw_top(G)

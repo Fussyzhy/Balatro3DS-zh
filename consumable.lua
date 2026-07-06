@@ -156,6 +156,9 @@ end
 ---@return string[]
 function Consumable:get_tooltip_body_lines()
     local def = self.def or {}
+    if G and G.is_discovered and def.id and not G:is_discovered(def.id) then
+        return { "Buy or Use to Discover" }
+    end
     if def.kind == "planet" and type(def.hand) == "string" and def.hand ~= "" then
         return { string.format("Increases the value of %s", def.hand) }
     end

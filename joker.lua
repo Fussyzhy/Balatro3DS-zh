@@ -3,8 +3,7 @@ Joker = Moveable:extend()
 require "joker_effects"
 local TooltipDraw = require("tooltip_draw")
 
--- Basic 2-layer joker: back sprite and front sprite.
--- Rendering logic is similar to `Card:draw()` but uses atlas cell indices instead of rank/suit.
+-- Basic 2-layer joker: back sprite (centers atlas) and front sprite (individual PNG).
 
 local SHAKE_MAGNITUDE = 10
 local SHAKE_MAX_DURATION = (JokerEffects and JokerEffects.SHAKE_MAX_DURATION) or 0.22
@@ -13,6 +12,23 @@ local JOKER_STICKER_INDICES = {
     eternal = 0,
     rental = 11,
     perishable = 10,
+}
+
+Joker.SPRITE_W = 70
+Joker.SPRITE_H = 94
+local JOKER_SPRITE_W = Joker.SPRITE_W
+local JOKER_SPRITE_H = Joker.SPRITE_H
+
+local JOKER_PAGE_OFFSETS = {
+    Joker1 = 0,
+    Joker1_p1 = 0,
+    Joker1_p2 = 24,
+    Joker1_p3 = 48,
+    Joker1_p4 = 72,
+    Joker2 = 0,
+    Joker2_p1 = 0,
+    Joker2_p2 = 24,
+    Joker2_p3 = 48,
 }
 
 local function lower(s)
@@ -113,29 +129,28 @@ function Joker.edition_price_deltas(ed)
     return 0
 end
 
---- Atlas key for the front sheet: Negative edition uses pre-baked `Joker1_negative` / `Joker2_negative` sheets.
----@param base_atlas string|nil e.g. `"Joker1"` from `def.pos.atlas`
----@param edition string|nil raw edition
+--- Individual sprite key under `resources/textures/1x/Jokers/` (e.g. `"Jokers1_17"` or `"Jokers1_negative_17"`).
+---@param atlas_name string|nil
+---@param index number|nil 0-based cell index from the legacy atlas layout
+---@param edition string|nil raw edition; negative loads the `_negative_` sprite variant
 ---@return string|nil
-function Joker.resolve_front_atlas_key(base_atlas, edition)
-    local base = base_atlas and tostring(base_atlas) or "Joker1_p1"
-    local ed = Joker.normalize_edition(edition)
-    if ed == "negative" then
-        if base == "Joker1" then return "Joker1_negative" end
-        if base == "Joker2" then return "Joker2_negative" end
-        local p = string.match(base, "^Joker1_p(%d+)$")
-        if p then return "Joker1_negative_p" .. p end
-        p = string.match(base, "^Joker2_p(%d+)$")
-        if p then return "Joker2_negative_p" .. p end
+function Joker.sprite_key_from_pos(atlas_name, index, edition)
+    if not atlas_name then return nil end
+    local atlas = tostring(atlas_name)
+    local set = string.find(atlas, "Joker2", 1, true) and "2" or "1"
+    local off = JOKER_PAGE_OFFSETS[atlas] or 0
+    local num = off + (tonumber(index) or 0) + 1
+    if Joker.normalize_edition(edition) == "negative" then
+        return "Jokers" .. set .. "_negative_" .. num
     end
-    return base
+    return "Jokers" .. set .. "_" .. num
 end
 
-local function joker_front_quads_signature(joker)
-    return tostring(joker.front_atlas_name) .. "\0" .. Joker.normalize_edition(joker.edition)
+local function joker_front_sprite_signature(joker)
+    return tostring(joker.front_sprite_key or joker.front_atlas_name) .. "\0" .. Joker.normalize_edition(joker.edition)
 end
 
--- Edition visuals: foil/holo/polychrome use multiply; Negative uses alternate atlas (see `resolve_front_atlas_key`).
+-- Edition visuals: foil/holo/polychrome use multiply tint; negative uses a dedicated sprite.
 
 --- Animated RGB multiply for Polychrome edition (no shader).
 local function polychrome_edition_set_color()
@@ -195,6 +210,11 @@ local function resolve_atlas(name)
         G:ensure_asset_atlas_loaded(name)
     end
     return G.ASSET_ATLAS[name]
+end
+
+local function resolve_joker_sprite(key)
+    if not key or not G or not G.ensure_joker_sprite_loaded then return nil end
+    return G:ensure_joker_sprite_loaded(key)
 end
 
 ---@param X number
@@ -310,8 +330,8 @@ function Joker:init(X, Y, W, H, def, params)
         end
     end
 
-    local cw = W or 71
-    local ch = H or 95
+    local cw = W or JOKER_SPRITE_W
+    local ch = H or JOKER_SPRITE_H
     Moveable.init(self, X or 0, Y or 0, cw, ch)
 
     -- Disable collisions between jokers/cards for now.
@@ -336,39 +356,43 @@ function Joker:init(X, Y, W, H, def, params)
 end
 
 function Joker:refresh_quads()
-    local old_front_atlas_name = self._front_atlas_ref_name
-    local base_name = self.front_atlas_name
-    local want_key = Joker.resolve_front_atlas_key(base_name, self.edition)
-    local base_atlas = resolve_atlas(base_name)
+    local old_front_sprite_key = self._front_atlas_ref_name
 
-    self.front_atlas = resolve_atlas(want_key)
-    if Joker.normalize_edition(self.edition) == "negative" and want_key ~= base_name then
-        if not self.front_atlas or not self.front_atlas.image then
-            self.front_atlas = base_atlas
+    self.front_sprite_key = Joker.sprite_key_from_pos(self.front_atlas_name, self.front_index, self.edition)
+    self.front_sprite = resolve_joker_sprite(self.front_sprite_key)
+    if Joker.normalize_edition(self.edition) == "negative" then
+        if not self.front_sprite or not self.front_sprite.image then
+            self.front_sprite_key = Joker.sprite_key_from_pos(self.front_atlas_name, self.front_index)
+            self.front_sprite = resolve_joker_sprite(self.front_sprite_key)
         end
     end
+    self.front_w = JOKER_SPRITE_W
+    self.front_h = JOKER_SPRITE_H
 
     self.back_atlas = resolve_atlas(self.back_atlas_name)
-
-    self.front_quad, self.front_w, self.front_h = compute_quad(self.front_atlas, self.front_index)
-    if Joker.normalize_edition(self.edition) == "negative" and want_key ~= base_name then
-        if not self.front_quad and base_atlas and base_atlas.image then
-            self.front_atlas = base_atlas
-            self.front_quad, self.front_w, self.front_h = compute_quad(self.front_atlas, self.front_index)
-        end
-    end
     self.back_quad, self.back_w, self.back_h = compute_quad(self.back_atlas, self.back_index)
-    self._front_atlas_ref_name = (self.front_atlas and self.front_atlas.name) or want_key or base_name
+    self._front_atlas_ref_name = self.front_sprite_key
 
     local sub = self.params.sub_pos or self.def.sub_pos
     if type(sub) == "table" and sub.atlas and sub.index ~= nil then
         self.sub_atlas_name = sub.atlas
         self.sub_index = tonumber(sub.index) or 0
-        self.sub_atlas = resolve_atlas(self.sub_atlas_name)
-        self.sub_quad = compute_quad(self.sub_atlas, self.sub_index)
+        if string.find(tostring(sub.atlas), "Joker", 1, true) then
+            self.sub_sprite_key = Joker.sprite_key_from_pos(sub.atlas, self.sub_index)
+            self.sub_sprite = resolve_joker_sprite(self.sub_sprite_key)
+            self.sub_atlas = nil
+            self.sub_quad = nil
+        else
+            self.sub_sprite_key = nil
+            self.sub_sprite = nil
+            self.sub_atlas = resolve_atlas(self.sub_atlas_name)
+            self.sub_quad = compute_quad(self.sub_atlas, self.sub_index)
+        end
     else
         self.sub_atlas_name = nil
         self.sub_index = nil
+        self.sub_sprite_key = nil
+        self.sub_sprite = nil
         self.sub_atlas = nil
         self.sub_quad = nil
     end
@@ -400,9 +424,9 @@ function Joker:refresh_quads()
         end
     end
 
-    self._quads_refresh_signature = joker_front_quads_signature(self)
+    self._quads_refresh_signature = joker_front_sprite_signature(self)
     if G and G.on_joker_front_atlas_resolved then
-        G:on_joker_front_atlas_resolved(self, old_front_atlas_name, self._front_atlas_ref_name)
+        G:on_joker_front_atlas_resolved(self, old_front_sprite_key, self._front_atlas_ref_name)
     end
 end
 
@@ -757,6 +781,9 @@ end
 
 function Joker:get_tooltip_body_lines()
     local def = self.def or {}
+    if G and G.is_discovered and def.id and not G:is_discovered(def.id) then
+        return { { kind = "text", text = "Buy or Use to Discover" } }
+    end
     local edition_lines = self:get_edition_tooltip_lines()
     local impl = self.effect_impl
     local function append_extra(lines)
@@ -902,8 +929,12 @@ end
 
 function Joker:draw_sub_pos_overlay(draw_x, draw_y)
     if not self.face_up then return end
-    if not self.sub_atlas or not self.sub_atlas.image or not self.sub_quad then return end
     love.graphics.setColor(1, 1, 1, 1)
+    if self.sub_sprite and self.sub_sprite.image then
+        love.graphics.draw(self.sub_sprite.image, draw_x, draw_y, 0, 1, 1)
+        return
+    end
+    if not self.sub_atlas or not self.sub_atlas.image or not self.sub_quad then return end
     love.graphics.draw(self.sub_atlas.image, self.sub_quad, draw_x, draw_y, 0, 1, 1)
 end
 
@@ -942,24 +973,24 @@ function Joker:draw()
     love.graphics.translate(-cx, -cy)
 
     if self.face_up then
-        if self.front_atlas and self.front_atlas.image and self.front_quad then
+        if self.front_sprite and self.front_sprite.image then
             local ed = Joker.normalize_edition(self.edition)
-            local function draw_atlas_front()
-                love.graphics.draw(self.front_atlas.image, self.front_quad, draw_x, draw_y, 0, 1, 1)
+            local function draw_sprite_front()
+                love.graphics.draw(self.front_sprite.image, draw_x, draw_y, 0, 1, 1)
             end
 
             if ed == "foil" then
                 love.graphics.setColor(0.62, 0.78, 1.12, 1)
-                draw_atlas_front()
+                draw_sprite_front()
             elseif ed == "holo" then
                 love.graphics.setColor(1.15, 0.55, 0.55, 1)
-                draw_atlas_front()
+                draw_sprite_front()
             elseif ed == "polychrome" then
                 polychrome_edition_set_color()
-                draw_atlas_front()
+                draw_sprite_front()
             else
                 love.graphics.setColor(1, 1, 1, 1)
-                draw_atlas_front()
+                draw_sprite_front()
             end
             love.graphics.setColor(1, 1, 1, 1)
         end
@@ -988,7 +1019,7 @@ end
 
 function Joker:update(dt)
     Moveable.update(self, dt)
-    if joker_front_quads_signature(self) ~= self._quads_refresh_signature then
+    if joker_front_sprite_signature(self) ~= self._quads_refresh_signature then
         self:refresh_quads()
     end
     if self.scoring_shake_timer and self.scoring_shake_timer > 0 then

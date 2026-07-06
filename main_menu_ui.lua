@@ -401,8 +401,8 @@ function MainMenuUI._start_run(game)
     local stake_idx = tonumber(game._stake_select_idx) or 1
     local deck_def = deck_list[deck_idx]
     local stake_def = stake_list[stake_idx]
-    if not deck_def or not deck_def.unlocked then return false end
-    if not stake_def or not stake_def.unlocked then return false end
+    if not deck_def or not game:is_deck_unlocked(deck_def.id) then return false end
+    if not stake_def or not game:is_stake_unlocked(deck_def.id, stake_def.id) then return false end
 
     game._pending_deck_id = deck_def.id
     game._pending_stake_id = stake_def.id
@@ -438,6 +438,7 @@ function MainMenuUI.draw_deck_select(game)
     stake_idx = math.max(1, math.min(#stake_list, stake_idx))
     local stake_def = stake_list[stake_idx]
     if not stake_def then return end
+    local stake_unlocked = game:is_stake_unlocked(def.id, stake_def.id)
 
     local startX, startY = 24, 4
     local endX, endY = W - 24, H - 128
@@ -506,7 +507,18 @@ function MainMenuUI.draw_deck_select(game)
     local markerY = card_y + padding
     local markerY2 = card_y + card_h - padding - space
     for i = 1,#stake_list do
-        love.graphics.setColor(stake_list[i].colour or C.WHITE)
+        if game:is_stake_unlocked(def.id, stake_list[i] and stake_list[i].id) and game:is_deck_unlocked(def.id) then
+            if game:is_stake_defeated(def.id, stake_list[i] and stake_list[i].id) then
+                love.graphics.setColor(stake_list[i].colour or C.WHITE)
+            else 
+                local color = stake_list[i].colour or C.WHITE
+                local factor = 0.8
+                color = {color[1] * factor, color[2] * factor, color[3] * factor, 1}
+                love.graphics.setColor(color)
+            end
+        else
+            love.graphics.setColor(C.GREY)
+        end
         local markerH = (math.floor((markerY2 - markerY - (#stake_list + 1) * space) / #stake_list + 1))
         love.graphics.rectangle("fill", markerX, markerY2 - math.floor(markerH/2) - space - (markerH + space) * (i - 1), 20, markerH, 4, 4)
         if stake_idx == i then
@@ -562,7 +574,7 @@ function MainMenuUI.draw_deck_select(game)
     love.graphics.rectangle("fill", stake_info_x, stake_info_y, stake_info_w, stake_info_h, 4, 4)
 
     love.graphics.setFont(font_m)
-    love.graphics.setColor(stake_def.unlocked and C.WHITE or C.GREY)
+    love.graphics.setColor(stake_unlocked and C.WHITE or C.GREY)
     if love.graphics.getFont():getWidth(stake_def.name) > stake_info_w then
         love.graphics.setFont(font_s)
         love.graphics.printf(stake_def.name, stake_info_x, stake_info_y + 6, stake_info_w, "center")
@@ -577,7 +589,7 @@ function MainMenuUI.draw_deck_select(game)
     love.graphics.setFont(font_s)
     love.graphics.setColor(C.PANEL)
     love.graphics.printf(
-        stake_def.unlocked and (stake_def.description or "") or "Clear the previous stake first.",
+        stake_unlocked and (stake_def.description or "") or "Clear the previous stake first.",
         stake_info_x + 2 * padding, stake_info_y + padding + stake_name_h, stake_info_w - 4 * padding, "center"
     )
 
