@@ -1024,11 +1024,18 @@ function Game:get_drag_zones_for_context(ctx)
     elseif ctx.kind == "owned_joker" then
         local joker = self.jokers and self.jokers[ctx.index]
         local eternal = joker and joker.eternal == true
-        zones.bottom = DragZonesUI.make_zone("SELL", not eternal, eternal and C.GREY or C.MULT, "sell", true)
+        local sell_value = math.floor(tonumber(joker and joker.sell_cost) or 0)
+        zones.bottom = DragZonesUI.make_zone(
+            string.format("Sell $%d", sell_value),
+            not eternal, eternal and C.GREY or C.MULT, "sell", true)
     elseif ctx.kind == "owned_consumable" then
         local can_use = self:consumable_use_enabled(ctx.index)
         zones.top = DragZonesUI.make_zone("USE", can_use, can_use and C.GREEN or C.GREY, "use", true)
-        zones.bottom = DragZonesUI.make_zone("SELL", true, C.MULT, "sell", true)
+        local c = self.consumables and self.consumables[ctx.index]
+        local sell_value = math.floor(self:consumable_sell_value(c))
+        zones.bottom = DragZonesUI.make_zone(
+            string.format("Sell $%d", sell_value),
+            true, C.MULT, "sell", true)
     elseif ctx.kind == "booster_choice" then
         -- Single full-width strip: USE for hand-targeting cards, PICK otherwise.
         local sess = self.booster_session
@@ -5623,8 +5630,10 @@ function Game:initialize_run_loop()
     self.discardsUnused = 0
     self.skipsTaken = 0
     self._endless_mode = false
+    self.hand_size_delta_spectral = 0
+    self.hand_size_delta_juggle = 0
     self:reset_run_stats()
-
+    
     if not self.hand and Hand then
         self.hand = Hand(self)
     end
@@ -5632,6 +5641,7 @@ function Game:initialize_run_loop()
         self.hand:clear()
     end
     self.consumables = {}
+    self.tags = {}
     self.last_consumable_use_id = nil
     G:apply_deck_config(G._pending_deck_id   or "b_red")
     G:apply_stake_config(G._pending_stake_id or "stake_white")
@@ -8694,7 +8704,8 @@ function Game:set_render_settings()
         --spritesheets
         self.animation_atli = {
             {name = "blind_chips", path = "resources/textures/1x/BlindChips.png",px=36,py=36, frames = 21},
-            {name = "shop_sign", path = "resources/textures/1x/ShopSignAnimation.png",px=113,py=60, frames = 4}
+            {name = "shop_sign", path = "resources/textures/1x/ShopSignAnimation.png",px=113,py=60, frames = 4},
+            {name = "menu", path = "resources/textures/1x/menu.png", px=128, py=128, frames = 63},
         }
         self.asset_atli = {
             {name = "cards_1", path = "resources/textures/1x/8BitDeck.png",px=72,py=95},

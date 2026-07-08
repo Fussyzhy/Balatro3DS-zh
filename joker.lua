@@ -781,9 +781,6 @@ end
 
 function Joker:get_tooltip_body_lines()
     local def = self.def or {}
-    if G and G.is_discovered and def.id and not G:is_discovered(def.id) then
-        return { { kind = "text", text = "Buy or Use to Discover" } }
-    end
     local edition_lines = self:get_edition_tooltip_lines()
     local impl = self.effect_impl
     local function append_extra(lines)
@@ -879,6 +876,9 @@ end
 function Joker:draw_tooltip(draw_x, draw_y)
     local def = self.def or {}
     local title = self.name or def.name or "Joker"
+    if G and G.is_discovered and def.id and not G:is_discovered(def.id) then
+        title = "Not Discovered"
+    end
     local lines = self:get_tooltip_body_lines()
     local font = G.FONTS.PIXEL.SMALL or love.graphics.getFont()
     local resolved_lines = {}

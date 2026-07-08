@@ -58,25 +58,62 @@ function MainMenuUI.open_how_to_play(game)
     game._how_to_play_page = game._how_to_play_page or 1
 end
 
+local MENU_ANIM_FPS = 12
+
+local function menu_ping_pong_frame(frame_count, fps, time)
+    frame_count = math.max(1, tonumber(frame_count) or 1)
+    if frame_count == 1 then return 0 end
+    local cycle = (frame_count - 1) * 2
+    local step = math.floor((time or love.timer.getTime()) * (fps or MENU_ANIM_FPS)) % cycle
+    if step < frame_count then
+        return step
+    end
+    return cycle - step
+end
+
 function MainMenuUI.draw_background(game, screen)
     local w = (screen == "bottom") and 320 or 400
     local h = 240
-    local top = G.C.MULT
-    local bottom = G.C.BOOSTER
-    local steps = 48
 
-    love.graphics.setColor(top)
-    love.graphics.rectangle("fill", 0, 0, w, h)
-    for i = 0, steps - 1 do
-        local t = i / (steps - 1)
-        local r = top[1] + (bottom[1] - top[1]) * t
-        local g = top[2] + (bottom[2] - top[2]) * t
-        local b = top[3] + (bottom[3] - top[3]) * t
-        love.graphics.setColor(r, g, b, 1.0)
-        local y = math.floor((i / steps) * h + 0.5)
-        local seg_h = math.ceil(h / steps)
-        love.graphics.rectangle("fill", 0, y, w, seg_h)
+    local atlas = game.ANIMATION_ATLAS and game.ANIMATION_ATLAS.menu
+    if not atlas or not atlas.image then
+        local top = G.C.MULT
+        local bottom = G.C.BOOSTER
+        local steps = 48
+        love.graphics.setColor(top)
+        love.graphics.rectangle("fill", 0, 0, w, h)
+        for i = 0, steps - 1 do
+            local t = i / (steps - 1)
+            local r = top[1] + (bottom[1] - top[1]) * t
+            local g = top[2] + (bottom[2] - top[2]) * t
+            local b = top[3] + (bottom[3] - top[3]) * t
+            love.graphics.setColor(r, g, b, 1.0)
+            local y = math.floor((i / steps) * h + 0.5)
+            local seg_h = math.ceil(h / steps)
+            love.graphics.rectangle("fill", 0, y, w, seg_h)
+        end
+        return
     end
+
+    local cell_w = tonumber(atlas.px) or 256
+    local cell_h = tonumber(atlas.py) or 256
+    local frame_count = tonumber(atlas.frames) or 16
+    local frame = menu_ping_pong_frame(frame_count, MENU_ANIM_FPS)
+
+    local iw, ih = atlas.image:getDimensions()
+    local cols = math.max(1, math.floor(iw / cell_w))
+    local col = frame % cols
+    local row = math.floor(frame / cols)
+    local quad = love.graphics.newQuad(col * cell_w, row * cell_h, cell_w, cell_h, iw, ih)
+
+    local s = math.max(w / cell_w, h / cell_h)
+    local draw_w = cell_w * s
+    local draw_h = cell_h * s
+    local dx = math.floor((w - draw_w) * 0.5 + 0.5)
+    local dy = math.floor((h - draw_h) * 0.5 + 0.5)
+
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.draw(atlas.image, quad, dx, dy, 0, s, s)
 end
 
 function MainMenuUI.draw_top(game)

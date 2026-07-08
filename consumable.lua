@@ -156,9 +156,6 @@ end
 ---@return string[]
 function Consumable:get_tooltip_body_lines()
     local def = self.def or {}
-    if G and G.is_discovered and def.id and not G:is_discovered(def.id) then
-        return { "Buy or Use to Discover" }
-    end
     if def.kind == "planet" and type(def.hand) == "string" and def.hand ~= "" then
         return { string.format("Increases the value of %s", def.hand) }
     end
@@ -205,6 +202,9 @@ function Consumable:draw_tooltip(draw_x, draw_y)
 
     local def = self.def or {}
     local title = self.name or def.name or "Consumable"
+    if G and G.is_discovered and def.id and not G:is_discovered(def.id) then
+        title = "Not Discovered"
+    end
     local font = G.FONTS.PIXEL.SMALL or love.graphics.getFont()
     local prev_font = love.graphics.getFont()
     local prev_r, prev_g, prev_b, prev_a = love.graphics.getColor()
