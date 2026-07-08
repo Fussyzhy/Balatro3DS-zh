@@ -1276,6 +1276,11 @@ function Game:on_joker_front_atlas_resolved(joker, old_name, new_name)
 end
 
 function Game:set_state(state_id)
+    local prev = self.STATE
+    local menu = self.STATES and self.STATES.MENU
+    if menu and prev == menu and state_id ~= menu then
+        self:unload_animation_atlas("menu")
+    end
     self.STATE = state_id
 end
 
@@ -2157,7 +2162,11 @@ end
 function Game:continue_saved_run_from_main_menu()
     local snapshot, err = self:read_run_snapshot()
     if not snapshot then return false, err end
-    return self:load_run_snapshot(snapshot)
+    local ok, load_err = self:load_run_snapshot(snapshot)
+    if ok then
+        self:clear_run_snapshot()
+    end
+    return ok, load_err
 end
 
 function Game:start_new_run_from_main_menu()
@@ -4412,19 +4421,6 @@ function Game:continue_from_game_over()
     self._game_over_round = nil
     self._game_over_continue_rect = nil
     self._blind_resolution_pending = false
-    self.dragging = nil
-    -- Start the next run from a fully fresh state.
-    if type(self.jokers) == "table" then
-        for i = #self.jokers, 1, -1 do
-            self:remove_owned_joker_at(i,true)
-        end
-    end
-    self.jokers_on_bottom = false
-    if Deck then
-        self.deck = Deck()
-    else
-        self.deck = nil
-    end
     local run_seed = os.time()
     if love and love.timer and love.timer.getTime then
         run_seed = run_seed + math.floor((love.timer.getTime() % 1) * 1000000)
@@ -4434,11 +4430,102 @@ function Game:continue_from_game_over()
     self:enter_main_menu()
 end
 
+--- Tear down run objects and textures before returning to the main menu.
+function Game:clear_run_assets_for_main_menu()
+    self.dragging = nil
+    self:clear_bottom_tooltips()
+
+    if self.booster_session then
+        if self.booster_session.hand_for_tarot then
+            if self.hand and self.hand.return_all_cards_to_deck_draw_pile then
+                self.hand:return_all_cards_to_deck_draw_pile()
+            elseif self.hand and self.hand.clear then
+                self.hand:clear()
+            end
+        end
+        self:_booster_destroy_choice_nodes()
+        self.booster_session = nil
+        self._booster_return_state = nil
+    end
+
+    if self.hand and self.hand.clear then
+        self.hand:clear()
+    end
+
+    if type(self.jokers) == "table" then
+        for i = #self.jokers, 1, -1 do
+            self:remove_owned_joker_at(i, true)
+        end
+    end
+    self.jokers = {}
+    self:clear_joker_shared_picks()
+
+    if type(self.consumables) == "table" then
+        for i = #self.consumables, 1, -1 do
+            self:remove_consumable_at(i)
+        end
+    end
+    self.consumables = {}
+    if type(self.consumable_nodes) == "table" then
+        for i = #self.consumable_nodes, 1, -1 do
+            local node = self.consumable_nodes[i]
+            if node then self:remove(node) end
+            table.remove(self.consumable_nodes, i)
+        end
+    end
+    self.consumable_nodes = {}
+
+    if self.clear_shop_offer_nodes then
+        self:clear_shop_offer_nodes()
+    end
+    self.shop_offer_nodes = {}
+    self.shop_offers = {}
+
+    if self.clear_shop_booster_nodes then
+        self:clear_shop_booster_nodes()
+    end
+    self.shop_booster_nodes = {}
+    self.shop_booster_offers = {}
+
+    if self.clear_shop_voucher_nodes then
+        self:clear_shop_voucher_nodes()
+    end
+    self.shop_voucher_nodes = {}
+    self.shop_voucher_offers = {}
+
+    if Deck then
+        self.deck = Deck()
+    else
+        self.deck = nil
+    end
+    self.pending_discard = {}
+    self:_clear_pending_discard_nodes()
+    self.jokers_on_bottom = false
+
+    local run_atlases = { "Tarot", "cards_1", "cards_2", "Booster", "Voucher", "stickers" }
+    for _, name in ipairs(run_atlases) do
+        if self.unload_asset_atlas then
+            self:unload_asset_atlas(name)
+        end
+    end
+
+    if type(self._atlas_owner_counts) == "table" then
+        local keys = {}
+        for name in pairs(self._atlas_owner_counts) do
+            keys[#keys + 1] = name
+        end
+        for _, name in ipairs(keys) do
+            self._atlas_owner_counts[name] = nil
+            if self.unload_joker_sprite then
+                self:unload_joker_sprite(name)
+            end
+        end
+    end
+end
+
 function Game:enter_main_menu()
     self.STAGE = self.STAGES.MAIN_MENU
-    self:set_state(self.STATES.MENU)
     self._menu_sub_state = "main"
-    self.dragging = nil
     self._main_menu_start_rect = nil
     self._main_menu_continue_rect = nil
     self._main_menu_how_to_play_rect = nil
@@ -4446,37 +4533,24 @@ function Game:enter_main_menu()
     self._how_to_play_rects = nil
     self._pause_prev_state = nil
     self._blind_resolution_pending = false
-    if self.hand and self.hand.clear then
-        self.hand:clear()
-    end
-    if type(self.jokers) == "table" then
-        for i = #self.jokers, 1, -1 do
-            self:remove_owned_joker_at(i,true)
-        end
-    end
-    self:clear_joker_shared_picks()
-    if type(self.consumables) == "table" then
-        for i = #self.consumables, 1, -1 do
-            self:remove_consumable_at(i)
-        end
-    end
-    if type(self.shop_offer_nodes) == "table" then
-        for _, n in ipairs(self.shop_offer_nodes) do
-            if n then self:remove(n) end
-        end
-    end
-    self.shop_offer_nodes = {}
-    self.pending_discard = {}
-    self.jokers_on_bottom = false
     self.active_tooltip_card = nil
     self.active_tooltip_joker = nil
     self.active_tooltip_consumable_index = nil
     self.active_tooltip_shop_voucher_slot = nil
+
+    self:clear_run_assets_for_main_menu()
+    if self.ensure_animation_atlas_loaded then
+        self:ensure_animation_atlas_loaded("menu")
+    end
+    self:set_state(self.STATES.MENU)
 end
 
 function Game:start_run_from_main_menu()
     if self.unload_asset_atlas then
         self:unload_asset_atlas("balatro")
+    end
+    if self.unload_animation_atlas then
+        self:unload_animation_atlas("menu")
     end
     -- Starting a new run should always clear any existing run objects (especially owned jokers).
     if type(self.jokers) == "table" then
@@ -7767,6 +7841,7 @@ function Game:handle_failed_blind_reset()
     if Sfx and Sfx.play then
         Sfx.play("resources/sounds/cancel.ogg")
     end
+    self:clear_run_snapshot()
     self:set_state(self.STATES.GAME_OVER)
 end
 
@@ -8680,6 +8755,36 @@ function Game:ensure_asset_atlas_loaded(name)
     return atlas
 end
 
+function Game:ensure_animation_atlas_loaded(name)
+    if not name or not self.ANIMATION_ATLAS then return nil end
+    local atlas = self.ANIMATION_ATLAS[name]
+    if not atlas then return nil end
+    if atlas.image then return atlas end
+    if not atlas.path then return atlas end
+
+    local ok, img = pcall(love.graphics.newImage, atlas.path, { dpiscale = atlas.dpiscale or self.SETTINGS.GRAPHICS.texture_scaling, mipmaps = false })
+    local err = ok and nil or img
+    if not ok then
+        ok, img = pcall(love.graphics.newImage, atlas.path, {})
+        if not ok then err = img end
+    end
+    atlas.image = ok and img or nil
+    atlas.load_error = ok and nil or tostring(err)
+    return atlas
+end
+
+function Game:unload_animation_atlas(name)
+    if not name or not self.ANIMATION_ATLAS then return false end
+    local atlas = self.ANIMATION_ATLAS[name]
+    if not atlas or not atlas.image then return false end
+    if atlas.image.release then
+        pcall(function() atlas.image:release() end)
+    end
+    atlas.image = nil
+    atlas.load_error = nil
+    return true
+end
+
 function Game:unload_asset_atlas(name)
     if not name or not self.ASSET_ATLAS then return false end
     local atlas = self.ASSET_ATLAS[name]
@@ -8789,15 +8894,19 @@ function Game:set_render_settings()
             return ok and img or nil
         end
 
-        -- Animation atlases are small; load eagerly (no mipmaps).
+        -- Animation atlases: menu is large and only needed on the main menu.
         for i=1, #self.animation_atli do
-            self.ANIMATION_ATLAS[self.animation_atli[i].name] = {}
-            self.ANIMATION_ATLAS[self.animation_atli[i].name].name = self.animation_atli[i].name
-            self.ANIMATION_ATLAS[self.animation_atli[i].name].path = self.animation_atli[i].path
-            self.ANIMATION_ATLAS[self.animation_atli[i].name].image = load_image(self.animation_atli[i].path, {dpiscale = self.SETTINGS.GRAPHICS.texture_scaling, mipmaps = false})
-            self.ANIMATION_ATLAS[self.animation_atli[i].name].px = self.animation_atli[i].px
-            self.ANIMATION_ATLAS[self.animation_atli[i].name].py = self.animation_atli[i].py
-            self.ANIMATION_ATLAS[self.animation_atli[i].name].frames = self.animation_atli[i].frames
+            local entry = self.animation_atli[i]
+            local name = entry.name
+            self.ANIMATION_ATLAS[name] = {}
+            self.ANIMATION_ATLAS[name].name = name
+            self.ANIMATION_ATLAS[name].path = entry.path
+            self.ANIMATION_ATLAS[name].dpiscale = self.SETTINGS.GRAPHICS.texture_scaling
+            self.ANIMATION_ATLAS[name].px = entry.px
+            self.ANIMATION_ATLAS[name].py = entry.py
+            self.ANIMATION_ATLAS[name].frames = entry.frames
+            local eager = name ~= "menu"
+            self.ANIMATION_ATLAS[name].image = eager and load_image(entry.path, {dpiscale = self.SETTINGS.GRAPHICS.texture_scaling, mipmaps = false}) or nil
         end
 
         -- Register all asset atlases, lazy-load textures on first use.

@@ -75,7 +75,12 @@ function MainMenuUI.draw_background(game, screen)
     local w = (screen == "bottom") and 320 or 400
     local h = 240
 
-    local atlas = game.ANIMATION_ATLAS and game.ANIMATION_ATLAS.menu
+    local atlas = nil
+    if game.ensure_animation_atlas_loaded then
+        atlas = game:ensure_animation_atlas_loaded("menu")
+    else
+        atlas = game.ANIMATION_ATLAS and game.ANIMATION_ATLAS.menu
+    end
     if not atlas or not atlas.image then
         local top = G.C.MULT
         local bottom = G.C.BOOSTER
