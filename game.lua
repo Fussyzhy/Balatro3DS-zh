@@ -162,6 +162,7 @@ function Game:init(seed)
     self.blind_hand_play_counts = {}
     self._ante_played_card_uids = {}
     self.current_boss_blind_id = nil
+    self.bosses_used_this_cycle = {}
     self.boss_runtime = {}
     self._next_card_uid = 1
     self._collidables_buf = {}
@@ -1507,6 +1508,100 @@ function Game:record_stake_victory()
     return true
 end
 
+function Game:build_joker_wins()
+    return {}
+end
+
+function Game:normalize_joker_wins(data)
+    local out = {}
+    if type(data) ~= "table" then return out end
+    for joker_id, entry in pairs(data) do
+        if type(joker_id) == "string" and joker_id ~= "" and type(entry) == "table" then
+            local normalized = {
+                id = joker_id,
+                name = entry.name,
+                highest_stake_id = type(entry.highest_stake_id) == "string" and entry.highest_stake_id or nil,
+                highest_stake_level = math.max(0, math.floor(tonumber(entry.highest_stake_level) or 0)),
+            }
+            if type(entry.win_snapshot) == "table" then
+                normalized.win_snapshot = copy_table(entry.win_snapshot)
+            end
+            out[joker_id] = normalized
+        end
+    end
+    return out
+end
+
+function Game:apply_joker_wins(data)
+    self.joker_wins = self:normalize_joker_wins(data)
+    if self.SETTINGS then
+        self.SETTINGS.JOKER_WINS = self.joker_wins
+    end
+end
+
+function Game:get_stake_order(stake_id)
+    local def = STAKE_DEFS_BY_ID and STAKE_DEFS_BY_ID[stake_id or ""]
+    return math.max(1, math.floor(tonumber(def and def.order) or 1))
+end
+
+function Game:snapshot_joker_for_victory(joker)
+    local def = joker and joker.def
+    local jid = def and def.id
+    if type(jid) ~= "string" or jid == "" then return nil end
+    local edition = joker.edition
+    if Joker and Joker.normalize_edition then
+        edition = Joker.normalize_edition(edition)
+    end
+    return {
+        id = jid,
+        name = def.name or joker.name,
+        edition = edition,
+        eternal = joker.eternal == true,
+        rental = joker.rental == true,
+        perishable = joker.perishable == true,
+        stored_mult = tonumber(joker.stored_mult),
+        stored_chips = tonumber(joker.stored_chips),
+        stored_xmult = tonumber(joker.stored_xmult),
+        runtime_counter = tonumber(joker.runtime_counter),
+        sell_cost = tonumber(joker.sell_cost),
+    }
+end
+
+--- Persist owned jokers from a winning run; keeps the highest stake won per joker id.
+function Game:record_joker_wins_at_victory()
+    local stake_id = self.selected_stake_id or self._pending_stake_id
+    if type(stake_id) ~= "string" or stake_id == "" then return false end
+    if not self.joker_wins then self:apply_joker_wins(self:build_joker_wins()) end
+
+    local stake_order = self:get_stake_order(stake_id)
+    local changed = false
+    for _, joker in ipairs(self.jokers or {}) do
+        local snap = self:snapshot_joker_for_victory(joker)
+        if snap then
+            local jid = snap.id
+            local entry = self.joker_wins[jid] or {}
+            local prev_level = tonumber(entry.highest_stake_level) or 0
+            if stake_order >= prev_level then
+                if stake_order > prev_level then
+                    entry.highest_stake_id = stake_id
+                    entry.highest_stake_level = stake_order
+                end
+                entry.id = jid
+                entry.name = snap.name
+                entry.win_snapshot = snap
+                self.joker_wins[jid] = entry
+                changed = true
+            end
+        end
+    end
+
+    if changed then
+        self.SETTINGS.JOKER_WINS = self.joker_wins
+        self:save_settings()
+    end
+    return changed
+end
+
 function Game:can_pause_now()
     local s = self.STATE
     if s == self.STATES.MENU or s == self.STATES.GAME_OVER or s == self.STATES.YOU_WIN then return false end
@@ -1566,6 +1661,7 @@ function Game:default_settings()
         GRAPHICS = { texture_scaling = 1 },
         UNLOCKS = self:build_unlocks(),
         DISCOVERED = self:build_discovered(),
+        JOKER_WINS = self:build_joker_wins(),
     }
 end
 
@@ -1595,6 +1691,7 @@ function Game:normalize_settings(data)
 
     out.UNLOCKS = self:normalize_unlocks(data.UNLOCKS)
     out.DISCOVERED = self:normalize_discovered(data.DISCOVERED)
+    out.JOKER_WINS = self:normalize_joker_wins(data.JOKER_WINS)
 
     return out
 end
@@ -1608,6 +1705,7 @@ function Game:snapshot_settings()
         },
         UNLOCKS = self:normalize_unlocks(self.unlocks or (self.SETTINGS and self.SETTINGS.UNLOCKS)),
         DISCOVERED = self:normalize_discovered(self.Discovered or (self.SETTINGS and self.SETTINGS.DISCOVERED)),
+        JOKER_WINS = self:normalize_joker_wins(self.joker_wins or (self.SETTINGS and self.SETTINGS.JOKER_WINS)),
     }
 end
 
@@ -1616,6 +1714,7 @@ function Game:load_settings()
     local function finish_load()
         self:apply_unlocks(self.SETTINGS.UNLOCKS)
         self:apply_discovered(self.SETTINGS.DISCOVERED)
+        self:apply_joker_wins(self.SETTINGS.JOKER_WINS)
     end
     if not (love and love.filesystem and love.filesystem.load and love.filesystem.getInfo) then
         finish_load()
@@ -1851,6 +1950,7 @@ function Game:build_run_snapshot()
         current_blind_reward = tonumber(self.current_blind_reward) or 0,
         current_blind_name = tostring(self.current_blind_name or "Small Blind"),
         current_boss_blind_id = self.current_boss_blind_id,
+        bosses_used_this_cycle = self:serialize_bosses_used_cycle(),
         _last_completed_blind_was_boss = self._last_completed_blind_was_boss == true,
         hand_size_delta_spectral = tonumber(self.hand_size_delta_spectral) or 0,
         last_consumable_use_id = self.last_consumable_use_id,
@@ -2009,6 +2109,7 @@ function Game:load_run_snapshot(snapshot)
     self.current_blind_reward = tonumber(snapshot.current_blind_reward) or 0
     self.current_blind_name = snapshot.current_blind_name or "Small Blind"
     self.current_boss_blind_id = snapshot.current_boss_blind_id
+    self:apply_bosses_used_cycle(snapshot.bosses_used_this_cycle)
     self._last_completed_blind_was_boss = snapshot._last_completed_blind_was_boss == true
     self.hand_size_delta_spectral = tonumber(snapshot.hand_size_delta_spectral) or 0
     self.last_consumable_use_id = snapshot.last_consumable_use_id
@@ -2272,8 +2373,62 @@ function Game:get_boss_blind_pool(ante)
     return out
 end
 
-function Game:roll_boss_blind()
-    local pool = self:get_boss_blind_pool()
+function Game:mark_boss_used(boss_id)
+    if type(boss_id) ~= "string" or boss_id == "" then return end
+    if type(self.bosses_used_this_cycle) ~= "table" then
+        self.bosses_used_this_cycle = {}
+    end
+    self.bosses_used_this_cycle[boss_id] = true
+end
+
+function Game:reset_bosses_used_cycle()
+    self.bosses_used_this_cycle = {}
+end
+
+function Game:serialize_bosses_used_cycle()
+    local out = {}
+    for id in pairs(self.bosses_used_this_cycle or {}) do
+        out[#out + 1] = id
+    end
+    table.sort(out)
+    return out
+end
+
+function Game:apply_bosses_used_cycle(data)
+    self.bosses_used_this_cycle = {}
+    if type(data) ~= "table" then return end
+    for _, id in ipairs(data) do
+        if type(id) == "string" and id ~= "" then
+            self.bosses_used_this_cycle[id] = true
+        end
+    end
+end
+
+---@param ante number|nil
+---@return string[]
+function Game:get_eligible_boss_pool(ante)
+    local pool = self:get_boss_blind_pool(ante)
+    if #pool == 0 then return pool end
+    local used = self.bosses_used_this_cycle or {}
+    local filtered = {}
+    for _, id in ipairs(pool) do
+        if not used[id] then
+            filtered[#filtered + 1] = id
+        end
+    end
+    if #filtered == 0 then
+        self:reset_bosses_used_cycle()
+        return pool
+    end
+    return filtered
+end
+
+---@param opts table|nil `{ exclude_current = true }` marks the current boss used before rolling (rerolls).
+function Game:roll_boss_blind(opts)
+    if type(opts) == "table" and opts.exclude_current == true and self.current_boss_blind_id then
+        self:mark_boss_used(self.current_boss_blind_id)
+    end
+    local pool = self:get_eligible_boss_pool()
     if #pool == 0 then
         self.current_boss_blind_id = nil
         return nil
@@ -2289,7 +2444,7 @@ function Game:get_boss_blind_prototype()
     else
         local proto = self.P_BLINDS[key]
         if not self:is_boss_blind_allowed_for_ante(proto, self.ante) then
-            key = self:roll_boss_blind()
+            key = self:roll_boss_blind({ exclude_current = true })
         end
     end
     return key and self.P_BLINDS and self.P_BLINDS[key] or nil
@@ -5697,6 +5852,7 @@ function Game:initialize_run_loop()
     self.hand_size_delta_voucher = 0
     self.voucher_hands_delta = 0
     self.boss_rerolls_used_this_ante = 0
+    self:reset_bosses_used_cycle()
     self.hand_play_counts = {}
     self.blind_hand_play_counts = {}
     self.tarots_used = 0
@@ -5791,6 +5947,9 @@ end
 function Game:advance_after_shop()
     if self._last_completed_blind_was_boss then
         self.boss_rerolls_used_this_ante = 0
+        if self.current_boss_blind_id then
+            self:mark_boss_used(self.current_boss_blind_id)
+        end
         self.ante = (tonumber(self.ante) or 1) + 1
         self._ante_played_card_uids = {}
         self.current_boss_blind_id = nil
@@ -6120,7 +6279,7 @@ function Game:apply_voucher_effect(id)
         self.ante = (tonumber(self.ante) or 1) - 1
         self.boss_rerolls_used_this_ante = 0
         if self.current_boss_blind_id and self.roll_boss_blind then
-            self:roll_boss_blind()
+            self:roll_boss_blind({ exclude_current = true })
         end
         return
     end
@@ -6128,7 +6287,7 @@ function Game:apply_voucher_effect(id)
         self.ante = (tonumber(self.ante) or 1) - 1
         self.boss_rerolls_used_this_ante = 0
         if self.current_boss_blind_id and self.roll_boss_blind then
-            self:roll_boss_blind()
+            self:roll_boss_blind({ exclude_current = true })
         end
         return
     end
@@ -6191,7 +6350,7 @@ function Game:try_boss_reroll_press(x, y)
     end
     self.money = (tonumber(self.money) or 0) - 10
     self.boss_rerolls_used_this_ante = (tonumber(self.boss_rerolls_used_this_ante) or 0) + 1
-    self:roll_boss_blind()
+    self:roll_boss_blind({ exclude_current = true })
     return true
 end
 
@@ -7534,6 +7693,7 @@ function Game:enter_you_win()
     self.dragging = nil
     self._you_win_button_rects = nil
     self:record_stake_victory()
+    self:record_joker_wins_at_victory()
     self:set_state(self.STATES.YOU_WIN)
 end
 
