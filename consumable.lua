@@ -143,6 +143,10 @@ function Consumable:draw()
     end
 
     love.graphics.pop()
+
+    if G and G.draw_node_gamepad_focus_outline then
+        G:draw_node_gamepad_focus_outline(self)
+    end
 end
 
 function Consumable:draw_tooltip_overlay()
@@ -180,8 +184,15 @@ end
 
 function Consumable:tooltip_is_active()
     if not G then return false end
+    if G._collection_open and G._collection_tooltip_node == self then return true end
     if G.is_card_select_mode and G:is_card_select_mode() then return false end
     if self.shop_offer_slot and G.STATE == G.STATES.SHOP and G.active_tooltip_joker == self then
+        return true
+    end
+    if G.should_draw_gamepad_focus_outline and G:should_draw_gamepad_focus_outline(self) then
+        return true
+    end
+    if G.is_shop_item_selected and G:is_shop_item_selected(self) then
         return true
     end
     if self._booster_choice_index and G.STATE == G.STATES.OPEN_BOOSTER and G.booster_session then

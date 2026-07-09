@@ -1786,6 +1786,17 @@ local SPECIAL = {
         end
     },
 
+    j_diet_cola = {
+        matches_trigger = function(_, e) return e == "on_joker_sold" end,
+        apply_effect = function(j, ctx)
+            if ctx.event_name ~= "on_joker_sold" or ctx.joker ~= j then return end
+            if G and G.addTag then
+                G:addTag("double")
+                mark_effect_applied(ctx)
+            end
+        end
+    },
+
     j_hit_the_road = {
         matches_trigger = function(_, e) return e == "on_discard" or e == "on_hand_scored" end,
         apply_effect = function(j, ctx)

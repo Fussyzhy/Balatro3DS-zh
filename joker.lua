@@ -16,6 +16,8 @@ local JOKER_STICKER_INDICES = {
 
 Joker.SPRITE_W = 70
 Joker.SPRITE_H = 94
+Joker.WEE_JOKER_ID = "j_wee"
+Joker.WEE_DISPLAY_SCALE = 0.5
 local JOKER_SPRITE_W = Joker.SPRITE_W
 local JOKER_SPRITE_H = Joker.SPRITE_H
 
@@ -215,6 +217,18 @@ end
 local function resolve_joker_sprite(key)
     if not key or not G or not G.ensure_joker_sprite_loaded then return nil end
     return G:ensure_joker_sprite_loaded(key)
+end
+
+function Joker.is_wee_def(def)
+    return type(def) == "table" and def.id == Joker.WEE_JOKER_ID
+end
+
+function Joker:get_display_scale_mult()
+    return Joker.is_wee_def(self.def) and Joker.WEE_DISPLAY_SCALE or 1
+end
+
+function Joker:get_render_scale()
+    return (self.VT and self.VT.scale or 1) * self:get_display_scale_mult()
 end
 
 ---@param X number
@@ -443,7 +457,7 @@ end
 -- top-left when `scale != 1`. Hit-testing should use the same effective bounds.
 function Joker:get_collision_rect()
     local t = self.VT or self.T
-    local s = t.scale or 1
+    local s = self:get_render_scale()
     local w = t.w or 0
     local h = t.h or 0
 
@@ -885,8 +899,8 @@ function Joker:draw_tooltip(draw_x, draw_y)
     for _, line in ipairs(lines) do
         table.insert(resolved_lines, self:resolve_tooltip_line_segments(line))
     end
-    local card_w = self.VT.w * self.VT.scale
-    local card_h = self.VT.h * self.VT.scale
+    local card_w = self.VT.w * self:get_render_scale()
+    local card_h = self.VT.h * self:get_render_scale()
     TooltipDraw.draw_tooltip_layout(font, title, resolved_lines, draw_x, draw_y, card_w, card_h)
 end
 
@@ -894,8 +908,12 @@ end
 function Joker:get_layout_draw_xy()
     local draw_x = self.VT.x + self.collision_offset.x
     local draw_y = self.VT.y + self.collision_offset.y
-    if G and G.active_tooltip_joker == self and self.shop_offer_slot == nil then
-        draw_y = draw_y - 8
+    if G and self.shop_offer_slot == nil and G.jokers_on_bottom then
+        local lifted = (G.active_tooltip_joker == self)
+            or (G.is_joker_swap_pick and G:is_joker_swap_pick(self))
+        if lifted then
+            draw_y = draw_y - 8
+        end
     end
 
     if self.scoring_shake_timer and self.scoring_shake_timer > 0 then
@@ -912,10 +930,17 @@ end
 
 function Joker:should_draw_tooltip()
     if not self.face_up or not G then return false end
+    if G._collection_open and G._collection_tooltip_node == self then return true end
     if G.is_card_select_mode and G:is_card_select_mode() then return false end
     if G.STATE == G.STATES.BLIND_SELECT and G.active_tooltip_skip_blind_index then return false end
     if self._booster_choice_index and G.STATE == G.STATES.OPEN_BOOSTER and G.booster_session then
         return tonumber(G.booster_session.active_choice_index) == self._booster_choice_index
+    end
+    if G.should_draw_gamepad_focus_outline and G:should_draw_gamepad_focus_outline(self) then
+        return true
+    end
+    if G.is_shop_item_selected and G:is_shop_item_selected(self) then
+        return true
     end
     return G.active_tooltip_joker == self
         and (G.jokers_on_bottom == true or self.shop_offer_slot ~= nil)
@@ -965,11 +990,13 @@ function Joker:draw()
 
     love.graphics.push()
 
-    local cx = draw_x + (self.VT.w * self.VT.scale) / 2
-    local cy = draw_y + (self.VT.h * self.VT.scale) / 2
+    local base_scale = self.VT.scale or 1
+    local render_scale = self:get_render_scale()
+    local cx = draw_x + (self.VT.w * base_scale) / 2
+    local cy = draw_y + (self.VT.h * base_scale) / 2
     love.graphics.translate(cx, cy)
     love.graphics.rotate(self.VT.r)
-    love.graphics.scale(self.VT.scale, self.VT.scale)
+    love.graphics.scale(render_scale, render_scale)
     love.graphics.translate(-cx, -cy)
 
     if self.face_up then
@@ -1008,6 +1035,10 @@ function Joker:draw()
     end
 
     love.graphics.pop()
+
+    if G and G.draw_node_gamepad_focus_outline then
+        G:draw_node_gamepad_focus_outline(self)
+    end
 
     love.graphics.setColor(prev_draw_r, prev_draw_g, prev_draw_b, prev_draw_a)
 

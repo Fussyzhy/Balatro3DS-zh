@@ -415,7 +415,7 @@ local function enhancement_tooltip_lines(enh)
     elseif enh == "stone" then return { "+50 chips" }
     elseif enh == "gold" then return { "+$3 while held" }
     elseif enh == "lucky" then return { "1/5: +20 mult", "1/15: +$20" }
-    elseif enh == "wild" then return { "Wild card" }
+    elseif enh == "wild" then return { "Can be any Suit" }
     end
     return {}
 end
@@ -425,9 +425,9 @@ end
 local function seal_tooltip_lines(seal)
     if not seal then return {} end
     if seal == "gold" then return { "+$3 when scored" }
-    elseif seal == "red" then return { "Retrigger" }
-    elseif seal == "blue" then return { "Planet if held" }
-    elseif seal == "purple" then return { "Creates Tarot when discarded" }
+    elseif seal == "red" then return { "Retriggers Card Once" }
+    elseif seal == "blue" then return { "Creates a Planet card for the winning Hand if held in hand" }
+    elseif seal == "purple" then return { "Creates a Tarot Card when Discarded" }
     end
     return {}
 end
@@ -698,10 +698,17 @@ end
 
 function Card:should_draw_tooltip()
     if not self.face_up then return false end
+    if G and G._collection_open and G._collection_tooltip_node == self then return true end
     if G and G.is_card_select_mode and G:is_card_select_mode() then
         return G:dpad_cursor_node() == self
     end
     if self.shop_offer_slot and G and G.STATE == G.STATES.SHOP and G.active_tooltip_joker == self then
+        return true
+    end
+    if G and G.should_draw_gamepad_focus_outline and G:should_draw_gamepad_focus_outline(self) then
+        return true
+    end
+    if G and G.is_shop_item_selected and G:is_shop_item_selected(self) then
         return true
     end
     if self._booster_choice_index and G and G.STATE == G.STATES.OPEN_BOOSTER and G.booster_session then
@@ -768,7 +775,7 @@ function Card:draw()
 
     love.graphics.pop()
 
-    if G and G._l_held and G.STATE == G.STATES.SELECTING_HAND and G.hand and G._dpad_cursor_index then
+    if G and G._l_held and G.is_card_select_mode and G:is_card_select_mode() and G.hand and G._dpad_cursor_index then
         local cursor = G.hand.card_nodes[G._dpad_cursor_index]
         if cursor == self then
             local r = self:get_collision_rect()
@@ -785,6 +792,8 @@ function Card:draw()
             love.graphics.pop()
             love.graphics.setLineWidth(lw)
         end
+    elseif G and G.draw_node_gamepad_focus_outline then
+        G:draw_node_gamepad_focus_outline(self)
     end
 
     love.graphics.setColor(prev_r, prev_g, prev_b, prev_a)

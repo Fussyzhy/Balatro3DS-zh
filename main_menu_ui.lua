@@ -1,5 +1,48 @@
 
 local MainMenuUI = {}
+local CollectionUI = require("collection_ui")
+
+MainMenuUI.KONAMI_CODE = {
+    "up", "up", "down", "down", "left", "right", "left", "right", "b", "a", "start",
+}
+
+local KONAMI_ALIASES = {
+    dpup = "up",
+    dpdown = "down",
+    dpleft = "left",
+    dpright = "right",
+    b = "b",
+    ["return"] = "start",
+    enter = "start",
+}
+
+function MainMenuUI.normalize_konami_input(btn)
+    if type(btn) ~= "string" then return nil end
+    return KONAMI_ALIASES[btn] or btn
+end
+
+function MainMenuUI.try_konami_cheat(game, btn)
+    if not game or not game.STATES or game.STATE ~= game.STATES.MENU then return false end
+    local input = MainMenuUI.normalize_konami_input(btn)
+    if not input then return false end
+
+    local seq = MainMenuUI.KONAMI_CODE
+    local progress = (tonumber(game._konami_progress) or 0) + 1
+    if seq[progress] == input then
+        if progress >= #seq then
+            game._konami_progress = 0
+            if game.unlock_everything then
+                game:unlock_everything()
+            end
+            return true
+        end
+        game._konami_progress = progress
+        return false
+    end
+
+    game._konami_progress = (input == seq[1]) and 1 or 0
+    return false
+end
 
 MainMenuUI.HOW_TO_PLAY_PAGES = {
     {
@@ -31,6 +74,23 @@ MainMenuUI.HOW_TO_PLAY_PAGES = {
             "",
             "   Sweep select (hold L + R)",
             "With both shoulders held, D-pad Left/Right selects each card as you move.",
+        },
+    },
+    {
+        title = "Gamepad - Shop",
+        lines = {
+            "D-Pad Left/Right: To move selection cursor.",
+            "R: Buy",
+            "Y: Buy and Use",
+            "Y: Reroll Shop",
+            "A: Continue from Shop",
+            "   When Opening a Booster Pack",
+            "D-Pad Left/Right: To move selection cursor.",
+            "Hold L: Card Select Mode",
+            "In Card Select Mode: D-Pad Up or R: To Toggle Selection",
+            "In Card Select Mode: Hold R and move Left/Right: Reorder Selected Cards",
+            "A: Use selected card",
+            "B: Skip Booster",
         },
     },
     {
@@ -74,6 +134,12 @@ end
 function MainMenuUI.draw_background(game, screen)
     local w = (screen == "bottom") and 320 or 400
     local h = 240
+
+    if game._collection_open then
+        love.graphics.setColor(game.C.PANEL)
+        love.graphics.rectangle("fill", 0, 0, w, h)
+        return
+    end
 
     local atlas = nil
     if game.ensure_animation_atlas_loaded then
@@ -122,6 +188,11 @@ function MainMenuUI.draw_background(game, screen)
 end
 
 function MainMenuUI.draw_top(game)
+    if game._menu_sub_state == "collection_menu" or game._menu_sub_state == "collection_grid" then
+        CollectionUI.draw_top(game)
+        return
+    end
+
     local panel_x, panel_y, panel_w = 24, 10, 352
 
     local atlas = nil
@@ -154,13 +225,17 @@ function MainMenuUI.draw_bottom(game)
         MainMenuUI.draw_deck_select(game)
     elseif game._menu_sub_state == "how_to_play" then
         MainMenuUI.draw_how_to_play(game)
+    elseif game._menu_sub_state == "collection_menu" or game._menu_sub_state == "collection_grid" then
+        CollectionUI.draw_bottom(game)
     else
         MainMenuUI.draw_main(game)
     end
 end
 
 function MainMenuUI.draw_main(game)
-    local panel_x, panel_y, panel_w, panel_h = 8, 12, 304, 168
+    local panel_w, panel_h = 304, 168
+    local panel_y = 240/2 - panel_h/2
+    local panel_x = 8
 
     if _G.draw_rect_with_shadow then
         draw_rect_with_shadow(panel_x, panel_y, panel_w, panel_h, 6, 3,
@@ -180,10 +255,11 @@ function MainMenuUI.draw_main(game)
     game._main_menu_how_to_play_rect = nil
 
     if has_save then
-        local y0 = panel_y + 44
+        local y0 = panel_y + 24
         game._main_menu_continue_rect = { x = btn_x, y = y0, w = btn_w, h = btn_h }
         game._main_menu_start_rect    = { x = btn_x, y = y0 + btn_h + btn_gap, w = btn_w, h = btn_h }
         game._main_menu_how_to_play_rect = { x = btn_x, y = y0 + (btn_h + btn_gap) * 2, w = btn_w, h = btn_h }
+        game._main_menu_collection_rect = { x = btn_x, y = y0 + (btn_h + btn_gap) * 3, w = btn_w, h = btn_h }
 
         draw_rect_with_shadow(
             game._main_menu_continue_rect.x, game._main_menu_continue_rect.y,
@@ -199,6 +275,11 @@ function MainMenuUI.draw_main(game)
             game._main_menu_how_to_play_rect.x, game._main_menu_how_to_play_rect.y,
             game._main_menu_how_to_play_rect.w, game._main_menu_how_to_play_rect.h, 4, 4,
             game.C.MULT, game.C.BLOCK.SHADOW, 2)
+
+        draw_rect_with_shadow(
+            game._main_menu_collection_rect.x, game._main_menu_collection_rect.y,
+            game._main_menu_collection_rect.w, game._main_menu_collection_rect.h, 4, 4,
+            game.C.ORANGE or game.C.BLUE, game.C.BLOCK.SHADOW, 2)
 
         love.graphics.setColor(game.C.WHITE)
         love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
@@ -219,11 +300,16 @@ function MainMenuUI.draw_main(game)
         love.graphics.printf("How to Play",
             game._main_menu_how_to_play_rect.x, btn_label_y(game._main_menu_how_to_play_rect),
             game._main_menu_how_to_play_rect.w, "center")
+
+        love.graphics.printf("Collection",
+            game._main_menu_collection_rect.x, btn_label_y(game._main_menu_collection_rect),
+            game._main_menu_collection_rect.w, "center")
     else
         game._main_menu_continue_rect = nil
-        local y0 = panel_y + 56
+        local y0 = panel_y + 36
         game._main_menu_start_rect = { x = btn_x, y = y0, w = btn_w, h = btn_h }
         game._main_menu_how_to_play_rect = { x = btn_x, y = y0 + btn_h + btn_gap, w = btn_w, h = btn_h }
+        game._main_menu_collection_rect = { x = btn_x, y = y0 + (btn_h + btn_gap) * 2, w = btn_w, h = btn_h }
 
         draw_rect_with_shadow(
             game._main_menu_start_rect.x, game._main_menu_start_rect.y,
@@ -234,6 +320,11 @@ function MainMenuUI.draw_main(game)
             game._main_menu_how_to_play_rect.x, game._main_menu_how_to_play_rect.y,
             game._main_menu_how_to_play_rect.w, game._main_menu_how_to_play_rect.h, 4, 4,
             game.C.MULT, game.C.BLOCK.SHADOW, 2)
+
+        draw_rect_with_shadow(
+            game._main_menu_collection_rect.x, game._main_menu_collection_rect.y,
+            game._main_menu_collection_rect.w, game._main_menu_collection_rect.h, 4, 4,
+            game.C.ORANGE or game.C.BLUE, game.C.BLOCK.SHADOW, 2)
 
         love.graphics.setColor(game.C.WHITE)
         love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
@@ -248,6 +339,10 @@ function MainMenuUI.draw_main(game)
         love.graphics.printf("How to Play",
             game._main_menu_how_to_play_rect.x, btn_label_y(game._main_menu_how_to_play_rect),
             game._main_menu_how_to_play_rect.w, "center")
+
+        love.graphics.printf("Collection",
+            game._main_menu_collection_rect.x, btn_label_y(game._main_menu_collection_rect),
+            game._main_menu_collection_rect.w, "center")
 
         if game.SEED then
             love.graphics.setFont(game.FONTS.PIXEL.SMALL)
@@ -659,6 +754,9 @@ function MainMenuUI.handle_touch(game, x, y)
     if game._menu_sub_state == "how_to_play" then
         return MainMenuUI._touch_how_to_play(game, x, y)
     end
+    if game._menu_sub_state == "collection_menu" then
+        return CollectionUI.handle_touch_menu(game, x, y)
+    end
     return MainMenuUI._touch_main(game, x, y)
 end
 
@@ -680,6 +778,12 @@ function MainMenuUI._touch_main(game, x, y)
     local hr = game._main_menu_how_to_play_rect
     if hr and game:_point_in_rect_simple(x, y, hr) then
         MainMenuUI.open_how_to_play(game)
+        return true
+    end
+
+    local colr = game._main_menu_collection_rect
+    if colr and game:_point_in_rect_simple(x, y, colr) then
+        CollectionUI.open(game)
         return true
     end
 
@@ -747,10 +851,13 @@ function MainMenuUI._touch_deck_select(game, x, y)
 end
 
 function MainMenuUI.handle_button(game, btn)
+    MainMenuUI.try_konami_cheat(game, btn)
     if game._menu_sub_state == "deck_select" then
         MainMenuUI._button_deck_select(game, btn)
     elseif game._menu_sub_state == "how_to_play" then
         MainMenuUI._button_how_to_play(game, btn)
+    elseif game._menu_sub_state == "collection_menu" or game._menu_sub_state == "collection_grid" then
+        CollectionUI.handle_button(game, btn)
     else
         MainMenuUI._button_main(game, btn)
     end

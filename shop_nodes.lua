@@ -34,6 +34,9 @@ function ShopBoosterNode:draw()
         love.graphics.rectangle("fill", x, y, w, h, 3, 3)
         love.graphics.setColor(1, 1, 1, 1)
     end
+    if game.draw_node_gamepad_focus_outline then
+        game:draw_node_gamepad_focus_outline(self)
+    end
 end
 
 ---@class ShopVoucherNode : Moveable
@@ -90,5 +93,8 @@ function ShopVoucherNode:draw()
         love.graphics.setColor((game.C and game.C.VOUCHER) or { 0.5, 0.35, 0.55 })
         love.graphics.rectangle("fill", x, y, w, h, 3, 3)
         love.graphics.setColor(1, 1, 1, 1)
+    end
+    if game.draw_node_gamepad_focus_outline then
+        game:draw_node_gamepad_focus_outline(self)
     end
 end

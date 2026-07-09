@@ -75,6 +75,9 @@ function Hand:add_card(card_data, bypass_limit)
     end
     if not bypass_limit and #self.cards >= limit then return nil end
     table.insert(self.cards, card_data)
+    if self.game and self.game.discover_card_properties then
+        self.game:discover_card_properties(card_data)
+    end
     local node = Card(0, 0, nil, nil, card_data, nil, { face_up = true })
     self.game:add(node)
     table.insert(self.card_nodes, node)
@@ -170,6 +173,59 @@ function Hand:try_reorder_card_after_drag(node, release_x)
     Sfx.play_random("resources/sounds/cardSlide1.ogg", "resources/sounds/cardSlide2.ogg")
     return true
 end
+
+--- Gamepad: shift one hand card left (-1) or right (+1) in fan order.
+function Hand:reorder_node_step(node, delta)
+    if self._play_sequence or not node then return false end
+    delta = math.floor(tonumber(delta) or 0)
+    if delta == 0 then return false end
+
+    local from_idx
+    for i, n in ipairs(self.card_nodes) do
+        if n == node then
+            from_idx = i
+            break
+        end
+    end
+    if not from_idx then return false end
+
+    local to_idx = from_idx + delta
+    if to_idx < 1 or to_idx > #self.card_nodes then return false end
+
+    local card = table.remove(self.cards, from_idx)
+    local inode = table.remove(self.card_nodes, from_idx)
+    table.insert(self.cards, to_idx, card)
+    table.insert(self.card_nodes, to_idx, inode)
+
+    self:layout(false)
+    if self.game and self.game.restore_hand_draw_order then
+        self.game:restore_hand_draw_order()
+    end
+    if self.game and self.game.move_selected_hand_cards_to_front then
+        self.game:move_selected_hand_cards_to_front()
+    end
+    if self.game and self.game.set_dpad_cursor_for_node then
+        self.game:set_dpad_cursor_for_node(inode)
+    end
+    Sfx.play_random("resources/sounds/cardSlide1.ogg", "resources/sounds/cardSlide2.ogg")
+    return true
+end
+
+--- Prefer cursor card when selected; otherwise first selected card in hand order.
+function Hand:reorder_gamepad_step(delta, cursor_node)
+    local node
+    if cursor_node and self:is_selected(cursor_node) then
+        node = cursor_node
+    elseif #self.selected > 0 then
+        local ordered = self:ordered_selected_nodes()
+        node = ordered[1]
+    elseif cursor_node then
+        node = cursor_node
+    end
+    if not node then return false end
+    return self:reorder_node_step(node, delta)
+end
+
 ---@param update_visual boolean|nil If true or omitted, VT is set to match T (instant). If false, only T is updated so cards interpolate to new positions.
 ---@param skip_vt_node Card|nil If set, that node's VT is left unchanged (e.g. animating in from off-screen).
 function Hand:layout(update_visual, skip_vt_node)

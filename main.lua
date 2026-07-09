@@ -118,7 +118,7 @@ function love.keypressed(key)
         elseif key == "3" then
             G:add_joker_by_def(G:random_joker_def_id_by_rarity(3))
         elseif key == "4" then
-            G:add_joker_by_def(G:random_joker_def_id_by_rarity(4))
+            G:add_joker_by_def("j_astronomer")
         elseif key =="5" then
             G.money = G.money + 100
         elseif key == "6" then
@@ -204,6 +204,12 @@ function love.keypressed(key)
 end
 
 function love.gamepadpressed(_, button)
+    if G and G.STATE == G.STATES.MENU then
+        local MainMenuUI = require("main_menu_ui")
+        MainMenuUI.handle_button(G, button)
+        return
+    end
+
     if button == "start" and G then
         if G.toggle_pause then
             G:toggle_pause()
@@ -215,20 +221,21 @@ function love.gamepadpressed(_, button)
     if button == "leftshoulder" and G then
         G._l_held = true
         G._l_press_time = love.timer.getTime()
-        if G.STATE == G.STATES.SELECTING_HAND and G.enter_card_select_mode then
-            G:enter_card_select_mode()
+        if G.enter_card_select_mode then
+            if G.STATE == G.STATES.SELECTING_HAND then
+                G:enter_card_select_mode()
+            elseif G.STATE == G.STATES.OPEN_BOOSTER and G.booster_session and G.booster_session.hand_for_tarot then
+                G:enter_card_select_mode()
+            end
         end
     end
     if button == "rightshoulder" and G then
         G._r_held = true
+        G._r_press_time = love.timer.getTime()
+        G._r_dpad_used = false
     end
 
     if not G then return end
-    if G.STATE == G.STATES.MENU then
-        local MainMenuUI = require("main_menu_ui")
-        MainMenuUI.handle_button(G, button)
-        return
-    end
     if G.STATE == G.STATES.YOU_WIN then
         YouWinUI.handle_button(G, button)
         return
@@ -251,16 +258,23 @@ function love.gamepadpressed(_, button)
     end
 
     if button == "up" or button == "dpup" then
-        if G._l_held and G.STATE == G.STATES.SELECTING_HAND and G.hand then
+        if G._l_held and G.hand and G.STATE == G.STATES.SELECTING_HAND then
             local node = G.dpad_cursor_node and G:dpad_cursor_node()
             if node then G.hand:toggle_selection(node) end
+        elseif G.STATE == G.STATES.OPEN_BOOSTER and G.is_card_select_mode and G:is_card_select_mode()
+            and G.handle_gamepad_booster and G:handle_gamepad_booster(button) then
+            -- booster hand card-select toggle
+        elseif G.STATE == G.STATES.SHOP and G.handle_gamepad_shop and G:handle_gamepad_shop(button) then
+            -- layer toggle consumed
         elseif G.set_jokers_location then
             G:set_jokers_location(true)
         end
     elseif button == "down" or button == "dpdown" then
-        if G._l_held and G.STATE == G.STATES.SELECTING_HAND and G.hand then
+        if G._l_held and G.hand and G.STATE == G.STATES.SELECTING_HAND then
             local node = G.dpad_cursor_node and G:dpad_cursor_node()
             if node then G.hand:toggle_selection(node) end
+        elseif G.STATE == G.STATES.SHOP and G.handle_gamepad_shop and G:handle_gamepad_shop(button) then
+            -- layer toggle consumed
         elseif G.set_jokers_location then
             G:set_jokers_location(false)
         end
@@ -279,12 +293,18 @@ function love.gamepadpressed(_, button)
         return
     end
     if G.STATE == G.STATES.SHOP then
+        if G.handle_gamepad_shop and G:handle_gamepad_shop(button) then
+            return
+        end
         if button == "y" or button == "a" then
             G:continue_from_shop()
         end
         return
     end
     if G.STATE == G.STATES.OPEN_BOOSTER then
+        if G.handle_gamepad_booster and G:handle_gamepad_booster(button) then
+            return
+        end
         if button == "b" and G.end_booster_session then
             G:end_booster_session()
         end
@@ -343,7 +363,19 @@ function love.gamepadreleased(_, button)
         G._l_press_time = nil
     end
     if button == "rightshoulder" then
+        local tap_threshold = 0.25
+        local press_time = G._r_press_time
+        if G._l_held and G.is_card_select_mode and G:is_card_select_mode() and not G._r_dpad_used then
+            if press_time and (love.timer.getTime() - press_time) < tap_threshold then
+                local node = G.dpad_cursor_node and G:dpad_cursor_node()
+                if node and G.hand then
+                    G.hand:toggle_selection(node)
+                end
+            end
+        end
         G._r_held = false
+        G._r_press_time = nil
+        G._r_dpad_used = false
     end
 end
 
