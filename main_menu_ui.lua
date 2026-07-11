@@ -80,17 +80,14 @@ MainMenuUI.HOW_TO_PLAY_PAGES = {
         title = "Gamepad - Shop",
         lines = {
             "D-Pad Left/Right: To move selection cursor.",
-            "R: Buy",
-            "Y: Buy and Use",
-            "Y: Reroll Shop",
-            "A: Continue from Shop",
+            "R: Buy     Y: Buy and Use",
+            "X: Reroll Shop     A: Continue from Shop",
             "   When Opening a Booster Pack",
             "D-Pad Left/Right: To move selection cursor.",
             "Hold L: Card Select Mode",
             "In Card Select Mode: D-Pad Up or R: To Toggle Selection",
             "In Card Select Mode: Hold R and move Left/Right: Reorder Selected Cards",
-            "A: Use selected card",
-            "B: Skip Booster",
+            "A: Use selected card   B: Skip Booster",
         },
     },
     {
@@ -233,9 +230,10 @@ function MainMenuUI.draw_bottom(game)
 end
 
 function MainMenuUI.draw_main(game)
-    local panel_w, panel_h = 304, 168
-    local panel_y = 240/2 - panel_h/2
-    local panel_x = 8
+    local has_save = game.has_saved_run and game:has_saved_run() == true
+    local panel_w, panel_h = 220, (has_save and 168) or 138
+    local panel_y = 240/2 - panel_h/2 - 22
+    local panel_x = 320/2 - panel_w/2
 
     if _G.draw_rect_with_shadow then
         draw_rect_with_shadow(panel_x, panel_y, panel_w, panel_h, 6, 3,
@@ -248,14 +246,13 @@ function MainMenuUI.draw_main(game)
     love.graphics.setColor(game.C.WHITE)
     love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
 
-    local has_save = game.has_saved_run and game:has_saved_run() == true
     local btn_w, btn_h = 160, 28
     local btn_gap = 6
     local btn_x = panel_x + math.floor((panel_w - btn_w) * 0.5 + 0.5)
     game._main_menu_how_to_play_rect = nil
 
     if has_save then
-        local y0 = panel_y + 24
+        local y0 = panel_y + 20
         game._main_menu_continue_rect = { x = btn_x, y = y0, w = btn_w, h = btn_h }
         game._main_menu_start_rect    = { x = btn_x, y = y0 + btn_h + btn_gap, w = btn_w, h = btn_h }
         game._main_menu_how_to_play_rect = { x = btn_x, y = y0 + (btn_h + btn_gap) * 2, w = btn_w, h = btn_h }
@@ -306,7 +303,7 @@ function MainMenuUI.draw_main(game)
             game._main_menu_collection_rect.w, "center")
     else
         game._main_menu_continue_rect = nil
-        local y0 = panel_y + 36
+        local y0 = panel_y + 20
         game._main_menu_start_rect = { x = btn_x, y = y0, w = btn_w, h = btn_h }
         game._main_menu_how_to_play_rect = { x = btn_x, y = y0 + btn_h + btn_gap, w = btn_w, h = btn_h }
         game._main_menu_collection_rect = { x = btn_x, y = y0 + (btn_h + btn_gap) * 2, w = btn_w, h = btn_h }
@@ -349,10 +346,41 @@ function MainMenuUI.draw_main(game)
             love.graphics.setColor(game.C.DARK_WHITE or game.C.GREY)
             love.graphics.printf(
                 "Seed " .. tostring(math.floor(tonumber(game.SEED) or 0)),
-                panel_x, panel_y + 204, panel_w, "center"
+                panel_x, 240 - 50, panel_w, "center"
             )
         end
     end
+
+    -- Profile Buttons
+    local profile_count = game.get_profile_count and game:get_profile_count() or 3
+    local profile_padding = 4
+    local profile_btn_w = ((320 - profile_padding * 2) - (profile_padding * (profile_count))) / (profile_count + 1)
+    local profile_btn_h = 28
+    local profile_btn_x = profile_padding
+    local profile_btn_y = 240 - profile_btn_h - profile_padding
+    local active_profile = game.get_profile_id and game:get_profile_id() or 1
+    game._main_menu_profile_rects = {}
+    for i = 1, profile_count do
+        local is_active = (i == active_profile)
+        local color = is_active and game.C.GREEN or game.C.MULT
+        draw_rect_with_shadow(profile_btn_x, profile_btn_y, profile_btn_w, profile_btn_h, 4, 4, color, game.C.BLOCK.SHADOW, 2)
+        love.graphics.setColor(game.C.WHITE)
+        love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
+        local label_y = profile_btn_y + math.floor((profile_btn_h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
+        love.graphics.printf("P" .. i, profile_btn_x, label_y, profile_btn_w, "center")
+        game._main_menu_profile_rects[i] = { x = profile_btn_x, y = profile_btn_y, w = profile_btn_w, h = profile_btn_h }
+        profile_btn_x = profile_btn_x + profile_btn_w + profile_padding
+    end
+
+    -- Delete Save (confirm on second tap)
+    local delete_confirm = game._delete_save_confirm == true
+    local delete_color = delete_confirm and game.C.RED or game.C.BOOSTER
+    draw_rect_with_shadow(profile_btn_x, profile_btn_y, profile_btn_w, profile_btn_h, 4, 4, delete_color, game.C.BLOCK.SHADOW, 2)
+    love.graphics.setColor(game.C.WHITE)
+    love.graphics.setFont(game.FONTS.PIXEL.SMALL)
+    local delete_label = delete_confirm and "Confirm?" or "Delete Save"
+    love.graphics.printf(delete_label, profile_btn_x, profile_btn_y + math.floor((profile_btn_h - love.graphics.getFont():getHeight()) * 0.5 + 0.5), profile_btn_w, "center")
+    game._main_menu_delete_save_rect = { x = profile_btn_x, y = profile_btn_y, w = profile_btn_w, h = profile_btn_h }
 end
 
 function MainMenuUI.draw_how_to_play(game)
@@ -761,6 +789,30 @@ function MainMenuUI.handle_touch(game, x, y)
 end
 
 function MainMenuUI._touch_main(game, x, y)
+    local profile_rects = game._main_menu_profile_rects or {}
+    for i, pr in ipairs(profile_rects) do
+        if pr and game:_point_in_rect_simple(x, y, pr) then
+            if game.switch_profile then
+                game:switch_profile(i)
+            end
+            return true
+        end
+    end
+
+    local del = game._main_menu_delete_save_rect
+    if del and game:_point_in_rect_simple(x, y, del) then
+        if game._delete_save_confirm then
+            if game.delete_profile_progress then
+                game:delete_profile_progress()
+            end
+        else
+            game._delete_save_confirm = true
+        end
+        return true
+    end
+    -- Any other main-menu tap cancels delete confirm.
+    game._delete_save_confirm = false
+
     local cr = game._main_menu_continue_rect
     if cr and game:_point_in_rect_simple(x, y, cr) then
         if game.continue_saved_run_from_main_menu then

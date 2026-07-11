@@ -15,9 +15,12 @@ local TooltipDraw = require("tooltip_draw")
 
 --- Seconds between revealing each payout line on the round-win screen.
 local ROUND_WIN_LINE_DELAY = 0.38
-local RUN_SAVE_PATH = "sdmc/Balatro3DS_run_save_1.lua"
 local RUN_SAVE_DIR = "sdmc"
-local SETTINGS_SAVE_PATH = "sdmc/Balatro3DS_settings.lua"
+local PROFILE_COUNT = 3
+local ACTIVE_PROFILE_PATH = "sdmc/Balatro3DS_active_profile.lua"
+--- P1 keeps legacy filenames for older installs.
+local SETTINGS_SAVE_PATH_P1 = "sdmc/Balatro3DS_settings.lua"
+local RUN_SAVE_PATH_P1 = "sdmc/Balatro3DS_run_save_1.lua"
 
 local function table_shallow_copy(src)
     if type(src) ~= "table" then return nil end
@@ -206,6 +209,11 @@ function Game:init(seed)
     -- Pull all shared globals from globals.lua
     if self.set_globals then
         self:set_globals()
+    end
+    self._profile_id = 1
+    self._delete_save_confirm = false
+    if self.load_active_profile then
+        self:load_active_profile()
     end
     if self.load_settings then
         self:load_settings()
@@ -1725,6 +1733,102 @@ function Game:exit_pause_menu()
     return true
 end
 
+function Game:get_profile_count()
+    return PROFILE_COUNT
+end
+
+function Game:get_profile_id()
+    local id = math.floor(tonumber(self._profile_id) or 1)
+    if id < 1 then id = 1 end
+    if id > PROFILE_COUNT then id = PROFILE_COUNT end
+    return id
+end
+
+function Game:settings_path_for_profile(profile_id)
+    local id = math.floor(tonumber(profile_id) or 1)
+    if id <= 1 then return SETTINGS_SAVE_PATH_P1 end
+    return string.format("sdmc/Balatro3DS_settings_%d.lua", id)
+end
+
+function Game:run_save_path_for_profile(profile_id)
+    local id = math.floor(tonumber(profile_id) or 1)
+    if id <= 1 then return RUN_SAVE_PATH_P1 end
+    return string.format("sdmc/Balatro3DS_run_save_%d.lua", id)
+end
+
+function Game:settings_save_path()
+    return self:settings_path_for_profile(self:get_profile_id())
+end
+
+function Game:run_save_path()
+    return self:run_save_path_for_profile(self:get_profile_id())
+end
+
+function Game:load_active_profile()
+    self._profile_id = 1
+    if not (love and love.filesystem and love.filesystem.load and love.filesystem.getInfo) then
+        return false
+    end
+    if not love.filesystem.getInfo(ACTIVE_PROFILE_PATH, "file") then
+        return false
+    end
+    local chunk = love.filesystem.load(ACTIVE_PROFILE_PATH)
+    if not chunk then return false end
+    local ok, data = pcall(chunk)
+    if not ok or type(data) ~= "table" then return false end
+    local id = math.floor(tonumber(data.profile) or 1)
+    if id < 1 then id = 1 end
+    if id > PROFILE_COUNT then id = PROFILE_COUNT end
+    self._profile_id = id
+    return true
+end
+
+function Game:save_active_profile()
+    if not (love and love.filesystem and love.filesystem.write and love.filesystem.createDirectory) then
+        return false
+    end
+    love.filesystem.createDirectory(RUN_SAVE_DIR)
+    local encoded = "return " .. serialize_lua_value({ profile = self:get_profile_id() })
+    local ok = love.filesystem.write(ACTIVE_PROFILE_PATH, encoded)
+    return ok and true or false
+end
+
+--- Switch to another profile slot (1–3). Persists current settings first, then loads the target.
+function Game:switch_profile(profile_id)
+    local id = math.floor(tonumber(profile_id) or 1)
+    if id < 1 then id = 1 end
+    if id > PROFILE_COUNT then id = PROFILE_COUNT end
+    if id == self:get_profile_id() then
+        self._delete_save_confirm = false
+        return true
+    end
+    self:save_settings()
+    self._profile_id = id
+    self._delete_save_confirm = false
+    self:save_active_profile()
+    self:load_settings()
+    return true
+end
+
+--- Wipe unlocks, discoveries, and wins for the active profile, and clear its run save.
+function Game:delete_profile_progress()
+    self.unlocks = self:build_unlocks()
+    self.Discovered = self:build_discovered()
+    self.joker_wins = self:build_joker_wins()
+    if self.SETTINGS then
+        self.SETTINGS.UNLOCKS = self.unlocks
+        self.SETTINGS.DISCOVERED = self.Discovered
+        self.SETTINGS.JOKER_WINS = self.joker_wins
+    end
+    self:apply_unlocks(self.unlocks)
+    self:apply_discovered(self.Discovered)
+    self:apply_joker_wins(self.joker_wins)
+    self:clear_run_snapshot()
+    self:save_settings()
+    self._delete_save_confirm = false
+    return true
+end
+
 function Game:default_settings()
     return {
         GAMESPEED = 1,
@@ -1786,16 +1890,19 @@ function Game:load_settings()
         self:apply_unlocks(self.SETTINGS.UNLOCKS)
         self:apply_discovered(self.SETTINGS.DISCOVERED)
         self:apply_joker_wins(self.SETTINGS.JOKER_WINS)
+        if self.apply_music_volume then
+            self:apply_music_volume()
+        end
     end
     if not (love and love.filesystem and love.filesystem.load and love.filesystem.getInfo) then
         finish_load()
         return false
     end
-    if not love.filesystem.getInfo(SETTINGS_SAVE_PATH, "file") then
+    if not love.filesystem.getInfo(self:settings_save_path(), "file") then
         finish_load()
         return false
     end
-    local chunk, err = love.filesystem.load(SETTINGS_SAVE_PATH)
+    local chunk, err = love.filesystem.load(self:settings_save_path())
     if not chunk then
         finish_load()
         return false, tostring(err or "load_failed")
@@ -1816,7 +1923,7 @@ function Game:save_settings()
     end
     love.filesystem.createDirectory(RUN_SAVE_DIR)
     local encoded = "return " .. serialize_lua_value(self:snapshot_settings())
-    local ok, err = love.filesystem.write(SETTINGS_SAVE_PATH, encoded)
+    local ok, err = love.filesystem.write(self:settings_save_path(), encoded)
     if not ok then
         return false, tostring(err or "write_failed")
     end
@@ -1935,13 +2042,14 @@ function Game:current_resume_state()
 end
 
 function Game:has_saved_run()
-    return love and love.filesystem and love.filesystem.getInfo and love.filesystem.getInfo(RUN_SAVE_PATH, "file") ~= nil
+    local path = self:run_save_path()
+    return love and love.filesystem and love.filesystem.getInfo and love.filesystem.getInfo(path, "file") ~= nil
 end
 
 function Game:clear_run_snapshot()
     if not (love and love.filesystem and love.filesystem.remove) then return false end
     if not self:has_saved_run() then return true end
-    return love.filesystem.remove(RUN_SAVE_PATH) and true or false
+    return love.filesystem.remove(self:run_save_path()) and true or false
 end
 
 function Game:build_run_snapshot()
@@ -2083,7 +2191,7 @@ function Game:write_run_snapshot(snapshot)
     end
     love.filesystem.createDirectory(RUN_SAVE_DIR)
     local encoded = "return " .. serialize_lua_value(snapshot)
-    local ok, err = love.filesystem.write(RUN_SAVE_PATH, encoded)
+    local ok, err = love.filesystem.write(self:run_save_path(), encoded)
     if not ok then
         return false, tostring(err or "write_failed")
     end
@@ -2095,7 +2203,7 @@ function Game:read_run_snapshot()
     if not (love and love.filesystem and love.filesystem.load) then
         return nil, "filesystem_unavailable"
     end
-    local chunk, err = love.filesystem.load(RUN_SAVE_PATH)
+    local chunk, err = love.filesystem.load(self:run_save_path())
     if not chunk then return nil, tostring(err or "load_failed") end
     local ok, data = pcall(chunk)
     if not ok or type(data) ~= "table" then
@@ -4838,6 +4946,7 @@ function Game:enter_main_menu()
     self._main_menu_how_to_play_rect = nil
     self._how_to_play_back_rect = nil
     self._how_to_play_rects = nil
+    self._delete_save_confirm = false
     self._pause_prev_state = nil
     self._blind_resolution_pending = false
     self.active_tooltip_card = nil

@@ -233,6 +233,7 @@ function love.gamepadpressed(_, button)
         G._r_held = true
         G._r_press_time = love.timer.getTime()
         G._r_dpad_used = false
+        G._r_toggle_on_press = false
     end
 
     if not G then return end
@@ -329,9 +330,11 @@ function love.gamepadpressed(_, button)
             G.hand:sort_by_suit()
         end
     end
-    if (button == "rightshoulder" and G._l_held) then
-            local node = G:dpad_cursor_move(0)
-            if node then G.hand:toggle_selection(node) end
+    -- Hold R in card-select: toggle cursor card once so sweep starts from it.
+    if button == "rightshoulder" and G._l_held and G.hand then
+        local node = G.dpad_cursor_node and G:dpad_cursor_node()
+        if node then G.hand:toggle_selection(node) end
+        G._r_toggle_on_press = true
     end
     if button == "x" and G.hand and G.hand:has_selection() then
         G.hand:discard_selected()
@@ -365,7 +368,10 @@ function love.gamepadreleased(_, button)
     if button == "rightshoulder" then
         local tap_threshold = 0.25
         local press_time = G._r_press_time
-        if G._l_held and G.is_card_select_mode and G:is_card_select_mode() and not G._r_dpad_used then
+        -- Booster card-select: toggle on quick R tap (press is reserved for hold-to-reorder).
+        -- Blind card-select already toggled on press — do not toggle again on release.
+        if G._l_held and G.is_card_select_mode and G:is_card_select_mode() and not G._r_dpad_used
+            and not G._r_toggle_on_press then
             if press_time and (love.timer.getTime() - press_time) < tap_threshold then
                 local node = G.dpad_cursor_node and G:dpad_cursor_node()
                 if node and G.hand then
@@ -376,6 +382,7 @@ function love.gamepadreleased(_, button)
         G._r_held = false
         G._r_press_time = nil
         G._r_dpad_used = false
+        G._r_toggle_on_press = false
     end
 end
 
