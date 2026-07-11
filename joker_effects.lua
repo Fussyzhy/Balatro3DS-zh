@@ -331,6 +331,9 @@ local function legacy_apply_effect(self, ctx)
         local suit = suits[math.random(1, #suits)]
         local rank = math.random(MIN_RANK, MAX_RANK)
         table.insert(deck.cards, { rank = rank, suit = suit, enhancement = "stone" })
+        if G and G.notify_cards_added_to_deck then
+            G:notify_cards_added_to_deck(1)
+        end
         mark_effect_applied(ctx)
         mark_created_item(ctx)
     elseif self.effect_type == "1 in 6 mult" or self.effect_type == "1 in 10 mult" then
@@ -701,10 +704,13 @@ local SPECIAL = {
         end
     },
     j_hologram = {
-        matches_trigger = function(_, e) return e == "on_shop_buy" or e == "on_hand_scored" end,
+        matches_trigger = function(_, e) return e == "on_cards_added_to_deck" or e == "on_hand_scored" end,
         apply_effect = function(j, ctx)
-            if ctx.event_name == "on_shop_buy" and ctx.offer_kind ~= "joker" then
-                j.stored_xmult = (tonumber(j.stored_xmult) or 1) + 0.25
+            if ctx.event_name == "on_cards_added_to_deck" then
+                local n = math.max(0, math.floor(tonumber(ctx.count) or 0))
+                if n > 0 then
+                    j.stored_xmult = (tonumber(j.stored_xmult) or 1) + 0.25 * n
+                end
             elseif ctx.event_name == "on_hand_scored" then
                 mul_mult(ctx, tonumber(j.stored_xmult) or 1)
             end
@@ -746,6 +752,9 @@ local SPECIAL = {
                 seal = seals[math.random(1, #seals)],
             }
             hand:add_card(cd, true)
+            if G.notify_cards_added_to_deck then
+                G:notify_cards_added_to_deck(1)
+            end
             mark_effect_applied(ctx)
             mark_created_item(ctx)
         end,
@@ -1231,6 +1240,9 @@ local SPECIAL = {
             if not copy then return end
             if G.ensure_card_uid then G:ensure_card_uid(copy) end
             if hand:add_card(copy, true) then
+                if G.notify_cards_added_to_deck then
+                    G:notify_cards_added_to_deck(1)
+                end
                 mark_created_item(ctx)
             end
         end,

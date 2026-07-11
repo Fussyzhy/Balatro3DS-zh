@@ -3705,7 +3705,11 @@ function Game:apply_consumable_effect(c)
                 enhancement = enhancement,
                 seal = nil,
             }
-            return hand:add_card(cd, true)
+            local node = hand:add_card(cd, true)
+            if node then
+                self:notify_cards_added_to_deck(1)
+            end
+            return node
         end
 
         if id == "spectral_black_hole" then
@@ -3746,13 +3750,17 @@ function Game:apply_consumable_effect(c)
             if ord[1] and ord[1].set_seal then ord[1]:set_seal("purple") end
         elseif id == "spectral_cryptid" then
             if ord[1] and ord[1].card_data and hand and hand.add_card and self.deep_copy_card_data then
+                local added = 0
                 for _ = 1, 2 do
                     local copy = self:deep_copy_card_data(ord[1].card_data)
                     if copy then
                         copy.uid = nil
-                        hand:add_card(copy, true)
+                        if hand:add_card(copy, true) then
+                            added = added + 1
+                        end
                     end
                 end
+                self:notify_cards_added_to_deck(added)
             end
         elseif id == "spectral_aura" then
             if ord[1] and ord[1].card_data then
@@ -5860,6 +5868,15 @@ function Game:emit_on_destroy_cards(destroyed_cards)
     })
 end
 
+--- Permanent playing cards added to the run deck (shop, boosters, spectrals, Certificate, DNA, etc.).
+--- Does not fire when recycling the hand back into the draw pile.
+---@param count number|nil
+function Game:notify_cards_added_to_deck(count)
+    local n = math.floor(tonumber(count) or 0)
+    if n <= 0 then return end
+    self:emit_joker_event("on_cards_added_to_deck", { count = n })
+end
+
 function Game:_sync_joker_ctx(ctx)
     if type(ctx) ~= "table" then return end
     self.selectedHandChips = tonumber(ctx.chips) or self.selectedHandChips
@@ -6627,6 +6644,7 @@ function Game:_deck_inject_playing_card(card_data)
     else
         table.insert(deck.cards, pos, d)
     end
+    self:notify_cards_added_to_deck(1)
     return true
 end
 
@@ -7914,6 +7932,7 @@ function Game:pick_booster_choice(idx)
     elseif ch.kind == "playing" then
         if self.deck and self.deck.insert_random then
             self.deck:insert_random(ch.playing_data)
+            self:notify_cards_added_to_deck(1)
         end
     elseif ch.kind == "tarot" or ch.kind == "spectral" then
         local c = ch.consumable_def
