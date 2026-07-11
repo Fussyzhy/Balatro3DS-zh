@@ -3630,10 +3630,13 @@ end
 function Game:random_joker_def_id_by_rarity(rarity)
     local r = tonumber(rarity)
     if not r or not JOKER_DEFS then return nil end
+    local allow_duplicates = self:hasJoker("j_ring_master")
     local pool = {}
     for id, def in pairs(JOKER_DEFS) do
         if type(def) == "table" and tonumber(def.rarity) == r and self:joker_allowed_in_random_pool(id) then
-            pool[#pool + 1] = id
+            if allow_duplicates or not self:_shop_joker_owned(id) then
+                pool[#pool + 1] = id
+            end
         end
     end
     if #pool == 0 then return nil end

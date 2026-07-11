@@ -803,30 +803,12 @@ local SPECIAL = {
         matches_trigger = function(_, e) return e == "on_blind_selected" end,
         apply_effect = function(_, ctx)
             if not (G and G.add_joker_by_def and G.random_joker_def_id_by_rarity) then return end
-            local spawned = 0
-            local allow_duplicates = G.hasJoker and G:hasJoker("j_ring_master")
-            if allow_duplicates then
-                for _ = 1, 2 do
-                    local id = G:random_joker_def_id_by_rarity(1)
-                    if G:add_joker_by_def(id) then
-                        spawned = spawned + 1
-                        mark_effect_applied(ctx)
-                        mark_created_item(ctx)
-                    end
-                end
-            else
-                local picked = {}
-                local tries = 0
-                local max_tries = 20
-                while spawned < 2 and tries < max_tries do
-                    tries = tries + 1
-                    local id = G:random_joker_def_id_by_rarity(1)
-                    if id and not picked[id] and G:add_joker_by_def(id) then
-                        picked[id] = true
-                        spawned = spawned + 1
-                        mark_effect_applied(ctx)
-                        mark_created_item(ctx)
-                    end
+            for _ = 1, 2 do
+                local id = G:random_joker_def_id_by_rarity(1)
+                if not id then break end
+                if G:add_joker_by_def(id) then
+                    mark_effect_applied(ctx)
+                    mark_created_item(ctx)
                 end
             end
         end
@@ -1798,7 +1780,7 @@ local SPECIAL = {
     },
 
     j_hit_the_road = {
-        matches_trigger = function(_, e) return e == "on_discard" or e == "on_hand_scored" end,
+        matches_trigger = function(_, e) return e == "on_discard" or e == "on_hand_scored" or e == "on_round_end" end,
         apply_effect = function(j, ctx)
             if ctx.event_name == "on_discard" and ctx.discard_reason == "discard" then
                 local discarded = ctx.discarded_cards
@@ -1809,6 +1791,8 @@ local SPECIAL = {
                 end
             elseif ctx.event_name == "on_hand_scored" then
                 mul_mult(ctx, tonumber(j.stored_xmult) or 1)
+            elseif ctx.event_name == "on_round_end" then
+                j.stored_xmult = 1
             end
         end
     },
