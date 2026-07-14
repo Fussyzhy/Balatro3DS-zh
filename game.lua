@@ -315,6 +315,7 @@ function Game:ensure_card_uid(card_data, force_new)
 end
 
 function Game:get_active_boss_blind_id()
+    if self.STATE ~= self.STATES.SELECTING_HAND then return nil end
     if tonumber(self.current_blind_index) ~= 3 then return nil end
     local proto = self:get_boss_blind_prototype()
     if not proto then return nil end
@@ -4110,8 +4111,8 @@ function Game:draw_consumables_row()
     local y = -30
 
     local n = #list
-    local area_w = math.max(draw_w, math.floor(sw * 0.5))
-    local area_x = sw - area_w
+    local area_w = (draw_w + gap) * 2
+    local area_x = sw - area_w + 2 * gap
     local step, span = self:_compute_fanned_joker_row(n, area_w, draw_w, gap, row_margin)
     local start_x = area_x + (area_w - row_margin) - span
     self._consumable_row_step = step
@@ -6172,6 +6173,7 @@ function Game:initialize_run_loop()
     self:roll_skips()
     self:set_state(self.STATES.BLIND_SELECT)
     self.joker_pool_replacements = {}
+    self:add_joker_by_def("j_vampire")
 end
 
 function Game:enter_blind_select()

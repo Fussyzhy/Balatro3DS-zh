@@ -1448,7 +1448,7 @@ local SPECIAL = {
         apply_effect = function(j, ctx)
             if ctx.event_name == "card_played" then
                 card = ctx.card_node
-                if(card.card_data.enhancement or card.card_data.enhancement ~= "none") then
+                if(card.card_data.enhancement and card.card_data.enhancement ~= "none") then
                     j.stored_xmult = (tonumber(j.stored_xmult) or 0) + 0.1
                     card:set_enhancement("none")
                     mark_effect_applied(ctx)

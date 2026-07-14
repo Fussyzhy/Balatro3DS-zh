@@ -1308,6 +1308,12 @@ function Hand:play_selected()
         cards = self:ordered_selected_nodes()
     end
 
+    -- Debuff boss ability: one notify per played hand (not per selection / per card).
+    if self._pending_boss_debuff_notify and self.game and self.game.notify_boss_effect_triggered then
+        self.game:notify_boss_effect_triggered({ reason = "card_debuffed_for_scoring" })
+    end
+    self._pending_boss_debuff_notify = false
+
     if self.game then
         local hi = tonumber(G and G.selectedHand)
         if hi and hi > 0 then
@@ -1439,6 +1445,7 @@ function Hand:calculate_play()
     local n_sel = #self.selected
     if n_sel == 0 then
         self._last_play_hand_flags = nil
+        self._pending_boss_debuff_notify = false
         for _, node in ipairs(self.card_nodes) do
             node.counts_for_play_score = false
         end
@@ -1785,16 +1792,14 @@ function Hand:calculate_play()
         mark_all_ordered()
     end
 
+    -- Mark debuffs for scoring preview only; notify once on play (see play_selected).
+    self._pending_boss_debuff_notify = false
     if G and G.boss_is_card_debuffed_for_scoring then
-        local any_debuffed = false
         for _, node in ipairs(ordered) do
             if node.counts_for_play_score == true and G:boss_is_card_debuffed_for_scoring(node) then
                 node.counts_for_play_score = false
-                any_debuffed = true
+                self._pending_boss_debuff_notify = true
             end
-        end
-        if any_debuffed and G.notify_boss_effect_triggered then
-            G:notify_boss_effect_triggered({ reason = "card_debuffed_for_scoring" })
         end
     end
     if G and G.get_active_boss_blind_id and G:get_active_boss_blind_id() == "bl_psychic" and #ordered < 5 then

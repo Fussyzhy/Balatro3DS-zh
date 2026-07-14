@@ -7,7 +7,7 @@ local SCREEN_H = 240
 local TOP_STRIP_H = 64
 local BOTTOM_STRIP_H = 64
 local BOTTOM_STRIP_Y = SCREEN_H - BOTTOM_STRIP_H
-local TOP_RIGHT_SIZE = 64
+local TOP_RIGHT_SIZE = 138
 
 local function zone_rects()
     return {
