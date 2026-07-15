@@ -217,23 +217,20 @@ function love.gamepadpressed(_, button)
         end
     end
 
-    -- Hold L = card select mode; quick tap at release discards
+    -- Hold L = reorder; quick tap at release discards
     if button == "leftshoulder" and G then
         G._l_held = true
         G._l_press_time = love.timer.getTime()
-        if G.enter_card_select_mode then
-            if G.STATE == G.STATES.SELECTING_HAND then
-                G:enter_card_select_mode()
-            elseif G.STATE == G.STATES.OPEN_BOOSTER and G.booster_session and G.booster_session.hand_for_tarot then
-                G:enter_card_select_mode()
-            end
+        if G.enter_card_select_mode and G.ensure_dpad_cursor then
+            G:enter_card_select_mode()
         end
     end
     if button == "rightshoulder" and G then
         G._r_held = true
         G._r_press_time = love.timer.getTime()
         G._r_dpad_used = false
-        G._r_toggle_on_press = false
+        G._r_sweep_seeded = false
+        G._r_booster_confirmed = false
     end
 
     if not G then return end
@@ -242,8 +239,8 @@ function love.gamepadpressed(_, button)
         return
     end
     if G.STATE == G.STATES.PAUSED then
-        if button == "a" or button == "y" then
-            G:exit_pause_menu()
+        if G.handle_gamepad_pause and G:handle_gamepad_pause(button) then
+            return
         end
         return
     end
@@ -258,30 +255,17 @@ function love.gamepadpressed(_, button)
         return
     end
 
-    if button == "up" or button == "dpup" then
-        if G._l_held and G.hand and G.STATE == G.STATES.SELECTING_HAND then
-            local node = G.dpad_cursor_node and G:dpad_cursor_node()
-            if node then G.hand:toggle_selection(node) end
-        elseif G.STATE == G.STATES.OPEN_BOOSTER and G.is_card_select_mode and G:is_card_select_mode()
-            and G.handle_gamepad_booster and G:handle_gamepad_booster(button) then
-            -- booster hand card-select toggle
-        elseif G.STATE == G.STATES.SHOP and G.handle_gamepad_shop and G:handle_gamepad_shop(button) then
-            -- layer toggle consumed
-        elseif G.set_jokers_location then
-            G:set_jokers_location(true)
-        end
-    elseif button == "down" or button == "dpdown" then
-        if G._l_held and G.hand and G.STATE == G.STATES.SELECTING_HAND then
-            local node = G.dpad_cursor_node and G:dpad_cursor_node()
-            if node then G.hand:toggle_selection(node) end
-        elseif G.STATE == G.STATES.SHOP and G.handle_gamepad_shop and G:handle_gamepad_shop(button) then
-            -- layer toggle consumed
-        elseif G.set_jokers_location then
-            G:set_jokers_location(false)
+    if button == "up" or button == "dpup" or button == "down" or button == "dpdown" then
+        if G.handle_gamepad_focus_vertical and G:handle_gamepad_focus_vertical(button) then
+            return
         end
     end
 
     if G.STATE == G.STATES.BLIND_SELECT then
+        if button == "x" and G.try_gamepad_skip_blind then
+            G:try_gamepad_skip_blind()
+            return
+        end
         if button == "y" or button == "a" then
             G:start_selected_blind()
         end
@@ -297,7 +281,7 @@ function love.gamepadpressed(_, button)
         if G.handle_gamepad_shop and G:handle_gamepad_shop(button) then
             return
         end
-        if button == "y" or button == "a" then
+        if button == "a" then
             G:continue_from_shop()
         end
         return
@@ -311,78 +295,54 @@ function love.gamepadpressed(_, button)
         end
         return
     end
-    if G.STATE ~= G.STATES.SELECTING_HAND then
-        return
-    end
-
-    -- D-pad left/right: L / L+R repeat in Game:update_dpad_horizontal_repeat
-    if (button == "l" or button == "dpleft") and G.hand then
-        if G._l_held then
-            -- handled while held in update loop
-        else
-            G.hand:sort_by_rank()
+    if G.STATE == G.STATES.SELECTING_HAND then
+        if G.handle_gamepad_selecting_hand and G:handle_gamepad_selecting_hand(button) then
+            return
         end
-    end
-    if (button == "r" or button == "dpright") and G.hand then
-        if G._l_held then
-            -- handled while held in update loop
-        else
-            G.hand:sort_by_suit()
-        end
-    end
-    -- Hold R in card-select: toggle cursor card once so sweep starts from it.
-    if button == "rightshoulder" and G._l_held and G.hand then
-        local node = G.dpad_cursor_node and G:dpad_cursor_node()
-        if node then G.hand:toggle_selection(node) end
-        G._r_toggle_on_press = true
-    end
-    if button == "x" and G.hand and G.hand:has_selection() then
-        G.hand:discard_selected()
-    end
-    if (button == "rightshoulder" or button == "y") and G.hand and G.hand:has_selection() then
-        if not (button == "rightshoulder" and G._l_held) then
-            G:set_jokers_location(false)
-            G.hand:play_selected()
-            G._r_held = false
-        end
-    end
-    if (button == "b") and G and G.deck and G.hand and not G.deck:empty() and not G.hand:is_full() then
-        local card = G.deck:draw()
-        if card then G.hand:add_card(card) end
     end
 end
 
 function love.gamepadreleased(_, button)
     if not G then return end
+    local tap_threshold = 0.25
+
     if button == "leftshoulder" then
-        local tap_threshold = 0.25
         local press_time = G._l_press_time
         if press_time and (love.timer.getTime() - press_time) < tap_threshold then
-            if G.STATE == G.STATES.SELECTING_HAND and G.hand and G.hand:has_selection() then
+            if G.STATE == G.STATES.SELECTING_HAND and G.get_gamepad_focus_layer
+                and G:get_gamepad_focus_layer() == "hand" and G.hand and G.hand:has_selection() then
                 G.hand:discard_selected()
             end
         end
         G._l_held = false
         G._l_press_time = nil
     end
+
     if button == "rightshoulder" then
-        local tap_threshold = 0.25
         local press_time = G._r_press_time
-        -- Booster card-select: toggle on quick R tap (press is reserved for hold-to-reorder).
-        -- Blind card-select already toggled on press — do not toggle again on release.
-        if G._l_held and G.is_card_select_mode and G:is_card_select_mode() and not G._r_dpad_used
-            and not G._r_toggle_on_press then
-            if press_time and (love.timer.getTime() - press_time) < tap_threshold then
-                local node = G.dpad_cursor_node and G:dpad_cursor_node()
-                if node and G.hand then
-                    G.hand:toggle_selection(node)
+        if press_time and (love.timer.getTime() - press_time) < tap_threshold and not G._r_dpad_used then
+            if G.STATE == G.STATES.SELECTING_HAND and G.get_gamepad_focus_layer
+                and G:get_gamepad_focus_layer() == "hand" and G.hand and G.hand:has_selection() then
+                G:set_jokers_location(false)
+                G.hand:play_selected()
+            elseif G.STATE == G.STATES.OPEN_BOOSTER and G.is_booster_hand_mode and G:is_booster_hand_mode() then
+                if G.get_gamepad_focus_layer and G:get_gamepad_focus_layer() == "hand"
+                    and G.hand and G.hand:has_selection() and G.gamepad_booster_apply_hand_targeted then
+                    G:gamepad_booster_apply_hand_targeted()
+                elseif G.gamepad_booster_confirm and not G._r_booster_confirmed then
+                    G:gamepad_booster_confirm()
+                end
+            elseif G.STATE == G.STATES.OPEN_BOOSTER and G.gamepad_booster_confirm then
+                if not G._r_booster_confirmed then
+                    G:gamepad_booster_confirm()
                 end
             end
         end
         G._r_held = false
         G._r_press_time = nil
         G._r_dpad_used = false
-        G._r_toggle_on_press = false
+        G._r_sweep_seeded = false
+        G._r_booster_confirmed = false
     end
 end
 

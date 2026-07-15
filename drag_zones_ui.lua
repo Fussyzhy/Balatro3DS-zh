@@ -12,7 +12,7 @@ local TOP_RIGHT_SIZE = 138
 local function zone_rects()
     return {
         top = { x = 0, y = 0, w = SCREEN_W - TOP_RIGHT_SIZE, h = TOP_STRIP_H },
-        top_right = { x = SCREEN_W - TOP_RIGHT_SIZE, y = 0, w = TOP_RIGHT_SIZE, h = TOP_RIGHT_SIZE },
+        top_right = { x = SCREEN_W - TOP_RIGHT_SIZE, y = 0, w = TOP_RIGHT_SIZE, h = TOP_STRIP_H },
         bottom = { x = 0, y = BOTTOM_STRIP_Y, w = SCREEN_W, h = BOTTOM_STRIP_H },
         full = { x = 0, y = 0, w = SCREEN_W, h = TOP_STRIP_H },
     }

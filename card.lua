@@ -699,7 +699,7 @@ end
 function Card:should_draw_tooltip()
     if not self.face_up then return false end
     if G and G._collection_open and G._collection_tooltip_node == self then return true end
-    if G and G.is_card_select_mode and G:is_card_select_mode() then
+    if G and G.is_hand_cursor_active and G:is_hand_cursor_active() then
         return G:dpad_cursor_node() == self
     end
     if self.shop_offer_slot and G and G.STATE == G.STATES.SHOP and G.active_tooltip_joker == self then
@@ -775,7 +775,7 @@ function Card:draw()
 
     love.graphics.pop()
 
-    if G and G._l_held and G.is_card_select_mode and G:is_card_select_mode() and G.hand and G._dpad_cursor_index then
+    if G and G.is_hand_cursor_active and G:is_hand_cursor_active() and G.hand and G._dpad_cursor_index then
         local cursor = G.hand.card_nodes[G._dpad_cursor_index]
         if cursor == self then
             local r = self:get_collision_rect()

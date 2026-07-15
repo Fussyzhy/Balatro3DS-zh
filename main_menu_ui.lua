@@ -62,50 +62,66 @@ MainMenuUI.HOW_TO_PLAY_PAGES = {
     {
         title = "Gamepad - Hand",
         lines = {
-            "Quick tap L or X: Discard Selection",
-            "R or Y: Play hand",
-            "B: Back, Close, Skip Booster",
-            "D-pad L/R alone: Sort by Rank or Suit",
+            "D-pad Left/Right: Cycle hand cards",
+            "A: Toggle selection on cursor card",
+            "Hold R + Left/Right: Sweep select",
+            "Hold L + Left/Right: Reorder cards",
+            "X: Sort by Suit   Y: Sort by Rank",
+            "Tap L: Discard   Tap R: Play",
             "",
-            "   Card select mode (hold L)",
-            "D-pad Left/Right moves the cursor.",
-            "D-pad Up/Down toggles selection.",
-            "The cursor card gets a black outline and shows its tooltip",
+            "D-pad Up: Jokers down / back up",
+            "D-pad Down: Consumables / back to hand",
+        },
+    },
+    {
+        title = "Gamepad - Jokers & Consumables",
+        lines = {
+            "While jokers are down:",
+            "D-pad Left/Right: Cycle jokers",
+            "A or R: Select joker (pick two to swap)",
+            "Hold L + Left/Right: Reorder jokers",
+            "B: Sell joker",
             "",
-            "   Sweep select (hold L + R)",
-            "With both shoulders held, D-pad Left/Right selects each card as you move.",
+            "Consumables (D-pad Down):",
+            "D-pad Left/Right: Cycle consumables",
+            "A: Use   B: Sell",
+            "Hold L + Left/Right: Reorder",
         },
     },
     {
         title = "Gamepad - Shop",
         lines = {
-            "D-Pad Left/Right: To move selection cursor.",
-            "R: Buy     Y: Buy and Use",
-            "X: Reroll Shop     A: Continue from Shop",
-            "   When Opening a Booster Pack",
-            "D-Pad Left/Right: To move selection cursor.",
-            "Hold L: Card Select Mode",
-            "In Card Select Mode: D-Pad Up or R: To Toggle Selection",
-            "In Card Select Mode: Hold R and move Left/Right: Reorder Selected Cards",
-            "A: Use selected card   B: Skip Booster",
+            "D-Pad Left/Right: Move selection cursor.",
+            "Y: Buy     L+Y: Buy and Use",
+            "X: Reroll Shop     A: Continue",
+            "D-pad Up/Down: Shop / Joker layer",
+            "",
+            "Booster pack:",
+            "D-pad Left/Right: Cycle pack cards",
+            "A: Pick / Use focused card",
+            "Tap R: Confirm pick",
+            "Mega packs: R picks and selects next card",
+            "Tarot / Spectral hand packs:",
+            "D-pad Up/Down: Pack cards / Hand",
+            "B: Skip Booster",
         },
     },
     {
         title = "Gamepad - Other",
         lines = {
-            "D-pad Up/Down: Move the Joker Row",
-            "between the top and bottom of the screen.",
-            "",
             "Select: Open Deck View",
             "Start: Pause Menu",
             "",
-            "   Main menu",
-            "A/Y or tap: Start or Continue a Run",
-            "X or How to Play: This screen",
+            "Blind select:",
+            "A/Y: Start blind   X: Skip blind",
             "",
-            "   Deck select",
+            "Main menu: D-pad moves focus, A activates",
+            "Continue, New Run, How to Play, Collection,",
+            "Profiles, and Delete Save.",
+            "",
+            "Deck select:",
             "Left/Right: Pick deck   Up/Down: Pick Stake",
-            "A/Y or PLAY: Begin   B/X: Back",
+            "A/Y: Begin   B/X: Back",
         },
     },
 }
@@ -381,6 +397,90 @@ function MainMenuUI.draw_main(game)
     local delete_label = delete_confirm and "Confirm?" or "Delete Save"
     love.graphics.printf(delete_label, profile_btn_x, profile_btn_y + math.floor((profile_btn_h - love.graphics.getFont():getHeight()) * 0.5 + 0.5), profile_btn_w, "center")
     game._main_menu_delete_save_rect = { x = profile_btn_x, y = profile_btn_y, w = profile_btn_w, h = profile_btn_h }
+
+    local targets = MainMenuUI.build_main_menu_focus_targets(game)
+    local focus_idx = tonumber(game._menu_focus_index) or 1
+    focus_idx = math.max(1, math.min(#targets, focus_idx))
+    game._menu_focus_index = focus_idx
+    local focused = targets[focus_idx]
+    if focused and focused.rect then
+        local r = focused.rect
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.setLineWidth(2)
+        love.graphics.rectangle("line", r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1)
+    end
+end
+
+function MainMenuUI.build_main_menu_focus_targets(game)
+    local targets = {}
+    if game._main_menu_continue_rect then
+        targets[#targets + 1] = { kind = "continue", rect = game._main_menu_continue_rect }
+    end
+    if game._main_menu_start_rect then
+        targets[#targets + 1] = { kind = "start", rect = game._main_menu_start_rect }
+    end
+    if game._main_menu_how_to_play_rect then
+        targets[#targets + 1] = { kind = "how_to_play", rect = game._main_menu_how_to_play_rect }
+    end
+    if game._main_menu_collection_rect then
+        targets[#targets + 1] = { kind = "collection", rect = game._main_menu_collection_rect }
+    end
+    for i, pr in ipairs(game._main_menu_profile_rects or {}) do
+        if pr then
+            targets[#targets + 1] = { kind = "profile", index = i, rect = pr }
+        end
+    end
+    if game._main_menu_delete_save_rect then
+        targets[#targets + 1] = { kind = "delete", rect = game._main_menu_delete_save_rect }
+    end
+    return targets
+end
+
+function MainMenuUI.main_menu_focus_move(game, delta)
+    local targets = MainMenuUI.build_main_menu_focus_targets(game)
+    if #targets == 0 then return nil end
+    delta = math.floor(tonumber(delta) or 0)
+    local idx = tonumber(game._menu_focus_index) or 1
+    idx = idx + delta
+    if idx < 1 then idx = #targets elseif idx > #targets then idx = 1 end
+    game._menu_focus_index = idx
+    return targets[idx]
+end
+
+function MainMenuUI.activate_main_menu_focus(game)
+    local targets = MainMenuUI.build_main_menu_focus_targets(game)
+    local idx = tonumber(game._menu_focus_index) or 1
+    idx = math.max(1, math.min(#targets, idx))
+    local t = targets[idx]
+    if not t then return false end
+    if t.kind == "continue" then
+        if game.continue_saved_run_from_main_menu then
+            game:continue_saved_run_from_main_menu()
+        end
+        return true
+    elseif t.kind == "start" then
+        MainMenuUI.open_deck_select(game)
+        return true
+    elseif t.kind == "how_to_play" then
+        MainMenuUI.open_how_to_play(game)
+        return true
+    elseif t.kind == "collection" then
+        CollectionUI.open(game)
+        return true
+    elseif t.kind == "profile" and t.index and game.switch_profile then
+        game:switch_profile(t.index)
+        return true
+    elseif t.kind == "delete" then
+        if game._delete_save_confirm then
+            if game.delete_profile_progress then
+                game:delete_profile_progress()
+            end
+        else
+            game._delete_save_confirm = true
+        end
+        return true
+    end
+    return false
 end
 
 function MainMenuUI.draw_how_to_play(game)
@@ -933,10 +1033,28 @@ function MainMenuUI._button_how_to_play(game, btn)
 end
 
 function MainMenuUI._button_main(game, btn)
+    if btn == "dpup" or btn == "up" then
+        MainMenuUI.main_menu_focus_move(game, -1)
+        return
+    end
+    if btn == "dpdown" or btn == "down" then
+        MainMenuUI.main_menu_focus_move(game, 1)
+        return
+    end
+    if btn == "dpleft" or btn == "left" then
+        MainMenuUI.main_menu_focus_move(game, -1)
+        return
+    end
+    if btn == "dpright" or btn == "right" then
+        MainMenuUI.main_menu_focus_move(game, 1)
+        return
+    end
+    if btn == "a" or btn == "y" then
+        MainMenuUI.activate_main_menu_focus(game)
+        return
+    end
     if btn == "x" then
         MainMenuUI.open_how_to_play(game)
-    elseif btn == "a" or btn == "y" then
-        MainMenuUI.open_deck_select(game)
     end
 end
 
