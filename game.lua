@@ -658,7 +658,7 @@ function Game:boss_is_card_debuffed_for_scoring(node)
     if boss_id == "bl_goad" and (suit == "Spades" or is_wild) then return true end
     if boss_id == "bl_window" and (suit == "Diamonds" or is_wild) then return true end
     if boss_id == "bl_head" and (suit == "Hearts" or is_wild) then return true end
-    if boss_id == "bl_plant" and (rank >= 11 and rank <= 13) or self:hasJoker("j_pareidolia") then return true end
+    if boss_id == "bl_plant" and ((rank >= 11 and rank <= 13) or self:hasJoker("j_pareidolia")) then return true end
     if boss_id == "bl_pillar" and d.uid and self._ante_played_card_uids[d.uid] then return true end
     if boss_id == "bl_final_leaf" and self.boss_runtime.verdant_leaf_active == true then return true end
     return false
@@ -6173,7 +6173,6 @@ function Game:initialize_run_loop()
     self:roll_skips()
     self:set_state(self.STATES.BLIND_SELECT)
     self.joker_pool_replacements = {}
-    self:add_joker_by_def("j_vampire")
 end
 
 function Game:enter_blind_select()

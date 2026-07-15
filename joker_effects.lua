@@ -106,6 +106,21 @@ local function rank_is_odd(rank)
     end
     return rank and (rank == 14 or rank % 2 == 1) 
 end
+
+--- Suit match; with Smeared Joker, Hearts↔Diamonds and Spades↔Clubs count as the same.
+local function is_suit(suit, check)
+    if suit == nil or check == nil then return false end
+    local smeared = G and G.hasJoker and G:hasJoker("j_smeared")
+    if smeared then
+        if check == "Hearts" or check == "Diamonds" then
+            return suit == "Hearts" or suit == "Diamonds"
+        elseif check == "Spades" or check == "Clubs" then
+            return suit == "Spades" or suit == "Clubs"
+        end
+    end
+    return suit == check
+end
+
 local function count_full_deck(pred)
     if G and G.count_cards_in_full_deck then return G:count_cards_in_full_deck(pred) end
     return 0
@@ -210,7 +225,7 @@ local function legacy_matches_trigger(self, event_name, ctx)
     if self.effect_type == "Suit Mult" or self.effect_type == "Suit Chips" then
         local extra = type(cfg.extra) == "table" and cfg.extra or {}
         if extra.suit ~= nil then
-            if ctx == nil or ctx.suit ~= extra.suit then return false end
+            if ctx == nil or not is_suit(ctx.suit, extra.suit) then return false end
         end
     elseif self.effect_type == "Type Mult" or self.effect_type == "Type Chips" then
         if ctx == nil then return false end
@@ -784,12 +799,12 @@ local SPECIAL = {
             if r == 14 or r == 2 or r == 3 or r == 5 or r == 8 then add_mult(ctx, 8) end
         end
     },
-    j_rough_gem = { matches_trigger = function(_, e) return e == "card_played" end, apply_effect = function(_, ctx) if ctx.suit == "Diamonds" then add_money(ctx, 1) end end },
-    j_arrowhead = { matches_trigger = function(_, e) return e == "card_played" end, apply_effect = function(_, ctx) if ctx.suit == "Spades" then add_chips(ctx, 50) end end },
-    j_onyx_agate = { matches_trigger = function(_, e) return e == "card_played" end, apply_effect = function(_, ctx) if ctx.suit == "Clubs" then add_mult(ctx, 7) end end },
+    j_rough_gem = { matches_trigger = function(_, e) return e == "card_played" end, apply_effect = function(_, ctx) if is_suit(ctx.suit, "Diamonds") then add_money(ctx, 1) end end },
+    j_arrowhead = { matches_trigger = function(_, e) return e == "card_played" end, apply_effect = function(_, ctx) if is_suit(ctx.suit, "Spades") then add_chips(ctx, 50) end end },
+    j_onyx_agate = { matches_trigger = function(_, e) return e == "card_played" end, apply_effect = function(_, ctx) if is_suit(ctx.suit, "Clubs") then add_mult(ctx, 7) end end },
     j_bloodstone = {
         matches_trigger = function(_, e) return e == "card_played" end,
-        apply_effect = function(_, ctx) if ctx.suit == "Hearts" and G:do_random(1, 2, 1) then mul_mult(ctx, 1.5) end end
+        apply_effect = function(_, ctx) if is_suit(ctx.suit, "Hearts") and G:do_random(1, 2, 1) then mul_mult(ctx, 1.5) end end
     },
     j_8_ball = {
         matches_trigger = function(_, e) return e == "card_played" end,
@@ -840,12 +855,17 @@ local SPECIAL = {
     j_flower_pot = {
         matches_trigger = function(_, e) return e == "on_hand_scored" end,
         apply_effect = function(_, ctx)
-            local suits = {}
+            local has = { Hearts = false, Clubs = false, Diamonds = false, Spades = false }
             for _, n in ipairs((ctx and ctx.cards) or {}) do
                 local s = n and n.card_data and n.card_data.suit
-                if s then suits[s] = true end
+                if s then
+                    if is_suit(s, "Hearts") then has.Hearts = true end
+                    if is_suit(s, "Clubs") then has.Clubs = true end
+                    if is_suit(s, "Diamonds") then has.Diamonds = true end
+                    if is_suit(s, "Spades") then has.Spades = true end
+                end
             end
-            if suits.Hearts and suits.Clubs and suits.Diamonds and suits.Spades then
+            if has.Hearts and has.Clubs and has.Diamonds and has.Spades then
                 mul_mult(ctx, 3)
             end
         end
@@ -878,7 +898,7 @@ local SPECIAL = {
             local cards = held_cards(ctx)
             if #cards == 0 then return end
             for _, c in ipairs(cards) do
-                if c.suit ~= "Spades" and c.suit ~= "Clubs" then return end
+                if not is_suit(c.suit, "Spades") and not is_suit(c.suit, "Clubs") then return end
             end
             mul_mult(ctx, 3)
         end
@@ -984,7 +1004,7 @@ local SPECIAL = {
     j_ancient_joker = {
         matches_trigger = function(_,e) return e == "card_played" or e == "on_round_end" end,
         apply_effect = function(j, ctx)
-            if ctx.event_name == "card_played" and ctx.suit == j.random_suit then
+            if ctx.event_name == "card_played" and is_suit(ctx.suit, j.random_suit) then
                 mul_mult(ctx, 1.5)
             elseif ctx.event_name == "on_round_end" then
                 local suits = { "Hearts", "Clubs", "Diamonds", "Spades" }
@@ -1080,7 +1100,7 @@ local SPECIAL = {
             elseif ctx.event_name == "on_discard" then
                 local discarded = ctx.discarded_cards
                 for n,c in ipairs(discarded) do
-                    if c.suit == j.random_suit then
+                    if is_suit(c.suit, j.random_suit) then
                         j.runtime_counter = (tonumber(j.runtime_counter) or 0) + 3
                     end
                 end
@@ -1551,9 +1571,7 @@ local SPECIAL = {
                 if j.random_rank == nil or j.random_suit == nil then return end
                 local cr = tonumber(ctx.rank)
                 local jr = tonumber(j.random_rank)
-                local cs = tostring(ctx.suit or ""):lower()
-                local js = tostring(j.random_suit or ""):lower()
-                if cr == jr and cs ~= "" and cs == js then
+                if cr == jr and is_suit(ctx.suit, j.random_suit) then
                     mul_mult(ctx, 3)
                 end
             elseif ctx.event_name == "on_round_end" then
@@ -1676,7 +1694,8 @@ local SPECIAL = {
                 local hasClubs = false
                 local hasOther = false
                 for _, card in ipairs(cards) do
-                    if card.card_data.suit == "Clubs" then
+                    local s = card and card.card_data and card.card_data.suit
+                    if is_suit(s, "Clubs") then
                         hasClubs = true
                     else
                         hasOther = true
