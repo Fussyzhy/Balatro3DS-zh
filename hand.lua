@@ -1286,7 +1286,6 @@ function Hand:play_selected()
     if self._play_sequence then return end
 
     if self.game then
-        self.game._r_held = false
         self.game.active_tooltip_card = nil
     end
 

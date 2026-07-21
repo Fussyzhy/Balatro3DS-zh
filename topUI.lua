@@ -266,29 +266,32 @@ function TopUI:draw()
     TopUI.LabeledField("Round", G.round, fieldsPositionX + (fieldWidth + padding) * 2, fieldsPositionY + fieldHeight + padding, fieldWidth, fieldHeight, G.C.RED)
     TopUI.LabeledField("", "$"..tostring(G.money), fieldsPositionX, fieldsPositionY + fieldHeight + padding, fieldWidth * 2 + padding, fieldHeight, G.C.MONEY)
 
-    -- Joker panel behind owned jokers only (top screen); width matches fanned row from `Game`.
+    -- Joker panel (left 2/3 of top screen).
+    local dims = G.get_top_inventory_dims and G:get_top_inventory_dims() or { joker_panel_w = 266, consumable_panel_w = 132, consumable_panel_x = 268, panel_gap = 2 }
     local n = G and G.jokers and #G.jokers or 0
     local slot_w, slot_h = G.joker_slot_w or 71, G.joker_slot_h or 95
     local slot_gap = G.joker_slot_gap or 8
     local slot_y = G.joker_slot_y_top or (panelY + panelHeight + 6)
     local total_w = tonumber(G.joker_row_span_top)
-        or select(2, G:_compute_fanned_joker_row(n, 400, slot_w, slot_gap, 8))
-    local start_x = G.joker_slot_start_x or math.floor((400 - total_w) * 0.5 + 0.5)
+        or select(2, G:_compute_fanned_joker_row(n, dims.joker_panel_w, slot_w, slot_gap, 4))
+    local start_x = G.joker_slot_start_x or 4
 
     -- Extra padding so jokers don't touch the panel edges.
     local panel_pad = 3
-    total_w = total_w + (panel_pad * 2)
-    start_x = start_x - panel_pad
+    local joker_panel_w = dims.joker_panel_w
+    local joker_panel_x = 0
+    total_w = math.min(total_w + (panel_pad * 2), joker_panel_w)
+    start_x = math.max(joker_panel_x + panel_pad, start_x - panel_pad)
     slot_y = slot_y - panel_pad
     slot_h = slot_h + (panel_pad * 2)
 
     -- Dark panel background.
-    if #G.jokers > 0 then
+    if G.jokers and #G.jokers > 0 then
         if _G.draw_rect_with_shadow then
             draw_rect_with_shadow(
-                start_x,
+                joker_panel_x,
                 slot_y,
-                total_w,
+                joker_panel_w,
                 slot_h,
                 4,
                 2,
@@ -298,7 +301,36 @@ function TopUI:draw()
             )
         else
             love.graphics.setColor(G and G.C and G.C.PANEL or { 0.2, 0.2, 0.2, 1 })
-            love.graphics.rectangle("fill", start_x, slot_y, total_w, slot_h, 4, 4)
+            love.graphics.rectangle("fill", joker_panel_x, slot_y, joker_panel_w, slot_h, 4, 4)
+        end
+    end
+
+    -- Consumable panel (right 1/3 of top screen).
+    local cn = G and G.consumables and #G.consumables or 0
+    if cn > 0 and G.consumables_on_bottom ~= true then
+        if G.draw_consumables_row then G:draw_consumables_row() end
+        local cslot_h = G.consumable_slot_h or 95
+        local cslot_y = G.joker_slot_y_top or slot_y + panel_pad
+        local c_panel_pad = 3
+        cslot_y = cslot_y - c_panel_pad
+        cslot_h = cslot_h + (c_panel_pad * 2)
+        local c_panel_x = dims.consumable_panel_x
+        local c_panel_w = dims.consumable_panel_w
+        if _G.draw_rect_with_shadow then
+            draw_rect_with_shadow(
+                c_panel_x,
+                cslot_y,
+                c_panel_w,
+                cslot_h,
+                4,
+                2,
+                G and G.C and G.C.BLOCK and G.C.BLOCK.BACK or { 0, 0, 0, 1 },
+                G and G.C and G.C.BLOCK and G.C.BLOCK.SHADOW or { 0, 0, 0, 1 },
+                2
+            )
+        else
+            love.graphics.setColor(G and G.C and G.C.PANEL or { 0.2, 0.2, 0.2, 1 })
+            love.graphics.rectangle("fill", c_panel_x, cslot_y, c_panel_w, cslot_h, 4, 4)
         end
     end
 
@@ -316,18 +348,32 @@ function TopUI:draw()
         end
     end
 
-    if G and G.jokers_on_bottom ~= true and n > 0 then
-
+    -- Owned inventory on top screen (same layer as jokers; above tags / bottom-screen content).
+    local draw_jokers_top = G and G.jokers_on_bottom ~= true and n > 0
+    local draw_cons_top = G and G.consumables_on_bottom ~= true and cn > 0 and G.consumable_nodes
+    if draw_jokers_top or draw_cons_top then
         love.graphics.setFont(G.FONTS.PIXEL.MEDIUM)
         love.graphics.setColor(G.C.WHITE)
 
-        -- Jokers are normally invisible on top; force visibility while drawing this row.
-        for _, joker in ipairs(G.jokers) do
-            if joker and joker.draw then
-                local prev_visible = joker.states and joker.states.visible
-                if joker.states then joker.states.visible = true end
-                joker:draw()
-                if joker.states then joker.states.visible = prev_visible end
+        if draw_jokers_top then
+            for _, joker in ipairs(G.jokers) do
+                if joker and joker.draw then
+                    local prev_visible = joker.states and joker.states.visible
+                    if joker.states then joker.states.visible = true end
+                    joker:draw()
+                    if joker.states then joker.states.visible = prev_visible end
+                end
+            end
+        end
+
+        if draw_cons_top then
+            for _, cons in ipairs(G.consumable_nodes) do
+                if cons and cons.draw then
+                    local prev_visible = cons.states and cons.states.visible
+                    if cons.states then cons.states.visible = true end
+                    cons:draw()
+                    if cons.states then cons.states.visible = prev_visible end
+                end
             end
         end
     end
