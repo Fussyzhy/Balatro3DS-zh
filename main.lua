@@ -168,7 +168,9 @@ function love.keypressed(key)
     if G.set_jokers_location then
         -- Allow joker row screen toggle in every gameplay state.
         if key == "up" then
-            G:set_jokers_location(true)
+            if #(G.jokers or {}) > 0 then
+                G:set_jokers_location(true)
+            end
             return
         end
         if key == "down" then

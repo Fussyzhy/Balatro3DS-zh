@@ -1106,8 +1106,8 @@ function Hand:_update_play_sequence(dt)
 
         -- Step 2: final score.
         if seq.finalize_step == 2 then
-            chips = tonumber(G.selectedHandChips) or 0
-            mult = tonumber(G.selectedHandMult) or 1
+            chips = math.max(tonumber(G.selectedHandChips) or 0, 0)
+            mult = math.max(tonumber(G.selectedHandMult) or 1, 0)
 
             if (G._deck_special or nil) == "plasma" then
                 local avg = math.floor((chips + mult)/2)

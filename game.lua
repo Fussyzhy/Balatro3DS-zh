@@ -4029,6 +4029,7 @@ function Game:apply_consumable_effect(c)
             if Sfx and Sfx.play_money then Sfx.play_money() end
         end
         clear_tarot_hand_ui()
+        self:record_consumable_use_id("tarot_fool")
         return
     end
 
@@ -4189,6 +4190,7 @@ function Game:use_consumable(index)
     if not c then return false end
     self:track_consumable_use(c)
     self:apply_consumable_effect(c)
+    self:sync_gamepad_focus_after_inventory_change()
     return true
 end
 
@@ -4320,7 +4322,9 @@ end
 function Game:perform_sell_for_target(sell_target)
     if not sell_target then return false end
     if sell_target.kind == "joker" then
-        return self:sell_owned_joker(sell_target.index)
+        local ok = self:sell_owned_joker(sell_target.index)
+        if ok then self:sync_gamepad_focus_after_inventory_change() end
+        return ok
     elseif sell_target.kind == "consumable" then
         local idx = sell_target.index
         local c = self:remove_consumable_at(idx)
@@ -4330,6 +4334,7 @@ function Game:perform_sell_for_target(sell_target)
         if self.active_tooltip_consumable_index == idx then
             self.active_tooltip_consumable_index = nil
         end
+        self:sync_gamepad_focus_after_inventory_change()
         return true
     end
     -- Future kinds: vouchers, boosters, etc.
@@ -6278,6 +6283,7 @@ function Game:initialize_run_loop()
     self.shop_offers = {}
     self.shop_booster_offers = {}
     self.shop_reroll_count = 0
+    self.shop_offer_slots = 2
     self.vouchers = {}
     self.shop_voucher_offers = {}
     self.shop_voucher_nodes = {}
@@ -6581,9 +6587,6 @@ function Game:_roll_one_shop_voucher_offer()
     local candidates = self:_shop_voucher_candidate_ids(exclude)
     local pick
     if #candidates == 0 then
-        if exclude["v_blank"] or self:_voucher_already_owned("v_blank") then
-            return nil
-        end
         pick = "v_blank"
     else
         pick = candidates[self:_shop_rand_int(1, #candidates)]
@@ -8647,6 +8650,7 @@ function Game:handle_failed_blind_reset()
 end
 
 function Game:set_jokers_location(on_bottom)
+    if on_bottom == true and #(self.jokers or {}) == 0 then return end
     if self.jokers_on_bottom == (on_bottom == true) then return end
     local from_bottom = self.jokers_on_bottom == true
     local to_bottom = on_bottom == true
@@ -8655,6 +8659,9 @@ function Game:set_jokers_location(on_bottom)
     self.jokers_on_bottom = to_bottom
     if not to_bottom then
         self.active_tooltip_joker = nil
+        if self.STATE == self.STATES.SELECTING_HAND and self:get_gamepad_focus_layer() == "jokers" then
+            self:set_gamepad_focus_layer("hand")
+        end
     else
         -- When jokers are on bottom, consumables become non-interactive (no Use/Sell).
         self.active_tooltip_consumable_index = nil
@@ -9398,23 +9405,123 @@ function Game:get_gamepad_focus_layer()
     return self._gamepad_focus_layer or "hand"
 end
 
+function Game:sync_gamepad_focus_after_inventory_change()
+    if self.STATE == self.STATES.SELECTING_HAND or self.STATE == self.STATES.SHOP then
+        local layer = self:get_gamepad_focus_layer()
+        if layer == "consumables" then
+            local n = self.consumable_nodes and #self.consumable_nodes or 0
+            if n <= 0 then
+                if self.STATE == self.STATES.SHOP then
+                    self:set_gamepad_shop_focus()
+                else
+                    self:set_gamepad_focus_layer("hand")
+                end
+            else
+                local idx = tonumber(self._consumable_focus_index) or 1
+                self:consumable_gamepad_focus_at(math.max(1, math.min(n, idx)))
+            end
+        elseif layer == "jokers" or (self.STATE == self.STATES.SHOP and self._gamepad_bottom_layer == "jokers") then
+            if #(self.jokers or {}) == 0 then
+                if self.jokers_on_bottom then
+                    self:set_jokers_location(false)
+                end
+                if self.STATE == self.STATES.SHOP then
+                    self:set_gamepad_shop_focus()
+                else
+                    self:set_gamepad_focus_layer("hand")
+                end
+            end
+        end
+    end
+end
+
+function Game:set_gamepad_shop_focus()
+    self._gamepad_focus_layer = "hand"
+    self.active_tooltip_consumable_index = nil
+    self._gamepad_bottom_layer = "shop"
+    self._joker_swap_pick_index = nil
+    self.active_tooltip_joker = nil
+    if tonumber(self._shop_focus_index) then
+        self:sync_shop_gamepad_focus()
+    end
+end
+
+function Game:handle_gamepad_shop_vertical(button)
+    if button ~= "up" and button ~= "dpup" and button ~= "down" and button ~= "dpdown" then
+        return false
+    end
+    self:ensure_shop_gamepad_nav()
+    local up = (button == "up" or button == "dpup")
+
+    if up then
+        if #(self.jokers or {}) == 0 then
+            if self.jokers_on_bottom then
+                self:set_jokers_location(false)
+            end
+            self:set_gamepad_shop_focus()
+            return true
+        end
+        if self.jokers_on_bottom then
+            self:set_jokers_location(false)
+            self:set_gamepad_shop_focus()
+        else
+            self:set_jokers_location(true)
+            self._gamepad_focus_layer = "hand"
+            self.active_tooltip_consumable_index = nil
+            self._gamepad_bottom_layer = "jokers"
+            self._joker_swap_pick_index = nil
+            self:joker_gamepad_focus_at(tonumber(self._joker_focus_index) or 1)
+        end
+        return true
+    end
+
+    if self:get_gamepad_focus_layer() == "consumables" then
+        self:set_gamepad_shop_focus()
+        return true
+    end
+
+    if self.jokers_on_bottom then
+        self:set_jokers_location(false)
+        self._gamepad_bottom_layer = "shop"
+        self._joker_swap_pick_index = nil
+        self.active_tooltip_joker = nil
+    end
+
+    if self.consumable_nodes and #self.consumable_nodes > 0 then
+        self:set_gamepad_focus_layer("consumables")
+    else
+        self:set_gamepad_shop_focus()
+    end
+    return true
+end
+
 function Game:set_gamepad_focus_layer(layer)
     self._joker_swap_pick_index = nil
     if layer == "jokers" then
-        self._gamepad_focus_layer = "jokers"
-        if #(self.jokers or {}) > 0 then
+        if #(self.jokers or {}) == 0 then
+            layer = "hand"
+        else
+            self._gamepad_focus_layer = "jokers"
             self:joker_gamepad_focus_at(tonumber(self._joker_focus_index) or 1)
         end
-    elseif layer == "consumables" then
+    end
+    if layer == "consumables" then
         self._gamepad_focus_layer = "consumables"
         if self.jokers_on_bottom then
             self:set_jokers_location(false)
         end
         local n = self.consumable_nodes and #self.consumable_nodes or 0
-        if n > 0 then
-            self:consumable_gamepad_focus_at(tonumber(self._consumable_focus_index) or 1)
+        if n <= 0 then
+            self:set_gamepad_focus_layer("hand")
+            return
         end
-    elseif layer == "booster" then
+        self:consumable_gamepad_focus_at(tonumber(self._consumable_focus_index) or 1)
+        return
+    end
+    if layer == "jokers" then
+        return
+    end
+    if layer == "booster" then
         self._gamepad_focus_layer = "booster"
         self:booster_gamepad_focus_first()
     else
@@ -9494,6 +9601,13 @@ function Game:handle_gamepad_focus_vertical(button)
     end
 
     if up then
+        if #(self.jokers or {}) == 0 then
+            if self.jokers_on_bottom then
+                self:set_jokers_location(false)
+            end
+            self:set_gamepad_focus_layer("hand")
+            return true
+        end
         if self.jokers_on_bottom then
             self:set_jokers_location(false)
             self:set_gamepad_focus_layer("hand")
@@ -9511,7 +9625,11 @@ function Game:handle_gamepad_focus_vertical(button)
         if self.jokers_on_bottom then
             self:set_jokers_location(false)
         end
-        self:set_gamepad_focus_layer("consumables")
+        if self.consumable_nodes and #self.consumable_nodes > 0 then
+            self:set_gamepad_focus_layer("consumables")
+        else
+            self:set_gamepad_focus_layer("hand")
+        end
     end
     return true
 end
@@ -9583,6 +9701,7 @@ end
 
 function Game:init_shop_gamepad_nav()
     self._gamepad_bottom_layer = "shop"
+    self._gamepad_focus_layer = "hand"
     self._shop_focus_index = nil
     self._joker_focus_index = nil
     self._joker_swap_pick_index = nil
@@ -9945,6 +10064,12 @@ function Game:should_draw_gamepad_focus_outline(node)
         end
     end
     if self.STATE == self.STATES.SHOP then
+        if self:get_gamepad_focus_layer() == "consumables" then
+            local idx = tonumber(self._consumable_focus_index) or tonumber(self.active_tooltip_consumable_index)
+            if idx and self.consumable_nodes and self.consumable_nodes[idx] == node then
+                return true
+            end
+        end
         if self:is_shop_item_selected(node) or self:is_joker_swap_pick(node) then
             return true
         end
@@ -10146,9 +10271,19 @@ function Game:handle_gamepad_shop(button)
     self:ensure_shop_gamepad_nav()
 
     if button == "up" or button == "dpup" or button == "down" or button == "dpdown" then
-        if self:handle_gamepad_overlay_joker_vertical(button, "shop") then
+        if self:handle_gamepad_shop_vertical(button) then
             return true
         end
+    end
+
+    if self:get_gamepad_focus_layer() == "consumables" then
+        if button == "a" then
+            return self:gamepad_consumable_use()
+        end
+        if button == "b" then
+            return self:gamepad_consumable_sell()
+        end
+        return false
     end
 
     if button == "y" and self._gamepad_bottom_layer == "shop" then
@@ -10276,6 +10411,9 @@ function Game:_gamepad_horizontal_nav_active()
     end
     if self.STATE == self.STATES.SHOP then
         self:ensure_shop_gamepad_nav()
+        if self:get_gamepad_focus_layer() == "consumables" and self.consumable_nodes and #self.consumable_nodes > 0 then
+            return true
+        end
         if self._gamepad_bottom_layer == "shop" and #self:build_shop_focus_targets() > 0 then
             return true
         end
@@ -10396,11 +10534,23 @@ end
 function Game:_dpad_horizontal_step(dir, sweep)
     if self.STATE == self.STATES.SHOP then
         self:ensure_shop_gamepad_nav()
-        if self._gamepad_bottom_layer == "jokers" then
-            self:joker_gamepad_move(dir)
-        else
-            self:shop_gamepad_move(dir)
+        if self:get_gamepad_focus_layer() == "consumables" then
+            if self:is_consumable_reorder_mode() then
+                self:consumable_reorder_gamepad_step(dir)
+            else
+                self:consumable_gamepad_move(dir)
+            end
+            return
         end
+        if self._gamepad_bottom_layer == "jokers" then
+            if self:is_joker_reorder_mode() then
+                self:joker_reorder_gamepad_step(dir)
+            else
+                self:joker_gamepad_move(dir)
+            end
+            return
+        end
+        self:shop_gamepad_move(dir)
         return
     end
 

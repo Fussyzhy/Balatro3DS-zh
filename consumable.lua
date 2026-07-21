@@ -160,6 +160,25 @@ end
 ---@return string[]
 function Consumable:get_tooltip_body_lines()
     local def = self.def or {}
+    if def.id == "tarot_fool" and G then
+        local out = {}
+        local tip = def.tooltip
+        if type(tip) == "table" then
+            for _, l in ipairs(tip) do
+                if type(l) == "string" and l ~= "" then out[#out + 1] = l end
+            end
+        elseif type(tip) == "string" and tip ~= "" then
+            for line in tip:gmatch("[^\r\n]+") do
+                if line ~= "" then out[#out + 1] = line end
+            end
+        end
+        local last_id = G.last_consumable_use_id
+        if last_id and CONSUMABLE_DEFS and CONSUMABLE_DEFS[last_id] then
+            local name = CONSUMABLE_DEFS[last_id].name or last_id
+            out[#out + 1] = "Currently: " .. tostring(name)
+        end
+        if #out > 0 then return out end
+    end
     if def.kind == "planet" and type(def.hand) == "string" and def.hand ~= "" then
         return { string.format("Increases the value of %s", def.hand) }
     end

@@ -3047,7 +3047,7 @@ JOKER_DEFS = {
         rarity = 2,
         cost = 6,
         sell_cost = 3,
-        pos = { atlas = "Joker1_p2", index = 2 },
+        pos = { atlas = "Joker2_p3", index = 10 },
     },
 
 }
