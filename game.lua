@@ -1549,9 +1549,47 @@ function Game:discover_item(id)
     return true
 end
 
-function Game:record_stake_victory()
+function Game:get_run_deck_id()
     local deck_id = self.selected_deck_id or self._pending_deck_id
+    if type(deck_id) == "string" and deck_id ~= "" then return deck_id end
+    return nil
+end
+
+function Game:get_run_stake_id()
     local stake_id = self.selected_stake_id or self._pending_stake_id
+    if type(stake_id) == "string" and stake_id ~= "" then return stake_id end
+    return nil
+end
+
+function Game:restore_run_deck_stake_from_snapshot(snapshot)
+    if type(snapshot) ~= "table" then return end
+    local deck_id = snapshot.selected_deck_id
+    if type(deck_id) == "string" and deck_id ~= "" then
+        self.selected_deck_id = deck_id
+    end
+    local stake_id = snapshot.selected_stake_id
+    if type(stake_id) == "string" and stake_id ~= "" then
+        if self.apply_stake_config then
+            self:apply_stake_config(stake_id)
+        else
+            self.selected_stake_id = stake_id
+        end
+    end
+end
+
+--- Persist deck/stake unlocks and owned jokers after Ante 8 victory (idempotent).
+function Game:ensure_victory_progress_recorded()
+    if self._victory_progress_recorded == true then return true end
+    if not self:get_run_stake_id() then return false end
+    self:record_stake_victory()
+    self:record_joker_wins_at_victory()
+    self._victory_progress_recorded = true
+    return true
+end
+
+function Game:record_stake_victory()
+    local deck_id = self:get_run_deck_id()
+    local stake_id = self:get_run_stake_id()
     if type(deck_id) ~= "string" or type(stake_id) ~= "string" then return false end
     if not self.unlocks then self:apply_unlocks(self:build_unlocks()) end
 
@@ -1631,6 +1669,16 @@ function Game:apply_joker_wins(data)
     end
 end
 
+function Game:get_joker_wins_for_save()
+    if type(self.joker_wins) == "table" and next(self.joker_wins) ~= nil then
+        return self.joker_wins
+    end
+    if self.SETTINGS and type(self.SETTINGS.JOKER_WINS) == "table" then
+        return self.SETTINGS.JOKER_WINS
+    end
+    return self.joker_wins or self:build_joker_wins()
+end
+
 function Game:get_stake_order(stake_id)
     local def = STAKE_DEFS_BY_ID and STAKE_DEFS_BY_ID[stake_id or ""]
     return math.max(1, math.floor(tonumber(def and def.order) or 1))
@@ -1661,7 +1709,7 @@ end
 
 --- Persist owned jokers from a winning run; keeps the highest stake won per joker id.
 function Game:record_joker_wins_at_victory()
-    local stake_id = self.selected_stake_id or self._pending_stake_id
+    local stake_id = self:get_run_stake_id()
     if type(stake_id) ~= "string" or stake_id == "" then return false end
     if not self.joker_wins then self:apply_joker_wins(self:build_joker_wins()) end
 
@@ -1990,7 +2038,7 @@ function Game:snapshot_settings()
         },
         UNLOCKS = self:normalize_unlocks(self.unlocks or (self.SETTINGS and self.SETTINGS.UNLOCKS)),
         DISCOVERED = self:normalize_discovered(self.Discovered or (self.SETTINGS and self.SETTINGS.DISCOVERED)),
-        JOKER_WINS = self:normalize_joker_wins(self.joker_wins or (self.SETTINGS and self.SETTINGS.JOKER_WINS)),
+        JOKER_WINS = self:normalize_joker_wins(self:get_joker_wins_for_save()),
     }
 end
 
@@ -2220,6 +2268,9 @@ function Game:build_run_snapshot()
         seed = tonumber(self.SEED) or os.time(),
         resume_state = self:current_resume_state(),
         stage = self.STAGES.RUN,
+        selected_deck_id = self:get_run_deck_id(),
+        selected_stake_id = self:get_run_stake_id(),
+        _victory_progress_recorded = self._victory_progress_recorded == true,
         ante = tonumber(self.ante) or 1,
         round = tonumber(self.round) or 1,
         money = tonumber(self.money) or 0,
@@ -2382,6 +2433,8 @@ function Game:load_run_snapshot(snapshot)
 
     self.ante = tonumber(snapshot.ante) or 1
     self.round = tonumber(snapshot.round) or 1
+    self:restore_run_deck_stake_from_snapshot(snapshot)
+    self._victory_progress_recorded = snapshot._victory_progress_recorded == true
     self.money = tonumber(snapshot.money) or 0
     self.hands = tonumber(snapshot.hands) or self:get_effective_hands_per_round()
     self.discards = tonumber(snapshot.discards) or self:get_effective_discards_per_round()
@@ -2559,6 +2612,9 @@ function Game:load_run_snapshot(snapshot)
     end
     -- YOU_WIN resumes on the win screen so the player can pick Endless / New Run / Menu again.
     self._pause_prev_state = nil
+    if resume_state == self.STATES.YOU_WIN then
+        self:ensure_victory_progress_recorded()
+    end
     self:set_state(resume_state)
     return true
 end
@@ -6470,6 +6526,7 @@ function Game:initialize_run_loop()
     self.discardsUnused = 0
     self.skipsTaken = 0
     self._endless_mode = false
+    self._victory_progress_recorded = false
     self.hand_size_delta_spectral = 0
     self.hand_size_delta_juggle = 0
     self:reset_run_stats()
@@ -6489,6 +6546,7 @@ function Game:initialize_run_loop()
     self:roll_skips()
     self:set_state(self.STATES.BLIND_SELECT)
     self.joker_pool_replacements = {}
+    self:add_joker_by_def("j_matador",{edition="negative"})
 end
 
 function Game:enter_blind_select()
@@ -8499,8 +8557,7 @@ function Game:enter_you_win()
     self.active_tooltip_consumable_index = nil
     self.dragging = nil
     self._you_win_button_rects = nil
-    self:record_stake_victory()
-    self:record_joker_wins_at_victory()
+    self:ensure_victory_progress_recorded()
     self:set_state(self.STATES.YOU_WIN)
 end
 
@@ -8513,6 +8570,7 @@ end
 
 function Game:continue_from_you_win_new_run()
     -- Save the won run first; clear only happens when a new run actually starts.
+    self:ensure_victory_progress_recorded()
     self:save_you_win_run()
     self._pause_prev_state = nil
     self._pause_save_error = nil
@@ -8522,11 +8580,13 @@ end
 
 function Game:continue_from_you_win_main_menu()
     -- Persist the won run so Continue Run can return to the You Win screen.
+    self:ensure_victory_progress_recorded()
     self:save_you_win_run()
     self:enter_main_menu()
 end
 
 function Game:continue_from_you_win_endless()
+    self:ensure_victory_progress_recorded()
     self._endless_mode = true
     self:enter_shop_after_blind()
 end
