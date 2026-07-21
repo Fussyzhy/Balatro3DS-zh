@@ -320,14 +320,18 @@ function Game:ensure_card_uid(card_data, force_new)
     return card_data.uid
 end
 
-function Game:get_active_boss_blind_id()
-    if self.STATE ~= self.STATES.SELECTING_HAND then return nil end
+function Game:get_boss_blind_id_for_blind()
     if tonumber(self.current_blind_index) ~= 3 then return nil end
-    local proto = self:get_boss_blind_prototype()
-    if not proto then return nil end
+    if not self.current_boss_blind_id then return nil end
     if self:hasJoker("j_chicot") then return nil end
     if self.boss_runtime and self.boss_runtime.disable_current_boss_ability == true then return nil end
     return self.current_boss_blind_id
+end
+
+function Game:get_active_boss_blind_id()
+    if self.STATE ~= self.STATES.SELECTING_HAND then return nil end
+    if not self:get_boss_blind_prototype() then return nil end
+    return self:get_boss_blind_id_for_blind()
 end
 
 function Game:get_effective_hand_size_limit()
@@ -428,7 +432,7 @@ function Game:boss_reset_for_new_blind()
         disable_current_boss_ability = false,
         clear_card_debuffs_after_win = false,
     }
-    local boss_id = self:get_active_boss_blind_id()
+    local boss_id = self:get_boss_blind_id_for_blind()
     if type(self.jokers) == "table" then
         for _, j in ipairs(self.jokers) do
             if j and j.set_face_up then
