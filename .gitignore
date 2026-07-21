@@ -8,4 +8,8 @@
 # Scripts
 *.bat
 .luarc.json
-scripts/split_joker_atlases.py
+scripts/*
+tools/*
+
+# Misc
+Bugs.txt

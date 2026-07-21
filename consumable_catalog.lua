@@ -27,7 +27,7 @@ CONSUMABLE_DEFS = {
         name = "The Magician",
         atlas = "Tarot",
         index = 1,
-        select = { exact = 2 },
+        select = { min = 1, max = 2 },
         tooltip = "Enhances 2 selected cards to Lucky Cards",
     },
     tarot_high_priestess = {
@@ -49,7 +49,7 @@ CONSUMABLE_DEFS = {
         name = "The Empress",
         atlas = "Tarot",
         index = 3,
-        select = { exact = 2 },
+        select = { min = 1, max = 2 },
         tooltip = "Enhances 2 selected cards to Mult Cards",
     },
     tarot_emperor = {
@@ -71,7 +71,7 @@ CONSUMABLE_DEFS = {
         name = "The Hierophant",
         atlas = "Tarot",
         index = 5,
-        select = { exact = 2 },
+        select = { min = 1, max = 2 },
         tooltip = "Enhances 2 selected cards to Bonus Cards",
     },
     tarot_lovers = {
@@ -482,7 +482,7 @@ CONSUMABLE_DEFS = {
         name = "The Soul",
         atlas = "Spectral",
         tooltip = "Creates a Legendary Joker,\n(Must have room)",
-        index = 56,
+        index = 22,
     },
 
     

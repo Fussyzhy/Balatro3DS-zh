@@ -113,4 +113,8 @@ function M.play_chips()
     M.play_random("resources/sounds/chips1.ogg", "resources/sounds/chips2.ogg")
 end
 
+function M.play_glass_break()
+    M.play_random("resources/sounds/glass1.ogg", "resources/sounds/glass2.ogg", "resources/sounds/glass3.ogg", "resources/sounds/glass4.ogg", "resources/sounds/glass5.ogg", "resources/sounds/glass6.ogg")
+end
+
 return M

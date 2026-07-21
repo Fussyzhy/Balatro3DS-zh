@@ -1446,6 +1446,10 @@ JOKER_DEFS = {
         pos = {
             atlas = "Joker2_p2",
             index = 10
+        },
+        sub_pos = {
+            atlas = "Joker2_p1",
+            index = 2
         }
     },
 
@@ -2602,6 +2606,10 @@ JOKER_DEFS = {
         pos = {
             atlas = "Joker1_p4",
             index = 11
+        },
+        sub_pos = {
+            atlas = "Joker2_p1",
+            index = 3
         }
     },
 
@@ -2622,6 +2630,10 @@ JOKER_DEFS = {
         pos = {
             atlas = "Joker1_p4",
             index = 12
+        },
+        sub_pos = {
+            atlas = "Joker2_p1",
+            index = 4
         }
     },
 
@@ -2642,6 +2654,10 @@ JOKER_DEFS = {
         pos = {
             atlas = "Joker1_p4",
             index = 13
+        },
+        sub_pos = {
+            atlas = "Joker2_p1",
+            index = 5
         }
     },
 
@@ -2662,6 +2678,10 @@ JOKER_DEFS = {
         pos = {
             atlas = "Joker1_p4",
             index = 14
+        },
+        sub_pos = {
+            atlas = "Joker2_p1",
+            index = 6
         }
     },
 
@@ -2682,6 +2702,10 @@ JOKER_DEFS = {
         pos = {
             atlas = "Joker1_p4",
             index = 15
+        },
+        sub_pos = {
+            atlas = "Joker2_p1",
+            index = 7
         }
     },
 
@@ -3009,12 +3033,10 @@ JOKER_DEFS = {
             atlas = "Joker2_p3",
             index = 17
         }
-    },    
+    },
 
-}
--- Missing jokers that were previously injected from CSV metadata are now explicit.
-local MISSING_JOKERS = {
     j_diet_cola = {
+        id = "j_diet_cola",
         name = "Diet Cola",
         order = 94,
         unlocked = true,
@@ -3024,8 +3046,10 @@ local MISSING_JOKERS = {
         eternal_compat = false,
         rarity = 2,
         cost = 6,
-        pos = { atlas = "Joker1_p2", index = 2 },
+        sell_cost = 3,
+        pos = { atlas = "Joker2_p3", index = 10 },
     },
+
 }
 
 -- Catalog-owned tooltip text (Balatro-style; *word* used for emphasis in UI).

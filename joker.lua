@@ -1,12 +1,37 @@
 ---@class Joker : Moveable
 Joker = Moveable:extend()
 require "joker_effects"
+local TooltipDraw = require("tooltip_draw")
 
--- Basic 2-layer joker: back sprite and front sprite.
--- Rendering logic is similar to `Card:draw()` but uses atlas cell indices instead of rank/suit.
+-- Basic 2-layer joker: back sprite (centers atlas) and front sprite (individual PNG).
 
 local SHAKE_MAGNITUDE = 10
 local SHAKE_MAX_DURATION = (JokerEffects and JokerEffects.SHAKE_MAX_DURATION) or 0.22
+local JOKER_STICKER_ATLAS_NAME = "stickers"
+local JOKER_STICKER_INDICES = {
+    eternal = 0,
+    rental = 11,
+    perishable = 10,
+}
+
+Joker.SPRITE_W = 70
+Joker.SPRITE_H = 94
+Joker.WEE_JOKER_ID = "j_wee"
+Joker.WEE_DISPLAY_SCALE = 0.75
+local JOKER_SPRITE_W = Joker.SPRITE_W
+local JOKER_SPRITE_H = Joker.SPRITE_H
+
+local JOKER_PAGE_OFFSETS = {
+    Joker1 = 0,
+    Joker1_p1 = 0,
+    Joker1_p2 = 24,
+    Joker1_p3 = 48,
+    Joker1_p4 = 72,
+    Joker2 = 0,
+    Joker2_p1 = 0,
+    Joker2_p2 = 24,
+    Joker2_p3 = 48,
+}
 
 local function lower(s)
     return string.lower(tostring(s or ""))
@@ -20,6 +45,10 @@ end
 
 local function text_has(s, needle)
     return lower(s):find(lower(needle), 1, true) ~= nil
+end
+
+local function as_truthy_flag(value)
+    return value == true or value == 1 or value == "true" or value == "1"
 end
 
 local function capture_joker_runtime_snapshot(joker)
@@ -37,7 +66,7 @@ local function capture_joker_runtime_snapshot(joker)
         joker_count = (type((G or {}).jokers) == "table") and #G.jokers or 0,
         consumable_count = (type((G or {}).consumables) == "table") and #G.consumables or 0,
         hand_count = (type(hand_cards) == "table") and #hand_cards or 0,
-        deck_count = (type(deck_cards) == "table") and #deck_cards or 0,
+        deck_count = (type(deck_cards) == "table") and #deck_cards or 0
     }
 end
 
@@ -71,6 +100,13 @@ local function count_full_deck(pred)
     return 0
 end
 
+local function count_cards_in_deck(pred)
+    if G and G.count_cards_in_deck then
+        return G:count_cards_in_deck(pred)
+    end
+    return 0
+end
+
 ---@param raw string|nil
 ---@return "base"|"foil"|"holo"|"polychrome"|"negative"
 function Joker.normalize_edition(raw)
@@ -95,29 +131,28 @@ function Joker.edition_price_deltas(ed)
     return 0
 end
 
---- Atlas key for the front sheet: Negative edition uses pre-baked `Joker1_negative` / `Joker2_negative` sheets.
----@param base_atlas string|nil e.g. `"Joker1"` from `def.pos.atlas`
----@param edition string|nil raw edition
+--- Individual sprite key under `resources/textures/1x/Jokers/` (e.g. `"Jokers1_17"` or `"Jokers1_negative_17"`).
+---@param atlas_name string|nil
+---@param index number|nil 0-based cell index from the legacy atlas layout
+---@param edition string|nil raw edition; negative loads the `_negative_` sprite variant
 ---@return string|nil
-function Joker.resolve_front_atlas_key(base_atlas, edition)
-    local base = base_atlas and tostring(base_atlas) or "Joker1_p1"
-    local ed = Joker.normalize_edition(edition)
-    if ed == "negative" then
-        if base == "Joker1" then return "Joker1_negative" end
-        if base == "Joker2" then return "Joker2_negative" end
-        local p = string.match(base, "^Joker1_p(%d+)$")
-        if p then return "Joker1_negative_p" .. p end
-        p = string.match(base, "^Joker2_p(%d+)$")
-        if p then return "Joker2_negative_p" .. p end
+function Joker.sprite_key_from_pos(atlas_name, index, edition)
+    if not atlas_name then return nil end
+    local atlas = tostring(atlas_name)
+    local set = string.find(atlas, "Joker2", 1, true) and "2" or "1"
+    local off = JOKER_PAGE_OFFSETS[atlas] or 0
+    local num = off + (tonumber(index) or 0) + 1
+    if Joker.normalize_edition(edition) == "negative" then
+        return "Jokers" .. set .. "_negative_" .. num
     end
-    return base
+    return "Jokers" .. set .. "_" .. num
 end
 
-local function joker_front_quads_signature(joker)
-    return tostring(joker.front_atlas_name) .. "\0" .. Joker.normalize_edition(joker.edition)
+local function joker_front_sprite_signature(joker)
+    return tostring(joker.front_sprite_key or joker.front_atlas_name) .. "\0" .. Joker.normalize_edition(joker.edition)
 end
 
--- Edition visuals: foil/holo/polychrome use multiply; Negative uses alternate atlas (see `resolve_front_atlas_key`).
+-- Edition visuals: foil/holo/polychrome use multiply tint; negative uses a dedicated sprite.
 
 --- Animated RGB multiply for Polychrome edition (no shader).
 local function polychrome_edition_set_color()
@@ -151,6 +186,9 @@ local function compute_quad(atlas, index)
 end
 
 local function joker_is_debuffed_for_display(joker)
+    if joker and joker.is_sticker_debuffed and joker:is_sticker_debuffed() then
+        return true
+    end
     return G and G.boss_is_joker_debuffed and G:boss_is_joker_debuffed(joker) == true
 end
 
@@ -174,6 +212,23 @@ local function resolve_atlas(name)
         G:ensure_asset_atlas_loaded(name)
     end
     return G.ASSET_ATLAS[name]
+end
+
+local function resolve_joker_sprite(key)
+    if not key or not G or not G.ensure_joker_sprite_loaded then return nil end
+    return G:ensure_joker_sprite_loaded(key)
+end
+
+function Joker.is_wee_def(def)
+    return type(def) == "table" and def.id == Joker.WEE_JOKER_ID
+end
+
+function Joker:get_display_scale_mult()
+    return Joker.is_wee_def(self.def) and Joker.WEE_DISPLAY_SCALE or 1
+end
+
+function Joker:get_render_scale()
+    return (self.VT and self.VT.scale or 1) * self:get_display_scale_mult()
 end
 
 ---@param X number
@@ -202,6 +257,18 @@ function Joker:init(X, Y, W, H, def, params)
 
     self.effect_config = self.def.config or {}
 
+    local sticker_def = self.params and self.params.stickers or self.def and self.def.stickers
+    if type(sticker_def) ~= "table" then sticker_def = nil end
+    self.perishable = as_truthy_flag(self.params.perishable)
+        or as_truthy_flag(self.def.perishable)
+        or as_truthy_flag(sticker_def and sticker_def.perishable)
+    self.rental = as_truthy_flag(self.params.rental)
+        or as_truthy_flag(self.def.rental)
+        or as_truthy_flag(sticker_def and sticker_def.rental)
+    self.eternal = as_truthy_flag(self.params.eternal)
+        or as_truthy_flag(self.def.eternal)
+        or as_truthy_flag(sticker_def and sticker_def.eternal)
+
     -- Runtime accumulator for effects that grow over time (e.g. Ceremonial Dagger).
     self.stored_mult = tonumber(self.effect_config.mult) or 0
     self.stored_chips = tonumber(self.effect_config.chips) or 0
@@ -209,6 +276,7 @@ function Joker:init(X, Y, W, H, def, params)
     self.runtime_counter = 0
     self.loyalty_remaining = nil
     self.free_joker_slots = nil
+    self.perishable_counter = 5
 
     -- Effect interpreter fields:
     -- Supported Balatro-like effect types:
@@ -260,10 +328,6 @@ function Joker:init(X, Y, W, H, def, params)
     self.effect_impl = JokerEffects.get(self)
 
     if type(self.def) == "table" then
-        if (self.def.id == "j_ancient_joker" or self.def.id == "j_castle") then
-            local suits = { "Hearts", "Clubs", "Diamonds", "Spades" }
-            self.random_suit = suits[math.random(1, #suits)]
-        end
         if self.def.id == "j_castle" then
             self.runtime_counter = tonumber(self.runtime_counter) or 0
         elseif self.def.id == "j_ramen" then
@@ -274,39 +338,14 @@ function Joker:init(X, Y, W, H, def, params)
             self.runtime_counter = self.def.config.chips or 100 -- Starts at 100
         elseif self.def.id == "j_turtle_bean" then
             self.runtime_counter = self.def.config.extra.h_size or 5
-        elseif self.def.id == "j_todo_list" then
-            local found = false
-            while not found do
-                local pos = math.random(1, #G.handlist)
-                if (pos < 4) then -- Secret hands only show if played before
-                    if (G.hand_play_counts[pos] and G.hand_play_counts[pos] > 0) then
-                        found = true
-                    end
-                else
-                    found = true
-                end
-                self.random_hand = G.handlist[pos]
-            end
         elseif self.def.id == "j_rocket" then
             local ex = type(self.def.config) == "table" and self.def.config.extra
             self.running_count = math.max(1, math.floor(tonumber(ex and ex.dollars) or 1))
-        elseif self.def.id == "j_mail" then
-            self.random_rank = math.random(2, 14)
-        elseif self.def.id == "j_idol" then
-            local card = G.deck and G.deck.random_card and G.deck:random_card()
-            if card then
-                self.random_rank = card.rank
-                self.random_suit = card.suit
-            else
-                local suits = { "Hearts", "Clubs", "Diamonds", "Spades" }
-                self.random_rank = math.random(2, 14)
-                self.random_suit = suits[math.random(1, #suits)]
-            end
         end
     end
 
-    local cw = W or 71
-    local ch = H or 95
+    local cw = W or JOKER_SPRITE_W
+    local ch = H or JOKER_SPRITE_H
     Moveable.init(self, X or 0, Y or 0, cw, ch)
 
     -- Disable collisions between jokers/cards for now.
@@ -331,29 +370,61 @@ function Joker:init(X, Y, W, H, def, params)
 end
 
 function Joker:refresh_quads()
-    local old_front_atlas_name = self._front_atlas_ref_name
-    local base_name = self.front_atlas_name
-    local want_key = Joker.resolve_front_atlas_key(base_name, self.edition)
-    local base_atlas = resolve_atlas(base_name)
+    local old_front_sprite_key = self._front_atlas_ref_name
 
-    self.front_atlas = resolve_atlas(want_key)
-    if Joker.normalize_edition(self.edition) == "negative" and want_key ~= base_name then
-        if not self.front_atlas or not self.front_atlas.image then
-            self.front_atlas = base_atlas
+    self.front_sprite_key = Joker.sprite_key_from_pos(self.front_atlas_name, self.front_index, self.edition)
+    self.front_sprite = resolve_joker_sprite(self.front_sprite_key)
+    if Joker.normalize_edition(self.edition) == "negative" then
+        if not self.front_sprite or not self.front_sprite.image then
+            self.front_sprite_key = Joker.sprite_key_from_pos(self.front_atlas_name, self.front_index)
+            self.front_sprite = resolve_joker_sprite(self.front_sprite_key)
         end
     end
+    self.front_w = JOKER_SPRITE_W
+    self.front_h = JOKER_SPRITE_H
 
     self.back_atlas = resolve_atlas(self.back_atlas_name)
+    self.back_quad, self.back_w, self.back_h = compute_quad(self.back_atlas, self.back_index)
+    self._front_atlas_ref_name = self.front_sprite_key
 
-    self.front_quad, self.front_w, self.front_h = compute_quad(self.front_atlas, self.front_index)
-    if Joker.normalize_edition(self.edition) == "negative" and want_key ~= base_name then
-        if not self.front_quad and base_atlas and base_atlas.image then
-            self.front_atlas = base_atlas
-            self.front_quad, self.front_w, self.front_h = compute_quad(self.front_atlas, self.front_index)
+    local sub = self.params.sub_pos or self.def.sub_pos
+    if type(sub) == "table" and sub.atlas and sub.index ~= nil then
+        self.sub_atlas_name = sub.atlas
+        self.sub_index = tonumber(sub.index) or 0
+        if string.find(tostring(sub.atlas), "Joker", 1, true) then
+            self.sub_sprite_key = Joker.sprite_key_from_pos(sub.atlas, self.sub_index)
+            self.sub_sprite = resolve_joker_sprite(self.sub_sprite_key)
+            self.sub_atlas = nil
+            self.sub_quad = nil
+        else
+            self.sub_sprite_key = nil
+            self.sub_sprite = nil
+            self.sub_atlas = resolve_atlas(self.sub_atlas_name)
+            self.sub_quad = compute_quad(self.sub_atlas, self.sub_index)
+        end
+    else
+        self.sub_atlas_name = nil
+        self.sub_index = nil
+        self.sub_sprite_key = nil
+        self.sub_sprite = nil
+        self.sub_atlas = nil
+        self.sub_quad = nil
+    end
+
+    self.sticker_atlas = resolve_atlas(JOKER_STICKER_ATLAS_NAME)
+    self.sticker_quads = {}
+    self.sticker_w = 0
+    self.sticker_h = 0
+    if self.sticker_atlas and self.sticker_atlas.image then
+        for name, index in pairs(JOKER_STICKER_INDICES) do
+            local quad, w, h = compute_quad(self.sticker_atlas, index)
+            self.sticker_quads[name] = quad
+            if quad and (w or 0) > 0 and (h or 0) > 0 then
+                self.sticker_w = math.max(self.sticker_w, w or 0)
+                self.sticker_h = math.max(self.sticker_h, h or 0)
+            end
         end
     end
-    self.back_quad, self.back_w, self.back_h = compute_quad(self.back_atlas, self.back_index)
-    self._front_atlas_ref_name = (self.front_atlas and self.front_atlas.name) or want_key or base_name
 
     -- Sync node transform size with sprite cell so it doesn't render tiny.
     local base_w = self.front_w or self.back_w
@@ -367,9 +438,9 @@ function Joker:refresh_quads()
         end
     end
 
-    self._quads_refresh_signature = joker_front_quads_signature(self)
+    self._quads_refresh_signature = joker_front_sprite_signature(self)
     if G and G.on_joker_front_atlas_resolved then
-        G:on_joker_front_atlas_resolved(self, old_front_atlas_name, self._front_atlas_ref_name)
+        G:on_joker_front_atlas_resolved(self, old_front_sprite_key, self._front_atlas_ref_name)
     end
 end
 
@@ -386,7 +457,7 @@ end
 -- top-left when `scale != 1`. Hit-testing should use the same effective bounds.
 function Joker:get_collision_rect()
     local t = self.VT or self.T
-    local s = t.scale or 1
+    local s = self:get_render_scale()
     local w = t.w or 0
     local h = t.h or 0
 
@@ -413,18 +484,6 @@ function Joker:get_collision_rect()
     }
 end
 
-local TOOLTIP_PAD_X = 8
-local TOOLTIP_HEADER_PAD_Y = 3
-local TOOLTIP_BODY_PAD_Y = 10
---- Tighter top inset when the first body line is the rarity pill (less gap under the header).
-local TOOLTIP_BODY_PAD_TOP_RARITY = 4
-local TOOLTIP_SPACING = 1
-local TOOLTIP_SECTION_GAP = 2
-local TOOLTIP_OUTER_PAD_X = 3
-local TOOLTIP_OUTER_PAD_Y = 3
-local RARITY_BADGE_PAD_X = 10
-local RARITY_BADGE_PAD_Y = 3
-
 local function split_tooltip_override(s)
     if type(s) ~= "string" or s == "" then return nil end
     local lines = {}
@@ -435,128 +494,11 @@ local function split_tooltip_override(s)
     return lines
 end
 
-local HAND_NAME_PHRASES = {
-    "flush five",
-    "flush house",
-    "five of a kind",
-    "straight flush",
-    "four of a kind",
-    "two of a kind",
-    "full house",
-    "three of a kind",
-    "two pair",
-    "high card",
-    "straight",
-    "flush",
-    "pair",
-}
-
 local function fmt_runtime_number(n, decimals)
     local d = tonumber(decimals) or 2
     local s = string.format("%." .. d .. "f", tonumber(n) or 0)
     s = s:gsub("%.?0+$", "")
     return s
-end
-
-local function append_segment(segments, text, color_key)
-    if type(text) ~= "string" or text == "" then return end
-    local last = segments[#segments]
-    if last and last.color_key == color_key then
-        last.text = last.text .. text
-        return
-    end
-    table.insert(segments, { text = text, color_key = color_key })
-end
-
-local function apply_range(paints, priorities, s, e, color_key, prio)
-    if type(s) ~= "number" or type(e) ~= "number" then return end
-    s = math.max(1, math.floor(s))
-    e = math.max(s, math.floor(e))
-    prio = tonumber(prio) or 1
-    for i = s, e do
-        local old = priorities[i] or -1
-        if prio >= old then
-            priorities[i] = prio
-            paints[i] = color_key
-        end
-    end
-end
-
-local function paint_phrase_ranges(text, paints, priorities, phrase, color_key, prio)
-    local hay = string.lower(text)
-    local needle = string.lower(phrase)
-    local start_i = 1
-    while true do
-        local s, e = hay:find(needle, start_i, true)
-        if not s then break end
-        apply_range(paints, priorities, s, e, color_key, prio)
-        start_i = e + 1
-    end
-end
-
-local function paint_pattern_ranges(text, paints, priorities, pattern, color_key, prio)
-    local start_i = 1
-    while true do
-        local s, e = text:find(pattern, start_i)
-        if not s then break end
-        apply_range(paints, priorities, s, e, color_key, prio)
-        if e < start_i then
-            start_i = start_i + 1
-        else
-            start_i = e + 1
-        end
-    end
-end
-
-local function build_semantic_segments_from_text(raw_text)
-    local text = tostring(raw_text or "")
-    text = text:gsub("%*", "")
-    local len = #text
-    if len <= 0 then
-        return { { text = "", color_key = nil } }
-    end
-
-    local paints = {}
-    local priorities = {}
-
-    -- Requested semantic categories.
-    paint_phrase_ranges(text, paints, priorities, "tarot", "PURPLE", 50)
-    paint_phrase_ranges(text, paints, priorities, "hand size", "IMPORTANT", 55)
-    paint_phrase_ranges(text, paints, priorities, "discard", "RED", 56)
-    paint_phrase_ranges(text, paints, priorities, "discarded", "RED", 56)
-    paint_pattern_ranges(text, paints, priorities, "%$%d+", "MONEY", 57)
-    for _, hand_name in ipairs(HAND_NAME_PHRASES) do
-        paint_phrase_ranges(text, paints, priorities, hand_name, "IMPORTANT", 58)
-    end
-
-    -- Chance/probability.
-    paint_pattern_ranges(text, paints, priorities, "%d+/%d+:%s*", "CHANCE", 70)
-    paint_pattern_ranges(text, paints, priorities, "%d+%s+[Ii][Nn]%s+%d+", "CHANCE", 70)
-    paint_phrase_ranges(text, paints, priorities, "chance", "CHANCE", 70)
-    paint_phrase_ranges(text, paints, priorities, "probabilities", "CHANCE", 70)
-
-    -- Mult/chips requested styling.
-    paint_pattern_ranges(text, paints, priorities, "[Xx]%d+[%d%.]*%s*[Mm]ult", "MULT", 80)
-    paint_pattern_ranges(text, paints, priorities, "[%+%-]?%d+[%d%.]*%s*[Mm]ult", "MULT", 80)
-    paint_pattern_ranges(text, paints, priorities, "[Mm]ult", "MULT", 78)
-    paint_pattern_ranges(text, paints, priorities, "[%+%-]?%d+[%d%.]*%s*[Cc]hips", "CHIPS", 80)
-    paint_pattern_ranges(text, paints, priorities, "[Cc]hips", "CHIPS", 78)
-
-    local segments = {}
-    local current_color = paints[1]
-    local run_start = 1
-    for i = 2, len + 1 do
-        local next_color = paints[i]
-        if i == (len + 1) or next_color ~= current_color then
-            append_segment(segments, text:sub(run_start, i - 1), current_color)
-            run_start = i
-            current_color = next_color
-        end
-    end
-    if #segments <= 0 then
-        return { { text = text, color_key = nil } }
-    end
-    return segments
 end
 
 local function describe_joker_effect_lines(joker)
@@ -726,7 +668,7 @@ function Joker:get_live_current_tooltip_text(base_text)
         j_bootstraps = function() return string.format("(Currently +%d Mult)", math.floor((tonumber(G and G.money) or 0) / 5) * 2) end,
         j_flash_card = function(j) return string.format("(Currently +%d Mult)", math.floor(tonumber(j.stored_mult) or 0)) end,
         j_spare_trousers = function(j) return string.format("(Currently +%d Mult)", math.floor(tonumber(j.stored_mult) or 0)) end,
-        j_fortune_teller = function(j) return string.format("(Currently +%d)", math.floor(tonumber(j.stored_mult) or 0)) end,
+        j_fortune_teller = function() return string.format("(Currently +%d)", math.floor(tonumber(G and G.tarots_used) or 0)) end,
     }
     if mults[id] then
         return mults[id](self)
@@ -738,7 +680,7 @@ function Joker:get_live_current_tooltip_text(base_text)
             return string.format("(Currently +%d Chips)", n)
         end,
         j_runner = function(j) return string.format("(Currently +%d Chips)", math.floor(tonumber(j.stored_chips) or 0)) end,
-        j_blue_joker = function() return string.format("(Currently +%d Chips)", 2 * count_full_deck()) end,
+        j_blue_joker = function() return string.format("(Currently +%d Chips)", 2 * count_cards_in_deck()) end,
         j_square = function(j) return string.format("(Currently +%d Chips)", math.floor(tonumber(j.stored_chips) or 0)) end,
         j_wee = function(j) return string.format("(Currently +%d Chips)", math.floor(tonumber(j.stored_chips) or 0)) end,
         j_stone_joker = function() return string.format("(Currently +%d Chips)", 25 * count_full_deck(function(c) return c.enhancement == "stone" end)) end,
@@ -855,7 +797,12 @@ function Joker:get_tooltip_body_lines()
     local def = self.def or {}
     local edition_lines = self:get_edition_tooltip_lines()
     local impl = self.effect_impl
-    local function append_edition(lines)
+    local function append_extra(lines)
+        if self.perishable == true then
+            local remaining = math.max(0, math.floor(tonumber(self.perishable_counter) or 5))
+            local unit = remaining == 1 and "round" or "rounds"
+            table.insert(lines, { kind = "text", text = string.format("Perishable: %d %s remaining", remaining, unit) })
+        end
         for _, el in ipairs(edition_lines) do
             table.insert(lines, el)
         end
@@ -883,12 +830,12 @@ function Joker:get_tooltip_body_lines()
                     end
                 end
             end
-            return append_edition(out)
+            return append_extra(out)
         end
     end
     if type(def.tooltip) == "string" then
         local lines = split_tooltip_override(def.tooltip)
-        if lines then return append_edition(lines) end
+        if lines then return append_extra(lines) end
     end
     local base_lines = describe_joker_effect_lines(self)
     if impl and type(impl.tooltip_lines) == "function" then
@@ -903,28 +850,12 @@ function Joker:get_tooltip_body_lines()
             end
         end
     end
-    return append_edition(base_lines)
-end
-
-local function tooltip_color_by_key(color_key)
-    if not color_key then
-        return { 0.22, 0.24, 0.26, 1 }
-    end
-    local C = (G and G.C) or {}
-    if color_key == "MULT" then return C.MULT or { 0.9, 0.3, 0.4, 1 } end
-    if color_key == "CHIPS" then return C.CHIPS or { 0.3, 0.7, 1, 1 } end
-    if color_key == "CHANCE" then return C.CHANCE or C.GREEN or { 0.2, 0.75, 0.55, 1 } end
-    if color_key == "PURPLE" then return C.PURPLE or { 0.66, 0.51, 0.82, 1 } end
-    if color_key == "IMPORTANT" then return C.IMPORTANT or { 1, 0.6, 0.0, 1 } end
-    if color_key == "MONEY" then return C.MONEY or { 0.9, 0.8, 0.2, 1 } end
-    if color_key == "RED" then return C.RED or { 0.996, 0.373, 0.333, 1 } end
-    if color_key == "MONEY" then return C.MONEY or { 0.996, 0.373, 0.333, 1 } end
-    return { 0.22, 0.24, 0.26, 1 }
+    return append_extra(base_lines)
 end
 
 function Joker:resolve_tooltip_line_segments(line_def)
     if type(line_def) == "string" then
-        return build_semantic_segments_from_text(line_def)
+        return TooltipDraw.build_segments_from_text(line_def)
     end
     if type(line_def) ~= "table" then
         return { { text = tostring(line_def or ""), color_key = nil } }
@@ -935,7 +866,7 @@ function Joker:resolve_tooltip_line_segments(line_def)
             if type(seg) == "table" then
                 local text = tostring(seg.text or seg[1] or "")
                 local color_key = seg.color_key or seg[2]
-                append_segment(out, text, color_key)
+                TooltipDraw.append_segment(out, text, color_key)
             end
         end
         if #out > 0 then return out end
@@ -953,162 +884,36 @@ function Joker:resolve_tooltip_line_segments(line_def)
     if line_def.kind == "current" then
         text = self:get_live_current_tooltip_text(text)
     end
-    return build_semantic_segments_from_text(text)
+    return TooltipDraw.build_segments_from_text(text)
 end
 
 function Joker:draw_tooltip(draw_x, draw_y)
     local def = self.def or {}
     local title = self.name or def.name or "Joker"
+    if G and G.is_discovered and def.id and not G:is_discovered(def.id) then
+        title = "Not Discovered"
+    end
     local lines = self:get_tooltip_body_lines()
     local font = G.FONTS.PIXEL.SMALL or love.graphics.getFont()
-    local prev_font = love.graphics.getFont()
-    local prev_r, prev_g, prev_b, prev_a = love.graphics.getColor()
-    love.graphics.setFont(font)
-
     local resolved_lines = {}
     for _, line in ipairs(lines) do
         table.insert(resolved_lines, self:resolve_tooltip_line_segments(line))
     end
-
-    local header_w = font:getWidth(title)
-    local line_h = font:getHeight()
-    local body_line_heights = {}
-    local body_max_w = 0
-    for _, segments in ipairs(resolved_lines) do
-        local w = 0
-        if #segments == 1 and segments[1].rarity_badge then
-            local seg = segments[1]
-            w = font:getWidth(seg.text or "") + RARITY_BADGE_PAD_X * 2
-            body_line_heights[#body_line_heights + 1] = line_h + RARITY_BADGE_PAD_Y * 2
-        else
-            for _, seg in ipairs(segments) do
-                w = w + font:getWidth(seg.text or "")
-            end
-            body_line_heights[#body_line_heights + 1] = line_h
-        end
-        if w > body_max_w then body_max_w = w end
-    end
-    local body_lines_total_h = 0
-    for i, h in ipairs(body_line_heights) do
-        body_lines_total_h = body_lines_total_h + h
-        if i < #body_line_heights then
-            body_lines_total_h = body_lines_total_h + TOOLTIP_SPACING
-        end
-    end
-    local first_is_rarity = #resolved_lines > 0
-        and resolved_lines[1][1]
-        and resolved_lines[1][1].rarity_badge == true
-    local body_pad_top = first_is_rarity and TOOLTIP_BODY_PAD_TOP_RARITY or TOOLTIP_BODY_PAD_Y
-    local header_w_total = header_w + (TOOLTIP_PAD_X * 2)
-    local header_h_total = line_h + (TOOLTIP_HEADER_PAD_Y * 2)
-    local body_w_total = body_max_w + (TOOLTIP_PAD_X * 2)
-    local body_h_total = body_lines_total_h + body_pad_top + TOOLTIP_BODY_PAD_Y
-    local inner_w = math.max(header_w_total, body_w_total)
-    local inner_h = header_h_total + TOOLTIP_SECTION_GAP + body_h_total
-    local box_w = inner_w + (TOOLTIP_OUTER_PAD_X * 2)
-    local box_h = inner_h + (TOOLTIP_OUTER_PAD_Y * 2)
-
-    local card_w = self.VT.w * self.VT.scale
-    local card_h = self.VT.h * self.VT.scale
-    local tx = draw_x + (card_w - box_w) * 0.5
-    -- Cards show tooltips above; jokers show them below the sprite.
-    local ty = draw_y + card_h + 3
-    local margin = 2
-    local sw = 320
-    if love.graphics.getWidth then
-        sw = love.graphics.getWidth("bottom")
-        if not sw or sw <= 0 then sw = love.graphics.getWidth() end
-        if not sw or sw <= 0 then sw = 320 end
-    end
-    tx = math.max(margin, math.min(tx, sw - box_w - margin))
-    local sh = nil
-    if love.graphics.getHeight then
-        sh = love.graphics.getHeight("bottom")
-        if not sh or sh <= 0 then
-            sh = love.graphics.getHeight()
-        end
-    end
-    if not sh or sh <= 0 then sh = 240 end
-    if ty + box_h > sh - 2 then
-        ty = draw_y - box_h - 3
-    end
-    if ty < 2 then ty = 2 end
-    tx = math.floor(tx + 0.5)
-    ty = math.floor(ty + 0.5)
-
-    draw_rect_with_shadow(tx, ty, box_w, box_h, 4, 0, G.C.TOOLTIP, G.C.BLOCK.SHADOW, 1)
-    love.graphics.setColor(1, 1, 1, 1)
-    draw_rounded_rect(tx, ty, box_w, box_h, 4, 2, "line")
-
-    local header_x = tx + TOOLTIP_OUTER_PAD_X
-    local header_y = ty + TOOLTIP_OUTER_PAD_Y
-    local body_x = header_x
-    local body_y = header_y + header_h_total + TOOLTIP_SECTION_GAP
-
-    love.graphics.setColor(G.C.TOOLTIP)
-    draw_rounded_rect(header_x, header_y, inner_w, header_h_total, 4, 0, "fill")
-    draw_rounded_rect(body_x, body_y, inner_w, body_h_total, 4, 0, "fill")
-
-    local inner_pad = 2
-    local inner_header_h = math.max(1, header_h_total - (inner_pad * 2))
-    local inner_body_h = math.max(1, body_h_total - (inner_pad * 2))
-    love.graphics.setColor(G.C.WHITE)
-    draw_rect_with_shadow(header_x + inner_pad, header_y + inner_pad, inner_w - (inner_pad * 2), inner_header_h, 4, 0, G.C.WHITE, G.C.DARK_WHITE, 1)
-    draw_rect_with_shadow(body_x + inner_pad, body_y + inner_pad - 1, inner_w - (inner_pad * 2), inner_body_h, 4, 0, G.C.WHITE, G.C.DARK_WHITE, 1)
-
-    local header_text_y = header_y + math.floor((header_h_total - line_h) * 0.5 + 0.5)
-    local header_text_x = header_x + math.floor((inner_w - header_w) * 0.5 + 0.5)
-    love.graphics.setColor(G.C.PANEL)
-    love.graphics.print(title, header_text_x, header_text_y)
-
-    local text_y = body_y + body_pad_top
-    local function draw_segments_centered(segments, line_y)
-        local total_w = 0
-        for _, seg in ipairs(segments) do
-            total_w = total_w + font:getWidth(seg.text or "")
-        end
-        local x = body_x + math.floor((inner_w - total_w) * 0.5 + 0.5)
-        for _, seg in ipairs(segments) do
-            local t = seg.text or ""
-            local col = tooltip_color_by_key(seg.color_key)
-            love.graphics.setColor(col[1], col[2], col[3], col[4])
-            love.graphics.print(t, x, line_y)
-            x = x + font:getWidth(t)
-        end
-    end
-
-    for i, segments in ipairs(resolved_lines) do
-        local row_h = body_line_heights[i] or line_h
-        if #segments == 1 and segments[1].rarity_badge then
-            local seg = segments[1]
-            local label = seg.text or ""
-            local ri = tonumber(seg.rarity_index) or 1
-            local rc = (G and G.C and G.C.RARITY and G.C.RARITY[ri]) or { 0.035, 0.62, 1, 1 }
-            local bw = font:getWidth(label) + RARITY_BADGE_PAD_X * 2
-            local x0 = body_x + math.floor((inner_w - bw) * 0.5 + 0.5)
-            love.graphics.setColor(rc[1], rc[2], rc[3], rc[4] or 1)
-            draw_rounded_rect(x0, text_y, bw, row_h, 4, 0, "fill")
-            local text_x = x0 + RARITY_BADGE_PAD_X
-            local text_y_row = text_y + math.floor((row_h - line_h) * 0.5 + 0.5)
-            love.graphics.setColor(1, 1, 1, 1)
-            love.graphics.print(label, text_x, text_y_row)
-        else
-            local line_y = math.floor(text_y + (row_h - line_h) * 0.5 + 0.5)
-            draw_segments_centered(segments, line_y)
-        end
-        text_y = text_y + row_h + TOOLTIP_SPACING
-    end
-
-    love.graphics.setFont(prev_font)
-    love.graphics.setColor(prev_r, prev_g, prev_b, prev_a)
+    local card_w = self.VT.w * self:get_render_scale()
+    local card_h = self.VT.h * self:get_render_scale()
+    TooltipDraw.draw_tooltip_layout(font, title, resolved_lines, draw_x, draw_y, card_w, card_h)
 end
 
 
 function Joker:get_layout_draw_xy()
     local draw_x = self.VT.x + self.collision_offset.x
     local draw_y = self.VT.y + self.collision_offset.y
-    if G and G.active_tooltip_joker == self and self.shop_offer_slot == nil then
-        draw_y = draw_y - 8
+    if G and self.shop_offer_slot == nil and G.jokers_on_bottom then
+        local lifted = (G.active_tooltip_joker == self)
+            or (G.is_joker_swap_pick and G:is_joker_swap_pick(self))
+        if lifted then
+            draw_y = draw_y - 8
+        end
     end
 
     if self.scoring_shake_timer and self.scoring_shake_timer > 0 then
@@ -1125,8 +930,17 @@ end
 
 function Joker:should_draw_tooltip()
     if not self.face_up or not G then return false end
+    if G._collection_open and G._collection_tooltip_node == self then return true end
+    if G.is_card_select_mode and G:is_card_select_mode() then return false end
+    if G.STATE == G.STATES.BLIND_SELECT and G.active_tooltip_skip_blind_index then return false end
     if self._booster_choice_index and G.STATE == G.STATES.OPEN_BOOSTER and G.booster_session then
         return tonumber(G.booster_session.active_choice_index) == self._booster_choice_index
+    end
+    if G.should_draw_gamepad_focus_outline and G:should_draw_gamepad_focus_outline(self) then
+        return true
+    end
+    if G.is_shop_item_selected and G:is_shop_item_selected(self) then
+        return true
     end
     return G.active_tooltip_joker == self
         and (G.jokers_on_bottom == true or self.shop_offer_slot ~= nil)
@@ -1136,6 +950,34 @@ function Joker:draw_tooltip_overlay()
     if not self.states.visible or not self:should_draw_tooltip() then return end
     local draw_x, draw_y = self:get_layout_draw_xy()
     self:draw_tooltip(draw_x, draw_y)
+end
+
+function Joker:draw_sub_pos_overlay(draw_x, draw_y)
+    if not self.face_up then return end
+    love.graphics.setColor(1, 1, 1, 1)
+    if self.sub_sprite and self.sub_sprite.image then
+        love.graphics.draw(self.sub_sprite.image, draw_x, draw_y, 0, 1, 1)
+        return
+    end
+    if not self.sub_atlas or not self.sub_atlas.image or not self.sub_quad then return end
+    love.graphics.draw(self.sub_atlas.image, self.sub_quad, draw_x, draw_y, 0, 1, 1)
+end
+
+function Joker:draw_sticker_overlays(draw_x, draw_y)
+    if not self.sticker_atlas or not self.sticker_atlas.image then return end
+
+    local active_stickers = {}
+    if self.perishable then table.insert(active_stickers, "perishable") end
+    if self.rental then table.insert(active_stickers, "rental") end
+    if self.eternal then table.insert(active_stickers, "eternal") end
+    if #active_stickers == 0 then return end
+
+    for _, name in ipairs(active_stickers) do
+        local quad = self.sticker_quads and self.sticker_quads[name]
+        if quad then
+            love.graphics.draw(self.sticker_atlas.image, quad, draw_x, draw_y, 0, 1, 1)
+        end
+    end
 end
 
 function Joker:draw()
@@ -1148,46 +990,55 @@ function Joker:draw()
 
     love.graphics.push()
 
-    local cx = draw_x + (self.VT.w * self.VT.scale) / 2
-    local cy = draw_y + (self.VT.h * self.VT.scale) / 2
+    local base_scale = self.VT.scale or 1
+    local render_scale = self:get_render_scale()
+    local cx = draw_x + (self.VT.w * base_scale) / 2
+    local cy = draw_y + (self.VT.h * base_scale) / 2
     love.graphics.translate(cx, cy)
     love.graphics.rotate(self.VT.r)
-    love.graphics.scale(self.VT.scale, self.VT.scale)
+    love.graphics.scale(render_scale, render_scale)
     love.graphics.translate(-cx, -cy)
 
     if self.face_up then
-        if self.front_atlas and self.front_atlas.image and self.front_quad then
+        if self.front_sprite and self.front_sprite.image then
             local ed = Joker.normalize_edition(self.edition)
-            local function draw_atlas_front()
-                love.graphics.draw(self.front_atlas.image, self.front_quad, draw_x, draw_y, 0, 1, 1)
+            local function draw_sprite_front()
+                love.graphics.draw(self.front_sprite.image, draw_x, draw_y, 0, 1, 1)
             end
 
             if ed == "foil" then
                 love.graphics.setColor(0.62, 0.78, 1.12, 1)
-                draw_atlas_front()
+                draw_sprite_front()
             elseif ed == "holo" then
                 love.graphics.setColor(1.15, 0.55, 0.55, 1)
-                draw_atlas_front()
+                draw_sprite_front()
             elseif ed == "polychrome" then
                 polychrome_edition_set_color()
-                draw_atlas_front()
+                draw_sprite_front()
             else
                 love.graphics.setColor(1, 1, 1, 1)
-                draw_atlas_front()
+                draw_sprite_front()
             end
             love.graphics.setColor(1, 1, 1, 1)
         end
+        self:draw_sub_pos_overlay(draw_x, draw_y)
     else
         if self.back_atlas and self.back_atlas.image and self.back_quad then
             love.graphics.draw(self.back_atlas.image, self.back_quad, draw_x, draw_y, 0, 1, 1)
         end
     end
 
+    self:draw_sticker_overlays(draw_x, draw_y)
+
     if joker_is_debuffed_for_display(self) then
         draw_debuff_x_overlay(draw_x, draw_y, self.VT.w, self.VT.h)
     end
 
     love.graphics.pop()
+
+    if G and G.draw_node_gamepad_focus_outline then
+        G:draw_node_gamepad_focus_outline(self)
+    end
 
     love.graphics.setColor(prev_draw_r, prev_draw_g, prev_draw_b, prev_draw_a)
 
@@ -1199,7 +1050,7 @@ end
 
 function Joker:update(dt)
     Moveable.update(self, dt)
-    if joker_front_quads_signature(self) ~= self._quads_refresh_signature then
+    if joker_front_sprite_signature(self) ~= self._quads_refresh_signature then
         self:refresh_quads()
     end
     if self.scoring_shake_timer and self.scoring_shake_timer > 0 then
@@ -1212,7 +1063,14 @@ end
 -- Event-based trigger hook for data-driven joker effects.
 -- `event_name` is something like: "on_hand_scored"
 -- `ctx` is the runtime scoring context.
+function Joker:is_sticker_debuffed()
+    return self.perishable == true and (self.perishable_debuffed == true or tonumber(self.perishable_counter or 0) <= 0)
+end
+
 function Joker:matches_trigger(event_name, ctx)
+    if self:is_sticker_debuffed() then
+        return false
+    end
     if self.effect_impl and type(self.effect_impl.matches_trigger) == "function" then
         return self.effect_impl.matches_trigger(self, event_name, ctx) == true
     end
@@ -1250,6 +1108,7 @@ end
 
 function Joker:apply_effect(ctx)
     ctx = ctx or {}
+    ctx.VT = self.VT
     local before = capture_joker_runtime_snapshot(self)
     local before_chips = tonumber(ctx.chips)
     local before_mult = tonumber(ctx.mult)

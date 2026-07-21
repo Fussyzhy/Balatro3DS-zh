@@ -26,7 +26,7 @@ end
 
 function Deck:fill()
     self.cards = {}
-    --local enhancements = { "mult", "steel", "none", "bonus", "gold", "glass", "lucky", "stone"}
+    --local enhancements = { "mult", "steel", "none", "bonus", "gold", "glass", "lucky", "stone", "wild"}
     --local seals = { "gold", "red", "blue", "purple", "none" }
     for _, suit in ipairs(SUITS) do
         for rank = MIN_RANK, MAX_RANK do
@@ -76,6 +76,26 @@ end
 function Deck:end_round()
     self:move_draw_pile_to_discard()
     self:shuffle_discard_into_draw()
+end
+
+--- Merge draw pile, discard pile, and optional hand sources into one shuffled draw pile.
+---@param hand_cards table[]|nil
+---@param hand_queue table[]|nil
+function Deck:recycle_all(hand_cards, hand_queue)
+    local merged = {}
+    local function add(c)
+        local copy = Deck.copy_card_data(c)
+        if copy then merged[#merged + 1] = copy end
+    end
+    for _, c in ipairs(self.discard_pile) do add(c) end
+    for _, c in ipairs(self.cards) do add(c) end
+    for _, c in ipairs(hand_cards or {}) do add(c) end
+    for _, c in ipairs(hand_queue or {}) do add(c) end
+    self.cards = merged
+    self.discard_pile = {}
+    if #self.cards > 0 then
+        self:shuffle()
+    end
 end
 
 --- Use after a game/run: the discard pile becomes the only source for the next game's draw pile.

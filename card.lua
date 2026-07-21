@@ -8,7 +8,7 @@ local ENHANCEMENT_CENTER_INDICES = {
     bonus = { back = 0, face = 8 },
     mult = { back = 0, face = 9 },
     wild = { back = 0, face = 10 },
-    glass = { back = 6, face = 12 },
+    glass = { back = 0, face = 12 },
     steel = { back = 13, face = 13 },
     stone = { back = 5, face = 5 },
     gold = { back = 6, face = 6 },
@@ -26,19 +26,31 @@ local SEAL_ATLAS_INDICES = {
 }
 
 ---@param self Card
+local function selected_deck_back_index()
+    if G and G.get_selected_deck_back_index then
+        return G:get_selected_deck_back_index()
+    end
+    return 0
+end
+
+--- Standard playing-card face cell in `centers` (rank/suit come from `cards_2`). Deck backs use `DECK_DEFS.pos` independently.
+local DEFAULT_PLAYING_CARD_FACE_INDEX = 1
+
+---@param self Card
 local function apply_enhancement_center_indices(self)
     local map = ENHANCEMENT_CENTER_INDICES
     if G and type(G.CARD_ENHANCEMENT_CENTER_INDICES) == "table" then
         map = G.CARD_ENHANCEMENT_CENTER_INDICES
     end
+    local deck_back = selected_deck_back_index()
     local enh = self.enhancement
     if enh and map[enh] then
         local m = map[enh]
-        self.back_index = m.back
+        self.back_index = (tonumber(m.back) or 0) == 0 and deck_back or m.back
         self.face_index = m.face
     else
-        self.back_index = self.params.back_index or 0
-        self.face_index = self.params.face_index or (self.back_index + 1)
+        self.back_index = self.params.back_index or deck_back
+        self.face_index = self.params.face_index or DEFAULT_PLAYING_CARD_FACE_INDEX
     end
 end
 
@@ -72,9 +84,8 @@ function Card:init(X, Y, W, H, card, center, params)
     end
 
     -- which atlases to use for each visual layer
-    -- back & front: both from 'centers' atlas
-    --   back_index  = N
-    --   face_index  = N + 1  (your rule: face is back + 1)
+    -- back: `centers` cell from selected deck (`DECK_DEFS.pos`) or enhancement
+    -- face: standard playing-card front in `centers` (rank/suit overlay from `cards_2`)
     self.back_atlas_name = self.params.back_atlas_name or "centers"
     self.face_atlas_name = self.params.face_atlas_name or self.back_atlas_name
 
@@ -314,6 +325,34 @@ local function card_is_debuffed_for_display(card)
     return G and G.boss_is_card_debuffed_for_scoring and G:boss_is_card_debuffed_for_scoring(card) == true
 end
 
+local function card_edition_for_display(card)
+    local data = card and card.card_data
+    local mod = data and data.modifier
+    local ed = mod and mod.edition
+    if type(ed) ~= "string" then return nil end
+    if ed == "foil" or ed == "holo" or ed == "polychrome" then
+        return ed
+    end
+    return nil
+end
+
+local function edition_tint_rgba(edition)
+    if edition == "foil" then
+        return 0.75, 0.9, 1.0, 1.0
+    end
+    if edition == "holo" then
+        return 0.92, 0.72, 1.0, 1.0
+    end
+    if edition == "polychrome" then
+        local t = love.timer and love.timer.getTime and love.timer.getTime() or 0
+        local r = 0.65 + 0.35 * (0.5 + 0.5 * math.sin(t * 2.2 + 0.0))
+        local g = 0.65 + 0.35 * (0.5 + 0.5 * math.sin(t * 2.2 + 2.1))
+        local b = 0.65 + 0.35 * (0.5 + 0.5 * math.sin(t * 2.2 + 4.2))
+        return r, g, b, 1.0
+    end
+    return 1.0, 1.0, 1.0, 1.0
+end
+
 local function draw_debuff_x_overlay(draw_x, draw_y, w, h)
     local inset = math.max(4, math.floor(math.min(w, h) * 0.14))
     local x1 = draw_x + inset
@@ -376,7 +415,7 @@ local function enhancement_tooltip_lines(enh)
     elseif enh == "stone" then return { "+50 chips" }
     elseif enh == "gold" then return { "+$3 while held" }
     elseif enh == "lucky" then return { "1/5: +20 mult", "1/15: +$20" }
-    elseif enh == "wild" then return { "Wild card" }
+    elseif enh == "wild" then return { "Can be any Suit" }
     end
     return {}
 end
@@ -386,9 +425,9 @@ end
 local function seal_tooltip_lines(seal)
     if not seal then return {} end
     if seal == "gold" then return { "+$3 when scored" }
-    elseif seal == "red" then return { "Retrigger" }
-    elseif seal == "blue" then return { "Planet if held" }
-    elseif seal == "purple" then return { "Purple seal" }
+    elseif seal == "red" then return { "Retriggers Card Once" }
+    elseif seal == "blue" then return { "Creates a Planet card for the winning Hand if held in hand" }
+    elseif seal == "purple" then return { "Creates a Tarot Card when Discarded" }
     end
     return {}
 end
@@ -659,8 +698,24 @@ end
 
 function Card:should_draw_tooltip()
     if not self.face_up then return false end
+    if G and G._collection_open and G._collection_tooltip_node == self then return true end
+    if G and G.is_hand_cursor_active and G:is_hand_cursor_active() then
+        return G:dpad_cursor_node() == self
+    end
+    if self.shop_offer_slot and G and G.STATE == G.STATES.SHOP and G.active_tooltip_joker == self then
+        return true
+    end
+    if G and G.should_draw_gamepad_focus_outline and G:should_draw_gamepad_focus_outline(self) then
+        return true
+    end
+    if G and G.is_shop_item_selected and G:is_shop_item_selected(self) then
+        return true
+    end
     if self._booster_choice_index and G and G.STATE == G.STATES.OPEN_BOOSTER and G.booster_session then
         return tonumber(G.booster_session.active_choice_index) == self._booster_choice_index
+    end
+    if self._deck_view_card and G and G._deck_view_open then
+        return self.states.drag.is or G.active_tooltip_card == self
     end
     return self.states.drag.is or (G and G.active_tooltip_card == self)
 end
@@ -675,48 +730,71 @@ function Card:draw()
     if not self.states.visible then return end
 
     local prev_r, prev_g, prev_b, prev_a = love.graphics.getColor()
-    love.graphics.setColor(1, 1, 1, 1)
+    local ed = card_edition_for_display(self)
+    local tr, tg, tb, ta = edition_tint_rgba(ed)
+    love.graphics.setColor(tr, tg, tb, ta)
 
     local draw_x, draw_y = self:get_layout_draw_xy()
+    local w, h = self.VT.w, self.VT.h
+    local s = self.VT.scale or 1
+    local r = self.VT.r or 0
 
     love.graphics.push()
-
-    local cx = draw_x + (self.VT.w * self.VT.scale) / 2
-    local cy = draw_y + (self.VT.h * self.VT.scale) / 2
-
-    love.graphics.translate(cx, cy)
-    love.graphics.rotate(self.VT.r)
-    love.graphics.scale(self.VT.scale, self.VT.scale)
-    love.graphics.translate(-cx, -cy)
+    love.graphics.translate(draw_x, draw_y)
+    love.graphics.scale(s, s)
+    love.graphics.translate(w * 0.5, h * 0.5)
+    love.graphics.rotate(r)
+    love.graphics.translate(-w * 0.5, -h * 0.5)
 
     -- base layer: back or face, depending on orientation
     if self.face_up then
         if self.face_quad then
-            self:draw_layer(self.face_atlas, self.face_quad, self.face_w, self.face_h, draw_x, draw_y)
+            self:draw_layer(self.face_atlas, self.face_quad, self.face_w, self.face_h, 0, 0)
         elseif self.back_quad then
-            self:draw_layer(self.back_atlas, self.back_quad, self.back_w, self.back_h, draw_x, draw_y)
+            self:draw_layer(self.back_atlas, self.back_quad, self.back_w, self.back_h, 0, 0)
         end
     else
         if self.back_quad then
-            self:draw_layer(self.back_atlas, self.back_quad, self.back_w, self.back_h, draw_x, draw_y)
+            self:draw_layer(self.back_atlas, self.back_quad, self.back_w, self.back_h, 0, 0)
         end
     end
 
     -- middle layer: rank + suit icon (only when face-up)
     if self.face_up and self.rank_quad then
-        self:draw_layer(self.rank_atlas, self.rank_quad, self.rank_w, self.rank_h, draw_x, draw_y)
+        self:draw_layer(self.rank_atlas, self.rank_quad, self.rank_w, self.rank_h, 0, 0)
     end
 
     -- top: seal overlay (`draw_layer` like rank; separate atlas + per-seal index)
     if self.face_up and self.seal_quad then
-        self:draw_layer(self.seal_atlas, self.seal_quad, self.seal_w, self.seal_h, draw_x, draw_y)
+        self:draw_layer(self.seal_atlas, self.seal_quad, self.seal_w, self.seal_h, 0, 0)
     end
 
     if card_is_debuffed_for_display(self) then
-        draw_debuff_x_overlay(draw_x, draw_y, self.VT.w, self.VT.h)
+        draw_debuff_x_overlay(0, 0, w, h)
     end
 
     love.graphics.pop()
+
+    if G and G.is_hand_cursor_active and G:is_hand_cursor_active() and G.hand and G._dpad_cursor_index then
+        local cursor = G.hand.card_nodes[G._dpad_cursor_index]
+        if cursor == self then
+            local r = self:get_collision_rect()
+            local lw = love.graphics.getLineWidth()
+            love.graphics.setLineWidth(2)
+            love.graphics.setColor(0, 0, 0, 1)
+            love.graphics.push()
+            local cx = r.x + r.w / 2
+            local cy = r.y + r.h / 2
+            love.graphics.translate(cx, cy)
+            love.graphics.rotate(self.VT.r)
+            love.graphics.translate(-cx, -cy)
+            love.graphics.rectangle("line", r.x, r.y, r.w, r.h)
+            love.graphics.pop()
+            love.graphics.setLineWidth(lw)
+        end
+    elseif G and G.draw_node_gamepad_focus_outline then
+        G:draw_node_gamepad_focus_outline(self)
+    end
 
     love.graphics.setColor(prev_r, prev_g, prev_b, prev_a)
 
@@ -801,9 +879,12 @@ function Card:emit_hand_event(event_name, ctx)
             trigger = true
 
         elseif ev == "card_played" and self.seal == "gold" then
-            self.do_seal(ctx)
+            self:do_seal(ctx)
             trigger = true
 
+        elseif ev == "on_discard" and self.seal == "purple" and ctx.discard_reason == "discard" then
+            self:do_seal(ctx)
+            trigger = true
         end
     end
     if trigger then
@@ -818,38 +899,50 @@ function Card:do_enhancement(ctx)
     local mult = tonumber(ctx.mult) or 1
     ctx.chips = chips
     ctx.mult = mult
-
+    p = Popup()
+    local card_center_x = self.VT.x + self.collision_offset.x + (self.VT.w / 2) * self.VT.scale
+    local card_center_y = self.VT.y + self.collision_offset.y + (self.VT.h / 2) * self.VT.scale
+    
     if self.enhancement == "bonus" then
         --+30 chips
-        ctx.chips = chips + 30
+        ctx.chips = chips + 30   
+        p:spawn(30, "chips", card_center_x, card_center_y)
+        G:addPopup(p)
         Sfx.play_chips()
     elseif self.enhancement == "mult" then
         --+4 mult
+        p:spawn(4, "mult", card_center_x, card_center_y)
+        G:addPopup(p)
         ctx.mult = mult + 4
     elseif self.enhancement == "glass" then
         -- x2 mult, 1 in 4 chance to break
+        p:spawn(2, "xmult", card_center_x, card_center_y)
+        G:addPopup(p)
         ctx.mult = mult * 2
         Sfx.play_mult()
-        if G:do_random(1, 4, 1) then
-            G:emit_joker_event("glass_broken")
-            ctx.glass_broken_node = self
-        end
     elseif self.enhancement == "steel" then
-        -- x1.5 mult when held in hand
-        ctx.mult = math.floor((tonumber(ctx.mult) or 1) * 1.5)
+        p:spawn(1.5, "xmult", card_center_x, card_center_y)
+        G:addPopup(p)
+        ctx.mult = (tonumber(ctx.mult) or 1) * 1.5
         Sfx.play_mult()
     elseif self.enhancement == "stone" then
         -- +50 chip
         ctx.chips = (tonumber(ctx.chips) or 0) + 50
+        p:spawn(50, "chips", card_center_x, card_center_y)
+        G:addPopup(p)
         Sfx.play_chips()
     elseif self.enhancement == "gold" then
         -- +$3 when held in hand
         G.money = G.money + 3
+        p:spawn(3, "money", card_center_x, card_center_y)
+        G:addPopup(p)
         Sfx.play_money()
     elseif self.enhancement == "lucky" then
         local triggered = false
         -- 1 in 5 chance to give +20 mult
         if G:do_random(1, 5, 1) then
+            p:spawn(20, "mult", card_center_x, card_center_y)
+            G:addPopup(p)
             ctx.mult = (tonumber(ctx.mult) or 1) + 20
             triggered = true
             Sfx.play_mult()
@@ -857,6 +950,8 @@ function Card:do_enhancement(ctx)
         -- 1 in 15 to give +$20
         if G:do_random(1, 15, 1) then
             G.money = G.money + 20
+            p:spawn(20, "money", card_center_x, card_center_y)
+            G:addPopup(p)
             triggered = true
             Sfx.play_money()
         end
@@ -877,8 +972,28 @@ function Card:do_seal(ctx)
     elseif self.seal == "red" then
         -- Retrigger count is handled in `Hand` via `play_trigger_total` / `held_trigger_total`.
     elseif self.seal == "blue" then
-        -- Planet card, when held in hand
+        if not (G and G.add_consumable and G.random_planet_id_for_hand_name and G.can_add_consumable) then
+            return
+        end
+        if not G:can_add_consumable() then return end
+        local hand_idx = tonumber(ctx.last_played_hand_index) or tonumber(G.last_played_hand_index)
+        if not hand_idx or hand_idx < 1 then return end
+        local hand_name = G.handlist and G.handlist[hand_idx] or nil
+        if not hand_name then return end
+        local pid = G:random_planet_id_for_hand_name(hand_name)
+        if not pid then return end
+        if G:add_consumable(pid) and Sfx and Sfx.play_mult then
+            Sfx.play_mult()
+        end
     elseif self.seal == "purple" then
-
+        if not (G and G.add_consumable and G.random_non_fool_tarot_id and G.can_add_consumable) then
+            return
+        end
+        if not G:can_add_consumable() then return end
+        local tid = G:random_non_fool_tarot_id()
+        if not tid then return end
+        if G:add_consumable(tid) and Sfx and Sfx.play_mult then
+            Sfx.play_mult()
+        end
     end
 end

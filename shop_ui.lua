@@ -10,43 +10,128 @@ function ShopUI.layout_shop_offer_nodes(game, param)
     if n <= 0 then return end
 
     local padding = 4
-    local area_x = param.x - padding
+    local area_x = param.x + padding
     local area_y = param.y + padding
-    local area_w = param.w
-    local area_h = param.h - padding
+    local area_w = param.w - 2 * padding
+    local area_h = param.h - 2 * padding
 
     local card_w = game.joker_slot_w or 71
     local card_h = game.joker_slot_h or 95
-    local scale = math.max(0.8, (area_h - 8) / card_h)
+    local scale = math.min(1, math.max(0.55, (area_h - 4) / card_h))
     local eff_w = card_w * scale
-    local gap = 2
-    local total_w = (n * eff_w) + ((n - 1) * gap)
-    if total_w > (area_w - 8) and n > 1 then
-        gap = math.max(2, ((area_w - 8) - (n * eff_w)) / (n - 1))
-        total_w = (n * eff_w) + ((n - 1) * gap)
-    end
-    local start_x = area_x + math.floor((area_w - total_w) * 0.5 + 0.5)
-    local y = area_y + math.floor(area_h - (card_h * scale) - 13 + 0.5)
+    local eff_h = card_h * scale
+    local gap_w = (game.joker_slot_gap or 8) * scale
+    local step, _, start_x = game:_compute_fanned_joker_row(n, area_w, eff_w, gap_w, 2)
+    local y = area_y + math.floor((area_h - eff_h) * 0.5 - 4)
 
     local interactive = (game.STATE == game.STATES.SHOP)
     for i = 1, n do
         local node = nodes[i]
         if node and node.T and node.VT then
-            local x = start_x + ((i - 1) * (eff_w + gap))
-            local selected = (game.active_tooltip_joker == node)
+            local x = area_x + start_x + ((i - 1) * step)
             node.T.x = x
-            node.T.y = y - (selected and 8 or 0)
+            node.T.y = y
             node.T.scale = scale
             if game.dragging ~= node then
                 node.VT.x = x
-                node.VT.y = node.T.y
+                node.VT.y = y
                 node.VT.scale = scale
             end
             node.states.visible = interactive
             node.states.click.can = interactive
-            node.states.drag.can = false
+            node.states.drag.can = interactive
             node.shop_offer_slot = i
             game._shop_offer_rects[i] = node:get_collision_rect()
+        end
+    end
+end
+
+function ShopUI.layout_shop_booster_nodes(game, param)
+    local nodes = game.shop_booster_nodes or {}
+    local offers = game.shop_booster_offers or {}
+    local n = math.min(#nodes, #offers)
+    game._shop_booster_rects = {}
+    if n <= 0 or type(param) ~= "table" then return end
+
+    local padding = 4
+    local area_x = param.x + padding
+    local area_y = param.y + padding
+    local area_w = param.w - 2 * padding
+    local area_h = param.h - 2 * padding
+
+    local pack_w, pack_h = 72, 95
+    local scale = math.min(1, math.max(0.55, (area_h - 4) / pack_h))
+    local eff_w = pack_w * scale
+    local eff_h = pack_h * scale
+    local step, _, start_x = game:_compute_fanned_joker_row(n, area_w, eff_w, 4 * scale, 2)
+    local y = area_y + math.floor((area_h - eff_h) * 0.5 + 0.5)
+    local interactive = (game.STATE == game.STATES.SHOP)
+
+    for i = 1, n do
+        local node = nodes[i]
+        if node and node.T and node.VT then
+            local x = area_x + start_x + ((i - 1) * step)
+            node.T.w = pack_w
+            node.T.h = pack_h
+            node.T.x = x
+            node.T.y = y
+            node.T.scale = scale
+            if game.dragging ~= node then
+                node.VT.x = x
+                node.VT.y = y
+                node.VT.scale = scale
+            end
+            node.states.visible = interactive
+            node.states.click.can = interactive
+            node.states.drag.can = interactive
+            node.shop_booster_slot = i
+            game._shop_booster_rects[i] = node:get_collision_rect()
+        end
+    end
+end
+
+function ShopUI.layout_shop_voucher_nodes(game, param)
+    local nodes = game.shop_voucher_nodes or {}
+    local offers = game.shop_voucher_offers or {}
+    local n = math.min(#nodes, #offers)
+    game._shop_voucher_rects = {}
+    if n <= 0 or type(param) ~= "table" then return end
+
+    local padding = 4
+    local area_x = param.x + padding
+    local area_y = param.y + padding
+    local area_w = param.w - 2 * padding
+    local area_h = param.h - 2 * padding
+
+    local pack_w, pack_h = 72, 95
+    local scale = math.min(1, math.max(0.55, (area_h - 4) / pack_h))
+    local eff_w = pack_w * scale
+    local eff_h = pack_h * scale
+    local step, _, start_x = game:_compute_fanned_joker_row(n, area_w, eff_w, 4 * scale, 2)
+    local y = area_y + math.floor((area_h - eff_h) * 0.5 + 0.5)
+    local interactive = (game.STATE == game.STATES.SHOP)
+
+    for i = 1, n do
+        local node = nodes[i]
+        if node and node.T and node.VT then
+            local x = area_x + start_x + ((i - 1) * step)
+            node.T.w = pack_w
+            node.T.h = pack_h
+            node.T.x = x
+            node.T.y = y
+            node.T.scale = scale
+            if game.dragging ~= node then
+                node.VT.x = x
+                node.VT.y = y
+                node.VT.scale = scale
+            end
+            node.states.visible = interactive
+            node.states.click.can = interactive
+            node.states.drag.can = interactive
+            node.shop_voucher_slot = i
+            game._shop_voucher_rects[i] = {
+                x = x, y = y, w = eff_w, h = eff_h,
+            }
         end
     end
 end
@@ -74,86 +159,9 @@ function ShopUI.draw_shop_offer_price_tags(game)
             end
             love.graphics.setFont(font)
             love.graphics.setColor(game.C.MONEY)
-            love.graphics.printf(label, tx, ty + 2, tag_w, "center")
+            love.graphics.printf(label, math.floor(tx), math.floor(ty + 2), tag_w, "center")
         end
     end
-end
-
-function ShopUI.draw_shop_offer_buy_button(game)
-    if game.STATE ~= game.STATES.SHOP then return end
-    local selected = game.active_tooltip_joker
-    local is_shop_offer = false
-    for _, n in ipairs(game.shop_offer_nodes or {}) do
-        if n == selected then
-            is_shop_offer = true
-            break
-        end
-    end
-    if not selected or not is_shop_offer then return end
-    local slot = tonumber(selected.shop_offer_slot)
-    local offer = slot and game.shop_offers and game.shop_offers[slot] or nil
-    if not offer then return end
-    local rect = selected.get_collision_rect and selected:get_collision_rect() or nil
-    if not rect then return end
-
-    local font = (game.FONTS and game.FONTS.PIXEL and game.FONTS.PIXEL.SMALL) or love.graphics.getFont()
-    local prev_font = love.graphics.getFont()
-    local prev_r, prev_g, prev_b, prev_a = love.graphics.getColor()
-    love.graphics.setFont(font)
-
-    local can_afford = game:can_afford_price(tonumber(offer.price) or 0)
-    local label = "Buy"
-    local btn_w = math.max(32, font:getWidth(label) + 14)
-    local btn_h = math.max(14, font:getHeight() + 4)
-    local gap = 4
-    local margin = 2
-    local sw = 320
-    if love.graphics.getWidth then
-        sw = love.graphics.getWidth("bottom")
-        if not sw or sw <= 0 then sw = love.graphics.getWidth() end
-    end
-    if not sw or sw <= 0 then sw = 320 end
-    local bx = rect.x + rect.w + gap
-    if bx + btn_w > (sw - margin) then
-        bx = rect.x - btn_w - gap
-    end
-    if bx < margin then bx = margin end
-    local by = rect.y + math.floor((rect.h - btn_h) * 0.5 + 0.5)
-    if by < margin then by = margin end
-    local is_consumable_offer = offer.kind == "tarot" or offer.kind == "planet"
-    local can_buy = can_afford and (not is_consumable_offer or game:can_add_consumable())
-    local fill_c = can_buy and game.C.MONEY or game.C.GREY
-    local shadow_c = game.C and game.C.BLOCK and game.C.BLOCK.SHADOW
-
-    if _G.draw_rect_with_shadow and fill_c and shadow_c then
-        draw_rect_with_shadow(bx, by, btn_w, btn_h, 3, 2, fill_c, shadow_c, 1)
-    else
-        if type(fill_c) == "table" then
-            love.graphics.setColor(fill_c[1], fill_c[2], fill_c[3], fill_c[4] or 1)
-        else
-            love.graphics.setColor(0.2, 0.2, 0.2, 1)
-        end
-        love.graphics.rectangle("fill", bx, by, btn_w, btn_h, 3, 3)
-    end
-    love.graphics.setColor(game.C.WHITE)
-    local text_y = by + math.floor((btn_h - font:getHeight()) * 0.5 + 0.5)
-    love.graphics.printf(label, bx, text_y, btn_w, "center")
-
-    if can_buy then
-        game._shop_buy_button_hit = { x = bx, y = by, w = btn_w, h = btn_h, slot_index = slot }
-    end
-
-    love.graphics.setFont(prev_font)
-    love.graphics.setColor(prev_r, prev_g, prev_b, prev_a)
-end
-
-function ShopUI.try_buy_button_press(game, x, y)
-    local hit = game._shop_buy_button_hit
-    if not hit then return false end
-    if not game:_point_in_rect_simple(x, y, hit) then return false end
-    game.touch_start_x = x
-    game.touch_start_y = y
-    return game:buy_shop_joker(hit.slot_index)
 end
 
 --- Top-screen shop sign (`animation_atli.shop_sign`).
@@ -229,64 +237,6 @@ function ShopUI.draw_booster_atlas_frame(game, rect, frame_index_zero_based)
     return true
 end
 
---- Lay out up to two booster hit rects inside `boosterPanel`.
-function ShopUI.layout_shop_booster_slots(game, param)
-    game._shop_booster_rects = {}
-    local offers = game.shop_booster_offers or {}
-    local n = math.min(2, #offers)
-    if n <= 0 or type(param) ~= "table" then return end
-
-    local padding = 4
-    local area_x = param.x + padding
-    local area_y = param.y + padding
-    local area_w = param.w - 2 * padding
-    local area_h = param.h - 2 * padding
-
-    local gap = 4
-    local px, py = 72, 95
-    local max_sw = ((area_w - (n - 1) * gap) / n) / px
-    local max_sh = (area_h - 2) / py
-    local scale = math.max(0.8, max_sw, max_sh)
-    local pack_w = math.max(1, math.floor(px * scale))
-    local pack_h = math.max(1, math.floor(py * scale))
-    local total_w = n * pack_w + (n - 1) * gap
-    local start_x = area_x + math.floor((area_w - total_w) * 0.5 + 0.5)
-    local y = area_y + math.floor((area_h - pack_h) * 0.5 + 0.5)
-
-    for i = 1, n do
-        local x = start_x + (i - 1) * (pack_w + gap)
-        game._shop_booster_rects[i] = { x = x, y = y, w = pack_w, h = pack_h }
-    end
-end
-
-function ShopUI.draw_shop_booster_slots(game)
-    if game.STATE ~= game.STATES.SHOP then return end
-    for i, rect in ipairs(game._shop_booster_rects or {}) do
-        local offer = game.shop_booster_offers and game.shop_booster_offers[i]
-        if offer and rect then
-            local sel = (game.active_shop_booster_slot == i)
-            local c = game.C and game.C.BOOSTER or { 0.4, 0.43, 0.72 }
-            local idx = offer.booster_sprite_index
-            local drew = (type(idx) == "number") and ShopUI.draw_booster_atlas_frame(game, rect, idx)
-            if not drew then
-                if _G.draw_rect_with_shadow then
-                    draw_rect_with_shadow(rect.x, rect.y, rect.w, rect.h, 3, 2, c, game.C.BLOCK.SHADOW, 1)
-                else
-                    love.graphics.setColor(c)
-                    love.graphics.rectangle("fill", rect.x, rect.y, rect.w, rect.h, 3, 3)
-                end
-                love.graphics.setColor(game.C.WHITE)
-                love.graphics.setFont(game.FONTS.PIXEL.SMALL)
-                love.graphics.printf(offer.name or "Booster", rect.x + 2, rect.y + 3, rect.w - 4, "center")
-            end
-            love.graphics.setColor(game.C.WHITE)
-            love.graphics.setFont(game.FONTS.PIXEL.SMALL)
-            local sz = ({ normal = "N", jumbo = "J", mega = "M" })[offer.size] or ""
-            love.graphics.printf(sz, rect.x + 2, rect.y + rect.h - 12, rect.w - 4, "center")
-        end
-    end
-end
-
 function ShopUI.draw_shop_booster_price_tags(game)
     if game.STATE ~= game.STATES.SHOP then return end
     for i, offer in ipairs(game.shop_booster_offers or {}) do
@@ -296,7 +246,7 @@ function ShopUI.draw_shop_booster_price_tags(game)
             local font = game.FONTS.PIXEL.SMALL
             local tw = font:getWidth(label)
             local tag_w = tw + 12
-            local tag_h = font:getHeight() + 4
+            local tag_h = font:getHeight() + 8
             local tx = rect.x + math.floor((rect.w - tag_w) * 0.5 + 0.5)
             local ty = rect.y - tag_h - 2
             if _G.draw_rect_with_shadow then
@@ -307,88 +257,9 @@ function ShopUI.draw_shop_booster_price_tags(game)
             end
             love.graphics.setFont(font)
             love.graphics.setColor(game.C.MONEY)
-            love.graphics.printf(label, tx, ty + 2, tag_w, "center")
+            love.graphics.printf(label, math.floor(tx), math.floor(ty + 2), tag_w, "center")
         end
     end
-end
-
-function ShopUI.draw_shop_booster_buy_button(game)
-    if game.STATE ~= game.STATES.SHOP then return end
-    local slot = tonumber(game.active_shop_booster_slot)
-    if not slot or slot < 1 then return end
-    local offer = game.shop_booster_offers and game.shop_booster_offers[slot]
-    local rect = game._shop_booster_rects and game._shop_booster_rects[slot]
-    if not offer or not rect then return end
-
-    local font = (game.FONTS and game.FONTS.PIXEL and game.FONTS.PIXEL.SMALL) or love.graphics.getFont()
-    local prev_font = love.graphics.getFont()
-    local prev_r, prev_g, prev_b, prev_a = love.graphics.getColor()
-    love.graphics.setFont(font)
-
-    local can_afford = game:can_afford_price(tonumber(offer.price) or 0)
-    local label = "Buy"
-    local btn_w = math.max(32, font:getWidth(label) + 14)
-    local btn_h = math.max(14, font:getHeight() + 4)
-    local gap = 4
-    local margin = 2
-    local sw = 320
-    if love.graphics.getWidth then
-        sw = love.graphics.getWidth("bottom")
-        if not sw or sw <= 0 then sw = love.graphics.getWidth() end
-    end
-    if not sw or sw <= 0 then sw = 320 end
-    local bx = rect.x + rect.w + gap
-    if bx + btn_w > (sw - margin) then
-        bx = rect.x - btn_w - gap
-    end
-    if bx < margin then bx = margin end
-    local by = rect.y + math.floor((rect.h - btn_h) * 0.5 + 0.5)
-    local fill_c = can_afford and game.C.MONEY or game.C.GREY
-    local shadow_c = game.C and game.C.BLOCK and game.C.BLOCK.SHADOW
-
-    if _G.draw_rect_with_shadow and fill_c and shadow_c then
-        draw_rect_with_shadow(bx, by, btn_w, btn_h, 3, 2, fill_c, shadow_c, 1)
-    else
-        love.graphics.setColor(fill_c)
-        love.graphics.rectangle("fill", bx, by, btn_w, btn_h, 3, 3)
-    end
-    love.graphics.setColor(game.C.WHITE)
-    love.graphics.printf(label, bx, by + math.floor((btn_h - font:getHeight()) * 0.5 + 0.5), btn_w, "center")
-
-    if can_afford then
-        game._shop_booster_buy_button_hit = { x = bx, y = by, w = btn_w, h = btn_h, slot_index = slot }
-    end
-
-    love.graphics.setFont(prev_font)
-    love.graphics.setColor(prev_r, prev_g, prev_b, prev_a)
-end
-
-function ShopUI.try_shop_booster_buy_press(game, x, y)
-    local hit = game._shop_booster_buy_button_hit
-    if not hit or not game:_point_in_rect_simple(x, y, hit) then return false end
-    game.touch_start_x = x
-    game.touch_start_y = y
-    return game:buy_shop_booster(hit.slot_index)
-end
-
---- Tap a pack to select/deselect (tooltip + Buy). Call before shop-offer node hits.
----@return boolean
-function ShopUI.try_shop_booster_slot_press(game, x, y)
-    if game.STATE ~= game.STATES.SHOP then return false end
-    for i, rect in ipairs(game._shop_booster_rects or {}) do
-        if rect and game:_point_in_rect_simple(x, y, rect) then
-            if game.active_shop_booster_slot == i then
-                game.active_shop_booster_slot = nil
-            else
-                game.active_shop_booster_slot = i
-            end
-            game.active_tooltip_joker = nil
-            game.active_tooltip_card = nil
-            game.active_tooltip_consumable_index = nil
-            return true
-        end
-    end
-    return false
 end
 
 function ShopUI.draw_shop_button(game, param)
@@ -455,6 +326,8 @@ function ShopUI.draw_bottom_shop(game)
 
     ShopUI.layout_shop_offer_nodes(game, jokerPanel)
 
+    game._shop_joker_panel = jokerPanel
+
     local bp_w, bp_h = 123, 90
     local boosterPanel = {
         x = jokerPanel.x + math.floor(jokerPanel.w * 0.5) - 10,
@@ -464,16 +337,52 @@ function ShopUI.draw_bottom_shop(game)
     }
     love.graphics.setColor(game.C.PANEL)
     love.graphics.rectangle("fill", boosterPanel.x, boosterPanel.y, boosterPanel.w, boosterPanel.h, 4, 4)
-    ShopUI.layout_shop_booster_slots(game, boosterPanel)
+    game._shop_booster_panel = boosterPanel
+    ShopUI.layout_shop_booster_nodes(game, boosterPanel)
+
+    local voucherPanel = {
+        x = panel_x + padding,
+        y = boosterPanel.y,
+        w = 177,
+        h = bp_h,
+    }
+    love.graphics.setColor(game.C.PANEL)
+    love.graphics.rectangle("fill", voucherPanel.x, voucherPanel.y, voucherPanel.w, voucherPanel.h, 4, 4)
+    game._shop_voucher_panel = voucherPanel
+    ShopUI.layout_shop_voucher_nodes(game, voucherPanel)
+
+    love.graphics.setColor(game.C.BLOCK.BACK)
+    love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
+    local text = "VOUCHER"
+    love.graphics.print(text, panel_x -1 , voucherPanel.y + love.graphics.getFont():getWidth(text) / 2 + voucherPanel.h / 2 ,math.rad(-90))
+end
+
+function ShopUI.draw_shop_voucher_price_tags(game)
+    if game.STATE ~= game.STATES.SHOP then return end
+    for i, offer in ipairs(game.shop_voucher_offers or {}) do
+        local rect = game._shop_voucher_rects and game._shop_voucher_rects[i]
+        if offer and rect then
+            local label = "$" .. tostring(offer.price or 0)
+            local font = game.FONTS.PIXEL.SMALL
+            local tw = font:getWidth(label)
+            local tag_w = tw + 12
+            local tag_h = font:getHeight() + 4
+            local tx = rect.x + math.floor((rect.w - tag_w) * 0.5 + 0.5)
+            local ty = rect.y - tag_h - 2
+            if _G.draw_rect_with_shadow then
+                draw_rect_with_shadow(tx, ty, tag_w, tag_h, 3, 2, game.C.BLOCK.BACK, game.C.BLOCK.SHADOW, 1)
+            else
+                love.graphics.setColor(game.C.BLOCK.BACK)
+                love.graphics.rectangle("fill", tx, ty, tag_w, tag_h, 3, 3)
+            end
+            love.graphics.setFont(font)
+            love.graphics.setColor(game.C.MONEY)
+            love.graphics.printf(label, math.floor(tx), math.floor(ty + 2), tag_w, "center")
+        end
+    end
 end
 
 function ShopUI.handle_touch(game, x, y)
-    for i, r in ipairs(game._shop_owned_rects or {}) do
-        if game:_point_in_rect_simple(x, y, r) then
-            game:sell_owned_joker(i)
-            return true
-        end
-    end
     if game:_point_in_rect_simple(x, y, game._shop_continue_rect) then
         game:continue_from_shop()
         return true

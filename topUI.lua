@@ -1,5 +1,6 @@
+---@class TopUI
+TopUI = Object:extend()
 --- Top-screen UI: draw content for the 3DS top screen (or equivalent when screen ~= "bottom").
-TopUI = {}
 
 --- Draw a rounded rectangle and return the inner area (with padding) for placing content.
 --- @param x number Left edge
@@ -31,7 +32,7 @@ function draw_rect_with_shadow(x, y, w, h, radius, padding, color, shadowColor, 
     return draw_rounded_rect(x, y, w, h, radius, padding, "fill")
 end
 
-function TopUI.draw()
+function TopUI:draw()
     local panelHeight = 104
     local panelY = 4
     local is_blind_select = (G.STATE == G.STATES.BLIND_SELECT)
@@ -66,8 +67,8 @@ function TopUI.draw()
     if not is_blind_select then
         blind_color = (G.get_blind_color and G:get_blind_color(blind_index)) or G.C.BLIND_COLORS.Big
     end
-    local blind_dark = is_blind_select and G.C.BLIND_COLORS.BigDark
-        or (G.C.BLIND_COLORS[blind_key .. "Dark"] or G.C.BLIND_COLORS.BigDark)
+    local factor = 0.5
+    local blind_dark = {blind_color[1] * factor, blind_color[2] * factor, blind_color[3] * factor, blind_color[4]}
     local blind_sign = blind_dark
 
     -- Panel
@@ -188,7 +189,11 @@ function TopUI.draw()
     ix, iy, iw, ih = draw_rounded_rect(ix + paneOffset, iy, iw - paneOffset, ih, 2, 2, "fill")
 
     local score = tostring(G.round_score or 0)
-    love.graphics.setFont(G.FONTS.PIXEL.MEDIUM)
+    if (tonumber(G.round_score) or 0) > 99999999 then
+        love.graphics.setFont(G.FONTS.PIXEL.SMALL)
+    else
+        love.graphics.setFont(G.FONTS.PIXEL.MEDIUM)
+    end
     love.graphics.setColor(G.C.WHITE)
     TopUI.center_text(score, ix, iy -1, iw, ih)
 
@@ -235,7 +240,15 @@ function TopUI.draw()
     draw_rect_with_shadow(ChipX + totalW - ChipWidth, ChipY, ChipWidth, ChipHeight, 4, 2, G.C.MULT, G.C.MULT_DARK, 2)
 
     local handChips = tostring(G.selectedHandChips or 0)
-    local handMult = tostring(G.selectedHandMult or 0)
+    local rawMult = tonumber(G.selectedHandMult) or 0
+    local handMult
+    if math.abs(rawMult) >= 100000 then
+        handMult = string.format("%.1e", rawMult)
+    elseif rawMult % 1 == 0 then
+        handMult = string.format("%.0f", rawMult)
+    else
+        handMult = string.format("%.1f", rawMult)
+    end
     love.graphics.setFont(G.FONTS.PIXEL.MEDIUM)
     love.graphics.setColor(G.C.WHITE)
     TopUI.center_text(handChips, ChipX, ChipY - 1, ChipWidth, ChipHeight)
@@ -251,7 +264,7 @@ function TopUI.draw()
     TopUI.LabeledField("Discards", G.discards, fieldsPositionX + fieldWidth + padding, fieldsPositionY, fieldWidth, fieldHeight, G.C.RED)
     TopUI.LabeledField("Ante", G.ante, fieldsPositionX + (fieldWidth + padding) * 2, fieldsPositionY, fieldWidth, fieldHeight, G.C.ORANGE)
     TopUI.LabeledField("Round", G.round, fieldsPositionX + (fieldWidth + padding) * 2, fieldsPositionY + fieldHeight + padding, fieldWidth, fieldHeight, G.C.RED)
-    TopUI.LabeledField("", tostring(G.money), fieldsPositionX, fieldsPositionY + fieldHeight + padding, fieldWidth * 2 + padding, fieldHeight, G.C.MONEY)
+    TopUI.LabeledField("", "$"..tostring(G.money), fieldsPositionX, fieldsPositionY + fieldHeight + padding, fieldWidth * 2 + padding, fieldHeight, G.C.MONEY)
 
     -- Joker panel behind owned jokers only (top screen); width matches fanned row from `Game`.
     local n = G and G.jokers and #G.jokers or 0
@@ -263,7 +276,7 @@ function TopUI.draw()
     local start_x = G.joker_slot_start_x or math.floor((400 - total_w) * 0.5 + 0.5)
 
     -- Extra padding so jokers don't touch the panel edges.
-    local panel_pad = 4
+    local panel_pad = 3
     total_w = total_w + (panel_pad * 2)
     start_x = start_x - panel_pad
     slot_y = slot_y - panel_pad
@@ -288,6 +301,21 @@ function TopUI.draw()
             love.graphics.rectangle("fill", start_x, slot_y, total_w, slot_h, 4, 4)
         end
     end
+
+    for _, t in ipairs(G.tags) do
+        if t and t.draw then
+            local scale = 0.75
+            love.graphics.push()
+            love.graphics.translate(t.X,t.Y)
+            love.graphics.scale(scale,scale)
+            local Tag = Tag(t.type)
+            Tag.X = 0
+            Tag.Y = 0
+            Tag:draw()
+            love.graphics.pop()
+        end
+    end
+
     if G and G.jokers_on_bottom ~= true and n > 0 then
 
         love.graphics.setFont(G.FONTS.PIXEL.MEDIUM)
@@ -300,6 +328,14 @@ function TopUI.draw()
                 if joker.states then joker.states.visible = true end
                 joker:draw()
                 if joker.states then joker.states.visible = prev_visible end
+            end
+        end
+    end
+
+    if self.popups then
+        for _, popup in ipairs(self.popups) do
+            if popup and popup.draw then
+                popup:draw()
             end
         end
     end
@@ -336,4 +372,31 @@ function TopUI.center_text(string, x, y, iw, ih)
     love.graphics.printf(s, x, yval, iw, "center")
     local xval = x
     return xval, yval
+end
+
+function TopUI:init()
+    self.popups = {}
+end
+
+function TopUI:update(dt)
+    local to_remove = {}
+    for i, popup in ipairs(self.popups or {}) do
+        if popup.update then
+            popup:update(dt)
+            if popup.remove or popup.time <= 0 then
+                table.insert(to_remove, i)
+            end
+        end
+    end
+
+    -- Remove in reverse order so indices stay valid
+    for i = #to_remove, 1, -1 do
+        table.remove(self.popups, to_remove[i])
+    end
+end
+
+function TopUI:addPopup(node)
+    if Popup and node and node.is and node:is(Popup) then
+        table.insert(self.popups, node)
+    end
 end

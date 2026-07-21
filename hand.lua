@@ -54,6 +54,15 @@ function Hand:is_scoring_active()
     return self._play_sequence ~= nil
 end
 
+--- Keep `self.cards` aligned with each node's `card_data` (tarots may replace node tables).
+function Hand:sync_cards_from_nodes()
+    for i, node in ipairs(self.card_nodes or {}) do
+        if node and node.card_data then
+            self.cards[i] = node.card_data
+        end
+    end
+end
+
 ---@param bypass_limit boolean|nil if true, allow one card over normal hand cap (e.g. Certificate)
 function Hand:add_card(card_data, bypass_limit)
     if not card_data or not self.game then return nil end
@@ -66,6 +75,9 @@ function Hand:add_card(card_data, bypass_limit)
     end
     if not bypass_limit and #self.cards >= limit then return nil end
     table.insert(self.cards, card_data)
+    if self.game and self.game.discover_card_properties then
+        self.game:discover_card_properties(card_data)
+    end
     local node = Card(0, 0, nil, nil, card_data, nil, { face_up = true })
     self.game:add(node)
     table.insert(self.card_nodes, node)
@@ -161,6 +173,59 @@ function Hand:try_reorder_card_after_drag(node, release_x)
     Sfx.play_random("resources/sounds/cardSlide1.ogg", "resources/sounds/cardSlide2.ogg")
     return true
 end
+
+--- Gamepad: shift one hand card left (-1) or right (+1) in fan order.
+function Hand:reorder_node_step(node, delta)
+    if self._play_sequence or not node then return false end
+    delta = math.floor(tonumber(delta) or 0)
+    if delta == 0 then return false end
+
+    local from_idx
+    for i, n in ipairs(self.card_nodes) do
+        if n == node then
+            from_idx = i
+            break
+        end
+    end
+    if not from_idx then return false end
+
+    local to_idx = from_idx + delta
+    if to_idx < 1 or to_idx > #self.card_nodes then return false end
+
+    local card = table.remove(self.cards, from_idx)
+    local inode = table.remove(self.card_nodes, from_idx)
+    table.insert(self.cards, to_idx, card)
+    table.insert(self.card_nodes, to_idx, inode)
+
+    self:layout(false)
+    if self.game and self.game.restore_hand_draw_order then
+        self.game:restore_hand_draw_order()
+    end
+    if self.game and self.game.move_selected_hand_cards_to_front then
+        self.game:move_selected_hand_cards_to_front()
+    end
+    if self.game and self.game.set_dpad_cursor_for_node then
+        self.game:set_dpad_cursor_for_node(inode)
+    end
+    Sfx.play_random("resources/sounds/cardSlide1.ogg", "resources/sounds/cardSlide2.ogg")
+    return true
+end
+
+--- Prefer cursor card when selected; otherwise first selected card in hand order.
+function Hand:reorder_gamepad_step(delta, cursor_node)
+    local node
+    if cursor_node and self:is_selected(cursor_node) then
+        node = cursor_node
+    elseif #self.selected > 0 then
+        local ordered = self:ordered_selected_nodes()
+        node = ordered[1]
+    elseif cursor_node then
+        node = cursor_node
+    end
+    if not node then return false end
+    return self:reorder_node_step(node, delta)
+end
+
 ---@param update_visual boolean|nil If true or omitted, VT is set to match T (instant). If false, only T is updated so cards interpolate to new positions.
 ---@param skip_vt_node Card|nil If set, that node's VT is left unchanged (e.g. animating in from off-screen).
 function Hand:layout(update_visual, skip_vt_node)
@@ -261,8 +326,26 @@ function Hand:clear()
     self._play_sequence = nil
 end
 
+--- Return every card in the hand and draw queue back to the deck draw pile (not discard).
+function Hand:return_all_cards_to_deck_draw_pile()
+    self:sync_cards_from_nodes()
+    local deck = self.game and self.game.deck
+    if not deck or not deck.insert_random then
+        self:clear()
+        return
+    end
+    for _, c in ipairs(self._draw_queue or {}) do
+        deck:insert_random(c)
+    end
+    for _, c in ipairs(self.cards) do
+        deck:insert_random(c)
+    end
+    self:clear()
+end
+
 --- Push every card still in the hand (and queued draws) to the deck discard pile, then clear hand nodes. Used when a blind is beaten.
 function Hand:send_entire_hand_to_discard_pile()
+    self:sync_cards_from_nodes()
     local deck = self.game and self.game.deck
     if not deck or not deck.push_discard then
         self:clear()
@@ -299,6 +382,10 @@ function Hand:is_selected(node)
     return false
 end
 
+function Hand:selection_at_capacity()
+    return #self.selected >= MAX_SELECTED
+end
+
 function Hand:toggle_selection(node)
     if self._play_sequence then return end
     if not node or not self.game then return end
@@ -314,7 +401,11 @@ function Hand:toggle_selection(node)
             node.selected = false
             Sfx.play("resources/sounds/card3.ogg")
             table.remove(self.selected, i)
-            if self.game then self.game.active_tooltip_card = nil end
+            if self.game then
+                if not (self.game.is_card_select_mode and self.game:is_card_select_mode()) then
+                    self.game.active_tooltip_card = nil
+                end
+            end
             if self.game.move_selected_hand_cards_to_front then self.game:move_selected_hand_cards_to_front() end
             self:calculate_play()
             return
@@ -325,8 +416,10 @@ function Hand:toggle_selection(node)
     Sfx.play("resources/sounds/card1.ogg")
     table.insert(self.selected, node)
     if self.game then
-        self.game.active_tooltip_card = node
-        self.game.active_tooltip_joker = nil
+        if not (self.game.is_card_select_mode and self.game:is_card_select_mode()) then
+            self.game.active_tooltip_card = node
+            self.game.active_tooltip_joker = nil
+        end
     end
     if self.game.move_selected_hand_cards_to_front then self.game:move_selected_hand_cards_to_front() end
     self:calculate_play()
@@ -360,6 +453,7 @@ end
 --- Internal discard used after play sequence (or directly when not scoring).
 function Hand:_discard_selected_impl(reason)
     if not self.game then return end
+    self:sync_cards_from_nodes()
     -- Played cards may have been destroyed during scoring (e.g. Sixth Sense); still finish the play.
     if #self.selected == 0 then
         if reason == "play" then
@@ -382,18 +476,41 @@ function Hand:_discard_selected_impl(reason)
         end
         return
     end
+    -- Glass: 1/4 destroy only when played cards leave the hand after scoring
+    if reason == "play" then
+        local to_try = {}
+        for _, node in ipairs(self.selected) do
+            to_try[#to_try + 1] = node
+        end
+        for _, node in ipairs(to_try) do
+            if node and node.enhancement == "glass" and self.game.do_random and self.game:do_random(1, 4, 1) then
+                Sfx.play_glass_break()
+                if self.game.emit_joker_event then
+                    self.game:emit_joker_event("glass_broken")
+                end
+                self:destroy_card_node(node)
+            end
+        end
+    end
     local deck = self.game.deck
     local discarded_nodes = {}
     local discarded_cards = {}
     if deck and deck.push_discard then
         for _, node in ipairs(self.selected) do
+            local pushed = false
             for i, n in ipairs(self.card_nodes) do
                 if n == node then
                     table.insert(discarded_nodes, node)
                     table.insert(discarded_cards, self.cards[i])
                     deck:push_discard(self.cards[i])
+                    pushed = true
                     break
                 end
+            end
+            if not pushed and node and node.card_data then
+                table.insert(discarded_nodes, node)
+                table.insert(discarded_cards, node.card_data)
+                deck:push_discard(node.card_data)
             end
         end
     end
@@ -407,6 +524,23 @@ function Hand:_discard_selected_impl(reason)
             discarded_cards = discarded_cards,
             discard_reason = reason,
         })
+    end
+    if reason == "discard" then
+        if self.game.record_cards_discarded then
+            self.game:record_cards_discarded(#discarded_nodes)
+        end
+        for _, node in ipairs(discarded_nodes) do
+            if node and node.emit_hand_event then
+                node:emit_hand_event("on_discard", {
+                    event = "on_discard",
+                    event_name = "on_discard",
+                    discard_reason = reason,
+                    discarded_nodes = discarded_nodes,
+                    discarded_cards = discarded_cards,
+                    card_node = node,
+                })
+            end
+        end
     end
     local new_cards, new_nodes = {}, {}
     for i, node in ipairs(self.card_nodes) do
@@ -602,43 +736,82 @@ function Hand:build_contained_hand_types(nodes)
     local contained = {}
     if type(nodes) ~= "table" then return contained end
 
+    local cached = self._last_play_hand_flags
+    local use_cached = false
+    if type(cached) == "table" and type(cached.nodes) == "table" and #cached.nodes == #nodes then
+        use_cached = true
+        for i = 1, #nodes do
+            if cached.nodes[i] ~= nodes[i] then
+                use_cached = false
+                break
+            end
+        end
+    end
+
+    local pairs_count = 0
+    local max_of_a_kind = 0
+    local flush = false
+    local straight = false
+    if use_cached then
+        pairs_count = tonumber(cached.pairs_count) or 0
+        max_of_a_kind = tonumber(cached.max_of_a_kind) or 0
+        flush = cached.flush == true
+        straight = cached.straight == true
+    end
+
     local rank_counts = {}
     local suit_counts = {}
+    local wild_count = 0
     local n = 0
 
     for _, node in ipairs(nodes) do
         local data = (node and node.card_data) or {}
         local rank = data.rank
         local suit = data.suit
+        local enhancement = data.enhancement
         if rank ~= nil then
             rank_counts[rank] = (rank_counts[rank] or 0) + 1
         end
-        if suit ~= nil then
+        if enhancement == "wild" then
+            wild_count = wild_count + 1
+        elseif suit ~= nil then
             suit_counts[suit] = (suit_counts[suit] or 0) + 1
         end
         n = n + 1
     end
 
-    local pairs_count = 0
-    local max_of_a_kind = 0
-    for _, c in pairs(rank_counts) do
-        if c > max_of_a_kind then max_of_a_kind = c end
-        if c == 2 then pairs_count = pairs_count + 1 end
+    if not use_cached then
+        for _, c in pairs(rank_counts) do
+            if c > max_of_a_kind then max_of_a_kind = c end
+            if c == 2 then pairs_count = pairs_count + 1 end
+        end
+        if n > 0 then
+            if wild_count == n then
+                flush = true
+            else
+                local suit_kinds = 0
+                local max_suit_count = 0
+                for _, c in pairs(suit_counts) do
+                    suit_kinds = suit_kinds + 1
+                    if c > max_suit_count then max_suit_count = c end
+                end
+                if suit_kinds == 1 then
+                    flush = true
+                elseif self.game and self.game:hasJoker("j_four_fingers") then
+                    flush = (max_suit_count + wild_count >= 4)
+                end
+            end
+        end
     end
 
-    local suit_kinds = 0
-    for _ in pairs(suit_counts) do
-        suit_kinds = suit_kinds + 1
-    end
-    local flush = (suit_kinds == 1 and n > 0)
-
-    if pairs_count >= 1 then contained["Pair"] = true end
+    if max_of_a_kind >= 2 then contained["Pair"] = true end
     if pairs_count >= 2 or (max_of_a_kind >= 3 and pairs_count >= 1) then
         contained["Two Pair"] = true
     end
     if max_of_a_kind >= 3 then contained["Three of a Kind"] = true end
     if max_of_a_kind >= 4 then contained["Four of a Kind"] = true end
     if flush then contained["Flush"] = true end
+    if straight then contained["Straight"] = true end
 
     return contained
 end
@@ -662,13 +835,17 @@ end
 
 
 --- After one played-card trigger (including jokers), advance repeat counter or move to next card.
-local function hand_advance_play_trigger(seq)
+--- A normal card-to-card transition keeps a small delay; the extra pause is only added when a delayed joker batch ran.
+local function hand_advance_play_trigger(seq, add_delay)
+    add_delay = add_delay ~= false
     seq.play_rep = (tonumber(seq.play_rep) or 0) + 1
     if seq.play_rep > (tonumber(seq.play_rep_total) or 1) then
         seq.play_rep = nil
         seq.play_rep_total = nil
     end
-    seq.trigger_wait = (seq.trigger_wait or 0) + PLAY_TRIGGER_INTERVAL
+    if add_delay then
+        seq.trigger_wait = (seq.trigger_wait or 0) + PLAY_TRIGGER_INTERVAL
+    end
 end
 
 function Hand:_update_play_sequence(dt)
@@ -754,13 +931,6 @@ function Hand:_update_play_sequence(dt)
                     G.selectedHandChips = chips
                     G.selectedHandMult = mult
 
-                    local glass_broke = false
-                    if card_ctx.glass_broken_node == node then
-                        card_ctx.glass_broken_node = nil
-                        self:destroy_card_node(node)
-                        glass_broke = true
-                    end
-
                     local jctx = {
                         event = "card_played",
                         event_name = "card_played",
@@ -774,12 +944,9 @@ function Hand:_update_play_sequence(dt)
                         photograph_first_face_node = seq.photograph_first_face_node,
                         photograph_pareidolia = seq.photograph_pareidolia,
                     }
-                    if glass_broke then
-                        seq.play_rep = seq.play_rep_total
-                    end
                     if G and G.begin_joker_emit and G:begin_joker_emit("card_played", jctx) then
                         seq.phase = "wait_jokers"
-                        seq.joker_wait_resume = { phase = "trigger", bump_trigger_wait = true, advance_play_repeat = true }
+                        seq.joker_wait_resume = { phase = "trigger", advance_play_repeat = true, delay_next_trigger = true }
                     else
                         if G and G.emit_joker_event then
                             G:emit_joker_event("card_played", jctx)
@@ -799,11 +966,8 @@ function Hand:_update_play_sequence(dt)
             seq.joker_wait_resume = nil
             if r and r.phase == "trigger" then
                 seq.phase = "trigger"
-                if r.bump_trigger_wait then
-                    seq.trigger_wait = (seq.trigger_wait or 0) + PLAY_TRIGGER_INTERVAL
-                end
                 if r.advance_play_repeat then
-                    hand_advance_play_trigger(seq)
+                    hand_advance_play_trigger(seq, r.delay_next_trigger == true)
                 end
             elseif r and r.phase == "finalize" then
                 seq.phase = "finalize"
@@ -910,6 +1074,12 @@ function Hand:_update_play_sequence(dt)
                 local used = (type(G.jokers) == "table") and #G.jokers or 0
                 free_joker_slots = math.max(0, cap - used)
             end
+            local scored_cards = {}
+            for _, node in ipairs(seq.cards or {}) do
+                if node and node.counts_for_play_score == true then
+                    scored_cards[#scored_cards + 1] = node
+                end
+            end
             local ctx = {
                 event = "on_hand_scored",
                 event_name = "on_hand_scored",
@@ -917,9 +1087,9 @@ function Hand:_update_play_sequence(dt)
                 mult = mult,
                 hand_index = G.selectedHand,
                 hand_type = hand_type,
-                contains_hand_types = self:build_contained_hand_types(seq.cards),
+                contains_hand_types = self:build_contained_hand_types(scored_cards),
                 hand_level = G.selectedHandLevel,
-                cards = seq.cards,
+                cards = scored_cards,
                 free_joker_slots = free_joker_slots,
                 discards_left = tonumber(G and G.discards) or 0,
             }
@@ -936,14 +1106,25 @@ function Hand:_update_play_sequence(dt)
 
         -- Step 2: final score.
         if seq.finalize_step == 2 then
-            chips = tonumber(G.selectedHandChips) or 0
-            mult = tonumber(G.selectedHandMult) or 1
+            chips = math.max(tonumber(G.selectedHandChips) or 0, 0)
+            mult = math.max(tonumber(G.selectedHandMult) or 1, 0)
+
+            if (G._deck_special or nil) == "plasma" then
+                local avg = math.floor((chips + mult)/2)
+                chips = avg
+                mult = avg
+                Sfx.play("resources/sounds/gong.ogg")
+            end
+
             G.selectedHandChips = chips
             G.selectedHandMult = mult
 
             local final_score = math.floor(chips * mult)
             G.last_hand_score = final_score
             G.round_score = (G.round_score or 0) + final_score
+            if G.record_hand_score then
+                G:record_hand_score(final_score)
+            end
             seq.phase = "discard_wait"
             seq.timer = 0
         end
@@ -982,7 +1163,7 @@ function Hand:is_full()
     return #self.cards >= hand_size_limit()
 end
 
-local SUIT_ORDER = { Hearts = 1, Clubs = 2, Diamonds = 3, Spades = 4 }
+local SUIT_ORDER = { Hearts = 2, Clubs = 3, Diamonds = 4, Spades = 1 }
 -- Order: A, K, Q, J, 10, 9, 8, 7, 6, 5, 4, 3, 2 (Ace first, then descending)
 local function rank_sort_key(rank)
     return 14 - (rank or 2)
@@ -1046,6 +1227,17 @@ function Hand:accumulate_card_score(chips, mult, node)
     chips = chips + mod_chip_bonus
     mult = mult + mod_mult_bonus
 
+    local card_center_x = node.VT.x + node.collision_offset.x + (node.VT.w / 2) * node.VT.scale
+    local card_center_y = node.VT.y + node.collision_offset.y + (node.VT.h / 2) * node.VT.scale
+    local p = Popup()
+    p:spawn(card_chips + mod_chip_bonus, "chips", card_center_x, card_center_y)
+    G:addPopup(p)
+    if mod_mult_bonus > 1 then
+        p = Popup()
+        p:spawn(mod_mult_bonus, "mult", card_center_x, card_center_y)
+        G:addPopup(p)
+    end
+
     return chips, mult
 end
 
@@ -1093,7 +1285,10 @@ function Hand:play_selected()
     if #self.selected == 0 or G.hands <= 0 then return end
     if self._play_sequence then return end
 
-    if self.game then self.game.active_tooltip_card = nil end
+    if self.game then
+        self.game._r_held = false
+        self.game.active_tooltip_card = nil
+    end
 
     self:calculate_play()
     local cards = self:ordered_selected_nodes()
@@ -1113,7 +1308,24 @@ function Hand:play_selected()
         cards = self:ordered_selected_nodes()
     end
 
+    -- Debuff boss ability: one notify per played hand (not per selection / per card).
+    if self._pending_boss_debuff_notify and self.game and self.game.notify_boss_effect_triggered then
+        self.game:notify_boss_effect_triggered({ reason = "card_debuffed_for_scoring" })
+    end
+    self._pending_boss_debuff_notify = false
+
+    if self.game then
+        local hi = tonumber(G and G.selectedHand)
+        if hi and hi > 0 then
+            self.game.last_played_hand_index = hi
+        end
+    end
+
     G.hands = G.hands - 1
+    G.handsPlayed = G.handsPlayed + 1
+    if G.record_cards_played then
+        G:record_cards_played(#cards)
+    end
     if self.game and self.game.boss_apply_on_hand_submitted then
         self.game:boss_apply_on_hand_submitted(cards)
     end
@@ -1232,6 +1444,8 @@ end
 function Hand:calculate_play()
     local n_sel = #self.selected
     if n_sel == 0 then
+        self._last_play_hand_flags = nil
+        self._pending_boss_debuff_notify = false
         for _, node in ipairs(self.card_nodes) do
             node.counts_for_play_score = false
         end
@@ -1286,6 +1500,7 @@ function Hand:calculate_play()
     local suits = {}
     local rank_counts = {}
     local suit_counts = {}
+    local wild_count = 0
     local max_rank_for_high = nil
     local has_face_down_selected = false
 
@@ -1293,6 +1508,7 @@ function Hand:calculate_play()
         local data = node.card_data or {}
         local rank = data.rank
         local suit = data.suit
+        local enhancement = data.enhancement
         if node and node.face_up == false then
             has_face_down_selected = true
         end
@@ -1301,8 +1517,12 @@ function Hand:calculate_play()
         table.insert(suits, suit)
 
         rank_counts[rank] = (rank_counts[rank] or 0) + 1
-        local normalized_suit = normalized_suit_for_scoring(suit)
-        suit_counts[normalized_suit] = (suit_counts[normalized_suit] or 0) + 1
+        if enhancement == "wild" then
+            wild_count = wild_count + 1
+        else
+            local normalized_suit = normalized_suit_for_scoring(suit)
+            suit_counts[normalized_suit] = (suit_counts[normalized_suit] or 0) + 1
+        end
 
         if type(rank) == "number" then
             if max_rank_for_high == nil or rank > max_rank_for_high then
@@ -1315,7 +1535,19 @@ function Hand:calculate_play()
 
     local function is_flush()
         if n < min_straight_flush_cards then return false end
-        return next(suit_counts) ~= nil and next(suit_counts, next(suit_counts)) == nil
+        if wild_count == n then return true end
+        if next(suit_counts) == nil then return false end
+        -- One suit among non-wild cards: classic flush.
+        if next(suit_counts, next(suit_counts)) == nil then return true end
+        -- Four Fingers: flush / straight flush only need four connected cards.
+        if has_four_fingers then
+            local max_suit = 0
+            for _, c in pairs(suit_counts) do
+                if c > max_suit then max_suit = c end
+            end
+            return max_suit + wild_count >= min_straight_flush_cards
+        end
+        return false
     end
 
     -- Rank pattern: one pass over rank_counts (also used for scoring marks later)
@@ -1393,6 +1625,13 @@ function Hand:calculate_play()
 
     local flush = is_flush()
     local straight = is_straight()
+    self._last_play_hand_flags = {
+        nodes = ordered,
+        pairs_count = pairs_count,
+        max_of_a_kind = max_of_a_kind,
+        flush = flush and true or false,
+        straight = straight and true or false,
+    }
 
     -- Determine hand according to Balatro order in globals.handlist:
     -- 1  Flush Five      (five of same rank & same suit)
@@ -1553,16 +1792,14 @@ function Hand:calculate_play()
         mark_all_ordered()
     end
 
+    -- Mark debuffs for scoring preview only; notify once on play (see play_selected).
+    self._pending_boss_debuff_notify = false
     if G and G.boss_is_card_debuffed_for_scoring then
-        local any_debuffed = false
         for _, node in ipairs(ordered) do
             if node.counts_for_play_score == true and G:boss_is_card_debuffed_for_scoring(node) then
                 node.counts_for_play_score = false
-                any_debuffed = true
+                self._pending_boss_debuff_notify = true
             end
-        end
-        if any_debuffed and G.notify_boss_effect_triggered then
-            G:notify_boss_effect_triggered({ reason = "card_debuffed_for_scoring" })
         end
     end
     if G and G.get_active_boss_blind_id and G:get_active_boss_blind_id() == "bl_psychic" and #ordered < 5 then

@@ -82,58 +82,12 @@ function Game:set_globals()
     --           SETTINGS
     --||||||||||||||||||||||||||||||
     self.SETTINGS = {
-        COMP = {
-            name = '',
-            prev_name = '',
-            submission_name = nil,
-            score = 0,
-        },
-        DEMO = {
-            total_uptime = 0,
-            timed_CTA_shown = false,
-            win_CTA_shown = false,
-            quit_CTA_shown = false
-        },
-        ACHIEVEMENTS_EARNED = {},
-        crashreports = false,
-        colourblind_option = false,
-        language = 'en-us',
-        screenshake = true,
-        run_stake_stickers = false,
-        rumble = self.F_RUMBLE,
-        play_button_pos = 2,
         GAMESPEED = 1,
-        paused = false,
         SOUND = {
-            volume = 50,
             music_volume = 100,
-            game_sounds_volume = 100,
-        },
-        WINDOW = {
-            screenmode = 'Borderless',
-            vsync = 1,
-            selected_display = 1,
-            display_names = {'[NONE]'},
-            DISPLAYS = {
-                {
-                    name = '[NONE]',
-                    screen_res = {w = 1000, h = 650},
-                }
-            },
-        },
-        CUSTOM_DECK = {
-            Collabs = {
-                Spades = 'default',
-                Hearts = 'default',
-                Clubs = 'default',
-                Diamonds = 'default',
-            }
         },
         GRAPHICS = {
             texture_scaling = 1,
-            shadows = 'On',
-            crt = 70,
-            bloom = 1
         },
     }
 
@@ -246,6 +200,10 @@ function Game:set_globals()
         NEW_ROUND = 19,
         --- Opening a booster from the shop (single state for all pack types).
         OPEN_BOOSTER = 20,
+        --- In-run pause menu overlay.
+        PAUSED = 21,
+        --- Run won (Ante 8 boss beaten).
+        YOU_WIN = 22,
     }
 
     self.STAGES = {
@@ -269,7 +227,27 @@ function Game:set_globals()
         [5] = 11000,
         [6] = 20000,
         [7] = 35000,
-        [8] = 50000
+        [8] = 50000,
+        -- Green Stake
+        [9] = 100,
+        [10] = 300,
+        [11] = 900,
+        [12] = 2600,
+        [13] = 8000,
+        [14] = 20000,
+        [15] = 36000,
+        [16] = 60000,
+        [17] = 100000,
+        -- Purple Stake
+        [18] = 100,
+        [19] = 300,
+        [20] = 1000,
+        [21] = 3200,
+        [22] = 9000,
+        [23] = 25000,
+        [24] = 60000,
+        [25] = 110000,
+        [26] = 200000
     }
     self.BLIND_DEFS = {
         { id = "small", name = "Small Blind", key = "Small", multiplier = 1.0, reward = 3 },
@@ -294,6 +272,7 @@ function Game:set_globals()
     }
     self.ANIMATION_ATLAS = {}
     self.ASSET_ATLAS = {}
+    self.JOKER_SPRITES = {}
     self.MOVEABLES = {}
     self.ANIMATIONS = {}
     self.DRAW_HASH = {}
@@ -334,6 +313,7 @@ function Game:set_globals()
         BLACK = HEX("374244"),--4f6367"),
         L_BLACK = HEX("4f6367"),
         GREY = HEX("5f7377"),
+        LIGHT_GREY = HEX("9aa2ab"),
         CHANCE = HEX("4BC292"),
         JOKER_GREY = HEX('bfc7d5'),
         VOUCHER = HEX("cb724c"),
@@ -344,7 +324,7 @@ function Game:set_globals()
         PERISHABLE = HEX('4f5da1'),
         RENTAL = HEX('b18f43'),
         TOOLTIP = HEX('3f4a4d'),
-        PANEL = HEX('2e3a3c'),
+        PANEL = HEX('394f55'),
         BLOCK = {
             BACK = HEX('1b2629'),
             SHADOW = HEX('0b1415')
@@ -424,12 +404,9 @@ function Game:set_globals()
         },
         BLIND_COLORS = {
             Small = HEX("0068ad"),
-            SmallDark = HEX("003f6f"),
             Big = HEX("a56c00"),
-            BigDark = HEX("6a4200"),
             BigSign = HEX("54451a"),
             Boss = HEX("b44430"),
-            BossDark = HEX("6a2015"),
             won = HEX("4f6367")
         },
         HAND_LEVELS = {
