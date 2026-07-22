@@ -62,48 +62,47 @@ MainMenuUI.HOW_TO_PLAY_PAGES = {
     {
         title = "Gamepad - Hand",
         lines = {
-            "D-pad Left/Right: Cycle hand cards",
-            "A: Toggle selection on cursor card",
-            "Hold R + Left/Right: Sweep select",
-            "Hold L + Left/Right: Reorder cards",
-            "X: Sort by Suit   Y: Sort by Rank",
-            "Tap L: Discard   Tap R: Play",
+            "D-pad Left/Right: Move cursor",
+            "A: Toggle card selection",
+            "Hold A + Left/Right: Reorder cards",
+            "Hold Y + Left/Right: Sweep select",
+            "B: Discard selected cards",
+            "X: Play selected cards",
+            "Y (tap): Toggle rank/suit sort",
             "",
-            "D-pad Up: Jokers down / back up",
-            "D-pad Down: Consumables / back to hand",
+            "L: Toggle jokers down / back up",
+            "R: Toggle consumables down / back up",
         },
     },
     {
         title = "Gamepad - Jokers & Consumables",
         lines = {
-            "While jokers are down:",
-            "D-pad Left/Right: Cycle jokers",
-            "A or R: Select joker (pick two to swap)",
-            "Hold L + Left/Right: Reorder jokers",
-            "B: Sell joker",
+            "Pull jokers (L) or consumables (R) to the",
+            "bottom screen to interact with them.",
             "",
-            "Consumables (D-pad Down):",
-            "D-pad Left/Right: Cycle consumables",
-            "A: Use   B: Sell",
-            "Hold L + Left/Right: Reorder",
+            "While pulled:",
+            "D-pad Left/Right: Cycle items",
+            "A: Select joker (pick two to swap)",
+            "Hold A + Left/Right: Reorder",
+            "B: Sell",
+            "X: Use consumable",
         },
     },
     {
         title = "Gamepad - Shop",
         lines = {
-            "D-Pad Left/Right: Move selection cursor.",
-            "Y: Buy     L+Y: Buy and Use",
-            "X: Reroll Shop     A: Continue",
-            "D-pad Up: Jokers down / back up",
-            "D-pad Down: Consumables / back to shop",
+            "D-Pad Left/Right: Move shop cursor",
+            "A: Buy     X: Buy and Use",
+            "Y: Reroll Shop",
+            "Hold B: Continue / exit shop",
+            "",
+            "L / R: Pull jokers or consumables down",
             "",
             "Booster pack:",
             "D-pad Left/Right: Cycle pack cards",
-            "A: Pick / Use focused card",
-            "Tap R: Confirm pick",
-            "Mega packs: R picks and selects next card",
+            "A: Pick / Confirm card",
             "Tarot / Spectral hand packs:",
-            "D-pad Up/Down: Pack cards / Hand",
+            "D-pad Up: Hand   D-pad Down: Pack cards",
             "B: Skip Booster",
         },
     },
@@ -113,16 +112,20 @@ MainMenuUI.HOW_TO_PLAY_PAGES = {
             "Select: Open Deck View",
             "Start: Pause Menu",
             "",
-            "Blind select:",
-            "A/Y: Start blind   X: Skip blind",
+            "Rebind A/B/X/Y/L/R under",
+            "Pause > Settings > Controls.",
             "",
-            "Main menu: D-pad moves focus, A activates",
-            "Continue, New Run, How to Play, Collection,",
-            "Profiles, and Delete Save.",
+            "Blind select:",
+            "Confirm: Start blind   Cancel: Skip",
+            "Sort: Reroll boss (with voucher)",
+            "",
+            "Main menu: D-pad moves focus,",
+            "Confirm activates menu items,",
+            "Use opens How to Play.",
             "",
             "Deck select:",
-            "Left/Right: Pick deck   Up/Down: Pick Stake",
-            "A/Y: Begin   B/X: Back",
+            "Left/Right: Pick deck   Up/Down: Stake",
+            "Confirm: Begin   Cancel/Use: Back",
         },
     },
 }
@@ -1028,7 +1031,7 @@ function MainMenuUI._button_how_to_play(game, btn)
         if page_idx < page_count then
             game._how_to_play_page = page_idx + 1
         end
-    elseif btn == "b" or btn == "x" then
+    elseif game.is_menu_back and game:is_menu_back(btn) then
         game._menu_sub_state = "main"
     end
 end
@@ -1050,11 +1053,11 @@ function MainMenuUI._button_main(game, btn)
         MainMenuUI.main_menu_focus_move(game, 1)
         return
     end
-    if btn == "a" or btn == "y" then
+    if game.is_menu_activate and game:is_menu_activate(btn) then
         MainMenuUI.activate_main_menu_focus(game)
         return
     end
-    if btn == "x" then
+    if game.is_role and game:is_role(btn, "use") then
         MainMenuUI.open_how_to_play(game)
     end
 end
@@ -1073,9 +1076,9 @@ function MainMenuUI._button_deck_select(game, btn)
         game._stake_select_idx = math.max(1, stake_idx + 1)
     elseif btn == "dpdown" or btn == "down" then
         game._stake_select_idx = math.min(#stake_list, stake_idx - 1)
-    elseif btn == "a" or btn == "y" then
+    elseif game.is_menu_activate and game:is_menu_activate(btn) then
         MainMenuUI._start_run(game)
-    elseif btn == "b" or btn == "x" then
+    elseif game.is_menu_back and game:is_menu_back(btn) then
         game._menu_sub_state = "main"
     end
 end

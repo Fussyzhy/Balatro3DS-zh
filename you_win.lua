@@ -210,14 +210,13 @@ function YouWinUI.handle_touch(game, x, y)
 end
 
 function YouWinUI.handle_button(game, btn)
-    -- A / confirm activates Endless (continue); B / cancel goes to main menu.
-    if btn == "a" or btn == "y" or btn == "return" or btn == "space" or btn == "z" then
+    if game.is_menu_activate and game:is_menu_activate(btn) then
         if game.continue_from_you_win_endless then
             game:continue_from_you_win_endless()
         end
         return true
     end
-    if btn == "b" or btn == "x" then
+    if game.is_menu_back and game:is_menu_back(btn) then
         if game.continue_from_you_win_main_menu then
             game:continue_from_you_win_main_menu()
         end

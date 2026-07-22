@@ -138,7 +138,6 @@ end
 
 function ShopUI.draw_shop_offer_price_tags(game)
     if game.STATE ~= game.STATES.SHOP then return end
-    if game.jokers_on_bottom then return end
     for i, offer in ipairs(game.shop_offers or {}) do
         local node = game.shop_offer_nodes and game.shop_offer_nodes[i]
         local rect = node and node.get_collision_rect and node:get_collision_rect() or game._shop_offer_rects[i]

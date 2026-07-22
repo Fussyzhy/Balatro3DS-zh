@@ -794,11 +794,11 @@ end
 
 function CollectionUI.handle_button(game, btn)
     if game._menu_sub_state == "collection_menu" then
-        if btn == "b" or btn == "x" then
+        if game.is_menu_back and game:is_menu_back(btn) then
             CollectionUI.back_to_main(game)
         end
     elseif game._menu_sub_state == "collection_grid" then
-        if btn == "b" or btn == "x" then
+        if game.is_menu_back and game:is_menu_back(btn) then
             CollectionUI.back_from_grid(game)
         elseif btn == "dpleft" or btn == "left" then
             local page = tonumber(game._collection_page) or 1
@@ -815,7 +815,7 @@ function CollectionUI.handle_button(game, btn)
                 CollectionUI.clear_tooltips(game)
                 CollectionUI.build_grid(game)
             end
-        elseif btn == "a" or btn == "y" then
+        elseif game.is_menu_activate and game:is_menu_activate(btn) then
             local node = game._collection_tooltip_node
             if not node and game._collection_nodes and game._collection_nodes[1] then
                 CollectionUI.toggle_tooltip(game, game._collection_nodes[1])

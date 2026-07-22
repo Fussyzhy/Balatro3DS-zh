@@ -217,7 +217,10 @@ function Consumable:tooltip_is_active()
     if self._booster_choice_index and G.STATE == G.STATES.OPEN_BOOSTER and G.booster_session then
         return tonumber(G.booster_session.active_choice_index) == self._booster_choice_index
     end
-    if G.jokers_on_bottom == true then return false end
+    if G.consumables_on_bottom ~= true then
+        if self.states.drag.is then return true end
+        return false
+    end
     if self.states.drag.is then return true end
     local idx = G.active_tooltip_consumable_index
     if idx and G.consumable_nodes and G.consumable_nodes[idx] == self then

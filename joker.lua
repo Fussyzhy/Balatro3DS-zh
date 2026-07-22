@@ -619,14 +619,18 @@ function Joker:get_live_current_tooltip_text(base_text)
             free = tonumber(free) or 0
             return string.format("(Currently X%s)", fmt_runtime_number(free + 1, 2))
         end,
-        j_steel_joker = function(j) return "(Currently X" .. fmt_runtime_number(j.stored_xmult or 1, 2) .. " Mult)" end,
+        j_steel_joker = function(_)
+            local steel = count_full_deck(function(c) return c.enhancement == "steel" end)
+            local x = 1 + (0.2 * steel)
+            return "(Currently X" .. fmt_runtime_number(x, 2) .. " Mult)"
+        end,
         j_constellation = function(j) return "(Currently X" .. fmt_runtime_number(j.stored_xmult or 1, 2) .. " Mult)" end,
         j_madness = function(j) return "(Currently X" .. fmt_runtime_number(j.stored_xmult or 1, 2) .. " Mult)" end,
         j_vampire = function(j) return "(Currently X" .. fmt_runtime_number(j.stored_xmult or 1, 2) .. " Mult)" end,
         j_hologram = function(j) return "(Currently X" .. fmt_runtime_number(j.stored_xmult or 1, 2) .. " Mult)" end,
         j_obelisk = function(j) return "(Currently X" .. fmt_runtime_number(j.stored_xmult or 1, 2) .. " Mult)" end,
-        j_throwback = function(j)
-            local skipped = tonumber(j.runtime_counter) or 0
+        j_throwback = function(_)
+            local skipped = (G and tonumber(G.skipsTaken)) or 0
             local x = 1 + (0.25 * skipped)
             return "(Currently X" .. fmt_runtime_number(x, 2) .. " Mult)"
         end,

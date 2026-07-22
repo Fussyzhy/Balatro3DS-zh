@@ -31,17 +31,47 @@ require("deck_catalog")
 local YouWinUI = require "you_win"
 local MainMenuUI = require "main_menu_ui"
 local DeckViewUI = require "deck_view_ui"
+local InputBindings = require "input_bindings"
 Sfx = require "sfx"
 
+-- Keyboard aliases for gamepad buttons (desktop testing).
+local KEY_TO_GAMEPAD = {
+    z = "a",
+    x = "b",
+    c = "x",
+    v = "y",
+    q = "leftshoulder",
+    e = "rightshoulder",
+    up = "dpup",
+    down = "dpdown",
+    left = "dpleft",
+    right = "dpright",
+    escape = "start",
+    rshift = "back",
+}
+
+local function key_to_gamepad_button(key)
+    return KEY_TO_GAMEPAD[key]
+end
+
+local function set_role_hold_from_button(game, button, held)
+    if not game or not game.get_role_for_button then return end
+    local role = game:get_role_for_button(button)
+    if not role or not InputBindings.HOLD_ROLES[role] then return end
+    if held then
+        game:set_role_held(role, true, love.timer.getTime())
+    else
+        game:set_role_held(role, false)
+    end
+end
+
 function love.load()
-    -- Decode static SFX once; avoids stutter on first play (sources stay in `Sfx` cache).
     if Sfx and Sfx.preload_game_sounds then
         Sfx.preload_game_sounds()
     end
 
     G = Game()
     G:enter_main_menu()
-
     Top = TopUI()
 
     G.music = love.audio.newSource("resources/sounds/music1_low.ogg", "stream")
@@ -71,19 +101,6 @@ function love.draw(screen)
     if screen == "bottom" then
         love.graphics.setColor(1, 1, 1)
         G:draw()
-        --[[ local stats = love.graphics.getStats()
-        if stats then
-            love.graphics.setFont(G.FONTS.PIXEL.MEDIUM)
-            if stats.images then
-                love.graphics.print(stats.images, 6, 0)
-            end
-            if stats.canvases then
-                love.graphics.print(stats.canvases, 6, 20)
-            end
-            if stats.texturememory then
-                love.graphics.print(stats.texturememory, 6, 40)
-            end
-        end ]]
     else
         if G and G.STATE == G.STATES.MENU then
             MainMenuUI.draw_top(G)
@@ -100,17 +117,19 @@ end
 function love.keypressed(key)
     if key == "f1" then
         if G then G.DEBUG = not G.DEBUG end
+        return
     end
-    if key == "p" and G.DEBUG then
-        if G and G.popups then
+    if key == "p" and G and G.DEBUG then
+        if G.popups then
             local p = Popup()
-            p:spawn(30, "chips", 100, 100)
+            p:spawn("Nope!", "Nope", 160, 120)
             G:addPopup(p)
             Top:addPopup(p)
         end
+        return
     end
 
-    if G.DEBUG then
+    if G and G.DEBUG then
         if key == "1" then
             G:add_joker_by_def(G:random_joker_def_id_by_rarity(1))
         elseif key == "2" then
@@ -118,8 +137,9 @@ function love.keypressed(key)
         elseif key == "3" then
             G:add_joker_by_def(G:random_joker_def_id_by_rarity(3))
         elseif key == "4" then
-            G:add_joker_by_def("j_astronomer")
-        elseif key =="5" then
+            G:add_consumable(G:random_consumable_id_of_kind("tarot"))
+       
+        elseif key == "5" then
             G.money = G.money + 100
         elseif key == "6" then
             G:addTag("voucher")
@@ -130,84 +150,30 @@ function love.keypressed(key)
         end
     end
 
-    if not G then return end
-    if key == "escape" then
-        if G.toggle_pause then
-            G:toggle_pause()
-            return
+    local button = key_to_gamepad_button(key)
+    if button then
+        love.gamepadpressed(nil, button)
+    end
+end
+
+function love.keyreleased(key)
+    local button = key_to_gamepad_button(key)
+    if button and G and G.get_role_for_button then
+        local role = G:get_role_for_button(button)
+        if role and InputBindings.HOLD_ROLES[role] then
+            love.gamepadreleased(nil, button)
         end
     end
-
-    if key == "rshift" and G.toggle_deck_view then
-        G:toggle_deck_view()
-        return
-    end
-    if G._deck_view_open then
-        if key == "x" or key == "z" or key == "rshift" then
-            G:exit_deck_view()
-        end
-        return
-    end
-
-    if G.STATE == G.STATES.MENU then
-        local MainMenuUI = require("main_menu_ui")
-        MainMenuUI.handle_button(G, key)
-        return
-    end
-    if G.STATE == G.STATES.YOU_WIN then
-        YouWinUI.handle_button(G, key)
-        return
-    end
-
-    if G.STATE == G.STATES.PAUSED then
-        if key == "return" or key == "space" or key == "z" then
-            G:exit_pause_menu()
-        end
-        return
-    end
-    if G.set_jokers_location then
-        -- Allow joker row screen toggle in every gameplay state.
-        if key == "up" then
-            if #(G.jokers or {}) > 0 then
-                G:set_jokers_location(true)
-            end
-            return
-        end
-        if key == "down" then
-            G:set_jokers_location(false)
-            return
-        end
-    end
-
-    if G.STATE ~= G.STATES.SELECTING_HAND then
-        return
-    end
-
-    if key == "e" and G.hand then
-        G.hand:sort_by_rank()
-    end
-    if key == "r" and G.hand then
-        G.hand:sort_by_suit()
-    end
-    if (key == "l") and G.hand then
-        if G.hand:has_selection() then G.hand:discard_selected() end
-    end
-    if (key == ";") and G.hand then
-        if G.hand:has_selection() then 
-            G:set_jokers_location(false)
-            G.hand:play_selected() 
-        end
-    end
-    if key == "x" and G.deck and G.hand and not G.deck:empty() and not G.hand:is_full() then
-        local card = G.deck:draw()
-        if card then G.hand:add_card(card) end
-    end
-
 end
 
 function love.gamepadpressed(_, button)
+    if G and G.STATE == G.STATES.PAUSED and G.handle_controls_listen_press then
+        if G:handle_controls_listen_press(button) then
+            return
+        end
+    end
+
     if G and G.STATE == G.STATES.MENU then
-        local MainMenuUI = require("main_menu_ui")
         MainMenuUI.handle_button(G, button)
         return
     end
@@ -219,20 +185,22 @@ function love.gamepadpressed(_, button)
         end
     end
 
-    -- Hold L = reorder; quick tap at release discards
-    if button == "leftshoulder" and G then
-        G._l_held = true
-        G._l_press_time = love.timer.getTime()
-        if G.enter_card_select_mode and G.ensure_dpad_cursor then
+    if G then
+        set_role_hold_from_button(G, button, true)
+        local role = G:get_role_for_button(button)
+        if role == "confirm" and G.enter_card_select_mode and G.ensure_dpad_cursor then
             G:enter_card_select_mode()
         end
+        if role == "sort" then
+            G._y_sweep_seeded = false
+        end
     end
-    if button == "rightshoulder" and G then
-        G._r_held = true
-        G._r_press_time = love.timer.getTime()
-        G._r_dpad_used = false
-        G._r_sweep_seeded = false
-        G._r_booster_confirmed = false
+
+    if G and G:is_role(button, "shoulder_l") and G.toggle_jokers_pulled then
+        G:toggle_jokers_pulled()
+    end
+    if G and G:is_role(button, "shoulder_r") and G.toggle_consumables_pulled then
+        G:toggle_consumables_pulled()
     end
 
     if not G then return end
@@ -251,7 +219,7 @@ function love.gamepadpressed(_, button)
         return
     end
     if G._deck_view_open then
-        if button == "b" or button == "a" or button == "select" then
+        if G:is_menu_back(button) or G:is_menu_activate(button) or button == "select" then
             G:exit_deck_view()
         end
         return
@@ -264,17 +232,24 @@ function love.gamepadpressed(_, button)
     end
 
     if G.STATE == G.STATES.BLIND_SELECT then
-        if button == "x" and G.try_gamepad_skip_blind then
+        if G.handle_gamepad_blind_select and G:handle_gamepad_blind_select(button) then
+            return
+        end
+        if G:is_role(button, "cancel") and G.try_gamepad_skip_blind then
             G:try_gamepad_skip_blind()
             return
         end
-        if button == "y" or button == "a" then
+        if G:is_role(button, "sort") and G.try_gamepad_boss_reroll then
+            G:try_gamepad_boss_reroll()
+            return
+        end
+        if G:is_menu_activate(button) then
             G:start_selected_blind()
         end
         return
     end
     if G.STATE == G.STATES.ROUND_EVAL then
-        if button == "y" or button == "a" then
+        if G:is_menu_activate(button) then
             G:continue_from_round_win()
         end
         return
@@ -283,16 +258,13 @@ function love.gamepadpressed(_, button)
         if G.handle_gamepad_shop and G:handle_gamepad_shop(button) then
             return
         end
-        if button == "a" then
-            G:continue_from_shop()
-        end
         return
     end
     if G.STATE == G.STATES.OPEN_BOOSTER then
         if G.handle_gamepad_booster and G:handle_gamepad_booster(button) then
             return
         end
-        if button == "b" and G.end_booster_session then
+        if G:is_role(button, "cancel") and G.end_booster_session then
             G:end_booster_session()
         end
         return
@@ -306,46 +278,31 @@ end
 
 function love.gamepadreleased(_, button)
     if not G then return end
-    local tap_threshold = 0.25
 
-    if button == "leftshoulder" then
-        local press_time = G._l_press_time
-        if press_time and (love.timer.getTime() - press_time) < tap_threshold then
-            if G.STATE == G.STATES.SELECTING_HAND and G.get_gamepad_focus_layer
-                and G:get_gamepad_focus_layer() == "hand" and G.hand and G.hand:has_selection() then
-                G.hand:discard_selected()
+    local role = G:get_role_for_button(button)
+    local press_time = role and G:get_role_press_time(role) or nil
+
+    if role == "sort" then
+        local swept = G._y_sweep_seeded == true
+        local tap_threshold = InputBindings.GESTURES.sort_tap_max_ms / 1000
+        if not swept and press_time and (love.timer.getTime() - press_time) < tap_threshold then
+            if G.try_gamepad_hand_sort_tap then
+                G:try_gamepad_hand_sort_tap()
             end
         end
-        G._l_held = false
-        G._l_press_time = nil
+        G._y_sweep_seeded = false
     end
 
-    if button == "rightshoulder" then
-        local press_time = G._r_press_time
-        if press_time and (love.timer.getTime() - press_time) < tap_threshold and not G._r_dpad_used then
-            if G.STATE == G.STATES.SELECTING_HAND and G.get_gamepad_focus_layer
-                and G:get_gamepad_focus_layer() == "hand" and G.hand and G.hand:has_selection() then
-                G:set_jokers_location(false)
-                G.hand:play_selected()
-            elseif G.STATE == G.STATES.OPEN_BOOSTER and G.is_booster_hand_mode and G:is_booster_hand_mode() then
-                if G.get_gamepad_focus_layer and G:get_gamepad_focus_layer() == "hand"
-                    and G.hand and G.hand:has_selection() and G.gamepad_booster_apply_hand_targeted then
-                    G:gamepad_booster_apply_hand_targeted()
-                elseif G.gamepad_booster_confirm and not G._r_booster_confirmed then
-                    G:gamepad_booster_confirm()
-                end
-            elseif G.STATE == G.STATES.OPEN_BOOSTER and G.gamepad_booster_confirm then
-                if not G._r_booster_confirmed then
-                    G:gamepad_booster_confirm()
-                end
-            end
+    if role == "cancel" then
+        local hold_threshold = InputBindings.GESTURES.shop_exit_hold_ms / 1000
+        if G.STATE == G.STATES.SHOP and press_time
+            and (love.timer.getTime() - press_time) >= hold_threshold
+            and G.get_gamepad_focus_layer and G:get_gamepad_focus_layer() == "hand" then
+            G:continue_from_shop()
         end
-        G._r_held = false
-        G._r_press_time = nil
-        G._r_dpad_used = false
-        G._r_sweep_seeded = false
-        G._r_booster_confirmed = false
     end
+
+    set_role_hold_from_button(G, button, false)
 end
 
 function love.gamepadaxis(_, axis, value)
