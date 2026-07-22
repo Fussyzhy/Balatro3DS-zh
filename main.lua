@@ -31,6 +31,7 @@ require("deck_catalog")
 local YouWinUI = require "you_win"
 local MainMenuUI = require "main_menu_ui"
 local DeckViewUI = require "deck_view_ui"
+local InputBindings = require "input_bindings"
 Sfx = require "sfx"
 
 -- Keyboard aliases for gamepad buttons (desktop testing).
@@ -51,6 +52,17 @@ local KEY_TO_GAMEPAD = {
 
 local function key_to_gamepad_button(key)
     return KEY_TO_GAMEPAD[key]
+end
+
+local function set_role_hold_from_button(game, button, held)
+    if not game or not game.get_role_for_button then return end
+    local role = game:get_role_for_button(button)
+    if not role or not InputBindings.HOLD_ROLES[role] then return end
+    if held then
+        game:set_role_held(role, true, love.timer.getTime())
+    else
+        game:set_role_held(role, false)
+    end
 end
 
 function love.load()
@@ -146,12 +158,21 @@ end
 
 function love.keyreleased(key)
     local button = key_to_gamepad_button(key)
-    if button == "a" or button == "b" or button == "y" then
-        love.gamepadreleased(nil, button)
+    if button and G and G.get_role_for_button then
+        local role = G:get_role_for_button(button)
+        if role and InputBindings.HOLD_ROLES[role] then
+            love.gamepadreleased(nil, button)
+        end
     end
 end
 
 function love.gamepadpressed(_, button)
+    if G and G.STATE == G.STATES.PAUSED and G.handle_controls_listen_press then
+        if G:handle_controls_listen_press(button) then
+            return
+        end
+    end
+
     if G and G.STATE == G.STATES.MENU then
         MainMenuUI.handle_button(G, button)
         return
@@ -164,27 +185,21 @@ function love.gamepadpressed(_, button)
         end
     end
 
-    if button == "a" and G then
-        G._a_held = true
-        G._a_press_time = love.timer.getTime()
-        if G.enter_card_select_mode and G.ensure_dpad_cursor then
+    if G then
+        set_role_hold_from_button(G, button, true)
+        local role = G:get_role_for_button(button)
+        if role == "confirm" and G.enter_card_select_mode and G.ensure_dpad_cursor then
             G:enter_card_select_mode()
         end
-    end
-    if button == "y" and G then
-        G._y_held = true
-        G._y_press_time = love.timer.getTime()
-        G._y_sweep_seeded = false
-    end
-    if button == "b" and G then
-        G._b_held = true
-        G._b_press_time = love.timer.getTime()
+        if role == "sort" then
+            G._y_sweep_seeded = false
+        end
     end
 
-    if button == "leftshoulder" and G and G.toggle_jokers_pulled then
+    if G and G:is_role(button, "shoulder_l") and G.toggle_jokers_pulled then
         G:toggle_jokers_pulled()
     end
-    if button == "rightshoulder" and G and G.toggle_consumables_pulled then
+    if G and G:is_role(button, "shoulder_r") and G.toggle_consumables_pulled then
         G:toggle_consumables_pulled()
     end
 
@@ -204,7 +219,7 @@ function love.gamepadpressed(_, button)
         return
     end
     if G._deck_view_open then
-        if button == "b" or button == "a" or button == "select" then
+        if G:is_menu_back(button) or G:is_menu_activate(button) or button == "select" then
             G:exit_deck_view()
         end
         return
@@ -217,21 +232,24 @@ function love.gamepadpressed(_, button)
     end
 
     if G.STATE == G.STATES.BLIND_SELECT then
-        if button == "b" and G.try_gamepad_skip_blind then
+        if G.handle_gamepad_blind_select and G:handle_gamepad_blind_select(button) then
+            return
+        end
+        if G:is_role(button, "cancel") and G.try_gamepad_skip_blind then
             G:try_gamepad_skip_blind()
             return
         end
-        if button == "y" and G.try_gamepad_boss_reroll then
+        if G:is_role(button, "sort") and G.try_gamepad_boss_reroll then
             G:try_gamepad_boss_reroll()
             return
         end
-        if button == "y" or button == "a" then
+        if G:is_menu_activate(button) then
             G:start_selected_blind()
         end
         return
     end
     if G.STATE == G.STATES.ROUND_EVAL then
-        if button == "y" or button == "a" then
+        if G:is_menu_activate(button) then
             G:continue_from_round_win()
         end
         return
@@ -246,7 +264,7 @@ function love.gamepadpressed(_, button)
         if G.handle_gamepad_booster and G:handle_gamepad_booster(button) then
             return
         end
-        if button == "b" and G.end_booster_session then
+        if G:is_role(button, "cancel") and G.end_booster_session then
             G:end_booster_session()
         end
         return
@@ -260,37 +278,31 @@ end
 
 function love.gamepadreleased(_, button)
     if not G then return end
-    local hold_threshold = 0.4
 
-    if button == "a" then
-        G._a_held = false
-        G._a_press_time = nil
-    end
+    local role = G:get_role_for_button(button)
+    local press_time = role and G:get_role_press_time(role) or nil
 
-    if button == "y" then
-        local press_time = G._y_press_time
+    if role == "sort" then
         local swept = G._y_sweep_seeded == true
-        G._y_held = false
-        G._y_press_time = nil
-        G._y_sweep_seeded = false
-        local tap_threshold = 0.25
+        local tap_threshold = InputBindings.GESTURES.sort_tap_max_ms / 1000
         if not swept and press_time and (love.timer.getTime() - press_time) < tap_threshold then
             if G.try_gamepad_hand_sort_tap then
                 G:try_gamepad_hand_sort_tap()
             end
         end
+        G._y_sweep_seeded = false
     end
 
-    if button == "b" then
-        local press_time = G._b_press_time
+    if role == "cancel" then
+        local hold_threshold = InputBindings.GESTURES.shop_exit_hold_ms / 1000
         if G.STATE == G.STATES.SHOP and press_time
             and (love.timer.getTime() - press_time) >= hold_threshold
             and G.get_gamepad_focus_layer and G:get_gamepad_focus_layer() == "hand" then
             G:continue_from_shop()
         end
-        G._b_held = false
-        G._b_press_time = nil
     end
+
+    set_role_hold_from_button(G, button, false)
 end
 
 function love.gamepadaxis(_, axis, value)

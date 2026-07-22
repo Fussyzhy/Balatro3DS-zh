@@ -12,6 +12,7 @@ local CollectionUI = require("collection_ui")
 local CollectionCatalog = require("collection_catalog")
 local YouWinUI = require("you_win")
 local TooltipDraw = require("tooltip_draw")
+local InputBindings = require("input_bindings")
 
 --- Seconds between revealing each payout line on the round-win screen.
 local ROUND_WIN_LINE_DELAY = 0.38
@@ -120,14 +121,17 @@ function Game:init(seed)
     self._dpad_cursor_index = nil
     self._gamepad_focus_layer = "hand"
     self._consumable_focus_index = nil
-    self._a_held = false
-    self._b_held = false
-    self._y_held = false
-    self._b_press_time = nil
-    self._a_press_time = nil
-    self._y_press_time = nil
+    self._role_held = {}
+    self._role_press_time = {}
     self._hand_sort_by_rank = true
     self._y_sweep_seeded = false
+    self._pause_settings_tab = "general"
+    self._controls_listen_role = nil
+    self._controls_role_rects = {}
+    self._controls_focus_zone = "grid"
+    self._controls_focus_col = 1
+    self._controls_focus_row = 1
+    self._controls_focus_footer = "reset"
     self._pause_focus_index = nil
     self._main_menu_continue_rect = nil
     self._menu_focus_index = 1
@@ -1767,6 +1771,15 @@ function Game:enter_pause_menu()
     self._pause_save_quit_rect = nil
     self._pause_settings_rect = nil
     self._pause_show_settings = false
+    self._pause_settings_tab = "general"
+    self._controls_listen_role = nil
+    self._controls_role_rects = {}
+    self._controls_focus_zone = "grid"
+    self._controls_focus_col = 1
+    self._controls_focus_row = 1
+    self._controls_focus_footer = "reset"
+    self._pause_controls_open_rect = nil
+    self._pause_controls_reset_rect = nil
     self._pause_speed_rects = {}
     self._pause_music_slider_rect = nil
     self._pause_music_slider_drag = false
@@ -1775,11 +1788,111 @@ function Game:enter_pause_menu()
     return true
 end
 
+function Game:controls_grid_role_at(col, row)
+    local cols = 2
+    col = math.floor(tonumber(col) or 1)
+    row = math.floor(tonumber(row) or 1)
+    if col < 1 or col > cols or row < 1 then return nil end
+    local idx = (row - 1) * cols + col
+    return InputBindings.ROLES[idx]
+end
+
+function Game:controls_grid_dims()
+    return 2, 3
+end
+
+function Game:reset_controls_grid_focus()
+    self._controls_focus_zone = "grid"
+    self._controls_focus_col = 1
+    self._controls_focus_row = 1
+    self._controls_focus_footer = "reset"
+end
+
+function Game:pause_controls_nav(button)
+    if self._pause_settings_tab ~= "controls" then return false end
+    local cols, rows = self:controls_grid_dims()
+
+    if self._controls_focus_zone == "footer" then
+        if button == "left" or button == "dpleft" then
+            self._controls_focus_footer = "reset"
+            return true
+        end
+        if button == "right" or button == "dpright" then
+            self._controls_focus_footer = "back"
+            return true
+        end
+        if button == "up" or button == "dpup" then
+            self._controls_focus_zone = "grid"
+            self._controls_focus_row = rows
+            return true
+        end
+        return true
+    end
+
+    local col = math.floor(tonumber(self._controls_focus_col) or 1)
+    local row = math.floor(tonumber(self._controls_focus_row) or 1)
+
+    if button == "left" or button == "dpleft" then
+        col = math.max(1, col - 1)
+    elseif button == "right" or button == "dpright" then
+        col = math.min(cols, col + 1)
+    elseif button == "up" or button == "dpup" then
+        if row > 1 then
+            row = row - 1
+        end
+    elseif button == "down" or button == "dpdown" then
+        if row < rows then
+            row = row + 1
+        else
+            self._controls_focus_zone = "footer"
+            self._controls_focus_footer = "reset"
+            return true
+        end
+    else
+        return false
+    end
+
+    self._controls_focus_col = col
+    self._controls_focus_row = row
+    return true
+end
+
+function Game:activate_controls_focus()
+    if self._controls_focus_zone == "footer" then
+        if self._controls_focus_footer == "reset" then
+            self:reset_control_bindings()
+            self._controls_listen_role = nil
+            return true
+        end
+        if self._controls_focus_footer == "back" then
+            self._pause_settings_tab = "general"
+            self._controls_listen_role = nil
+            self:reset_controls_grid_focus()
+            self._pause_focus_index = 1
+            return true
+        end
+        return false
+    end
+
+    local role = self:controls_grid_role_at(self._controls_focus_col, self._controls_focus_row)
+    if role then
+        self._controls_listen_role = role
+        return true
+    end
+    return false
+end
+
 function Game:build_pause_focus_targets()
     local targets = {}
     if self._pause_show_settings then
+        if self._pause_settings_tab == "controls" then
+            return targets
+        end
         for i, r in ipairs(self._pause_speed_rects or {}) do
             if r then targets[#targets + 1] = { kind = "speed", index = i, rect = r } end
+        end
+        if self._pause_controls_open_rect then
+            targets[#targets + 1] = { kind = "controls_open", rect = self._pause_controls_open_rect }
         end
         if self._pause_back_rect then
             targets[#targets + 1] = { kind = "back", rect = self._pause_back_rect }
@@ -1822,7 +1935,22 @@ function Game:activate_pause_focus()
         return self:exit_pause_menu()
     elseif t.kind == "settings" then
         self._pause_show_settings = true
+        self._pause_settings_tab = "general"
+        self._controls_listen_role = nil
         self._pause_focus_index = 1
+        return true
+    elseif t.kind == "controls_open" then
+        self._pause_settings_tab = "controls"
+        self._controls_listen_role = nil
+        self:reset_controls_grid_focus()
+        self._pause_focus_index = 1
+        return true
+    elseif t.kind == "control_role" and t.role then
+        self._controls_listen_role = t.role
+        return true
+    elseif t.kind == "controls_reset" then
+        self:reset_control_bindings()
+        self._controls_listen_role = nil
         return true
     elseif t.kind == "new_run" then
         if self.enter_main_menu_deck_select then self:enter_main_menu_deck_select() end
@@ -1831,8 +1959,15 @@ function Game:activate_pause_focus()
         if self.pause_save_and_quit then self:pause_save_and_quit() end
         return true
     elseif t.kind == "back" then
-        self._pause_show_settings = false
-        self._pause_focus_index = 2
+        if self._pause_settings_tab == "controls" then
+            self._pause_settings_tab = "general"
+            self._controls_listen_role = nil
+            self:reset_controls_grid_focus()
+            self._pause_focus_index = 1
+        else
+            self._pause_show_settings = false
+            self._pause_focus_index = 2
+        end
         return true
     elseif t.kind == "speed" and t.rect and t.rect.speed then
         if self.set_game_speed then self:set_game_speed(t.rect.speed) end
@@ -1844,6 +1979,29 @@ end
 
 function Game:handle_gamepad_pause(button)
     if self.STATE ~= self.STATES.PAUSED then return false end
+    if self._controls_listen_role and self:handle_controls_listen_press(button) then
+        return true
+    end
+    if self._pause_show_settings and self._pause_settings_tab == "controls" then
+        if button == "up" or button == "dpup" or button == "down" or button == "dpdown"
+            or button == "left" or button == "dpleft" or button == "right" or button == "dpright" then
+            return self:pause_controls_nav(button)
+        end
+        if self:is_role(button, "cancel") then
+            if self._controls_listen_role then
+                self._controls_listen_role = nil
+            else
+                self._pause_settings_tab = "general"
+                self:reset_controls_grid_focus()
+                self._pause_focus_index = 1
+            end
+            return true
+        end
+        if self:is_menu_activate(button) then
+            return self:activate_controls_focus()
+        end
+        return false
+    end
     if button == "up" or button == "dpup" then
         self:pause_gamepad_move(-1)
         return true
@@ -1860,12 +2018,12 @@ function Game:handle_gamepad_pause(button)
         self:pause_gamepad_move(1)
         return true
     end
-    if button == "b" and self._pause_show_settings then
+    if self:is_role(button, "cancel") and self._pause_show_settings then
         self._pause_show_settings = false
         self._pause_focus_index = 2
         return true
     end
-    if button == "a" or button == "y" then
+    if self:is_menu_activate(button) then
         return self:activate_pause_focus()
     end
     return false
@@ -1884,6 +2042,15 @@ function Game:exit_pause_menu()
     self._pause_prev_state = nil
     self._pause_settings_rect = nil
     self._pause_show_settings = false
+    self._pause_settings_tab = "general"
+    self._controls_listen_role = nil
+    self._controls_role_rects = {}
+    self._controls_focus_zone = "grid"
+    self._controls_focus_col = 1
+    self._controls_focus_row = 1
+    self._controls_focus_footer = "reset"
+    self._pause_controls_open_rect = nil
+    self._pause_controls_reset_rect = nil
     self._pause_speed_rects = {}
     self._pause_music_slider_rect = nil
     self._pause_music_slider_drag = false
@@ -1992,6 +2159,7 @@ function Game:default_settings()
         GAMESPEED = 1,
         SOUND = { music_volume = 100 },
         GRAPHICS = { texture_scaling = 1 },
+        CONTROLS = InputBindings.default_settings(),
         UNLOCKS = self:build_unlocks(),
         DISCOVERED = self:build_discovered(),
         JOKER_WINS = self:build_joker_wins(),
@@ -2022,6 +2190,7 @@ function Game:normalize_settings(data)
         end
     end
 
+    out.CONTROLS = InputBindings.normalize_controls(data.CONTROLS)
     out.UNLOCKS = self:normalize_unlocks(data.UNLOCKS)
     out.DISCOVERED = self:normalize_discovered(data.DISCOVERED)
     out.JOKER_WINS = self:normalize_joker_wins(data.JOKER_WINS)
@@ -2036,6 +2205,7 @@ function Game:snapshot_settings()
         GRAPHICS = {
             texture_scaling = tonumber(self.SETTINGS and self.SETTINGS.GRAPHICS and self.SETTINGS.GRAPHICS.texture_scaling) or 1,
         },
+        CONTROLS = InputBindings.normalize_controls(self.SETTINGS and self.SETTINGS.CONTROLS),
         UNLOCKS = self:normalize_unlocks(self.unlocks or (self.SETTINGS and self.SETTINGS.UNLOCKS)),
         DISCOVERED = self:normalize_discovered(self.Discovered or (self.SETTINGS and self.SETTINGS.DISCOVERED)),
         JOKER_WINS = self:normalize_joker_wins(self:get_joker_wins_for_save()),
@@ -2048,6 +2218,7 @@ function Game:load_settings()
         self:apply_unlocks(self.SETTINGS.UNLOCKS)
         self:apply_discovered(self.SETTINGS.DISCOVERED)
         self:apply_joker_wins(self.SETTINGS.JOKER_WINS)
+        InputBindings.apply_to_game(self)
         if self.apply_music_volume then
             self:apply_music_volume()
         end
@@ -2084,6 +2255,89 @@ function Game:save_settings()
     local ok, err = love.filesystem.write(self:settings_save_path(), encoded)
     if not ok then
         return false, tostring(err or "write_failed")
+    end
+    return true
+end
+
+function Game:control_bindings()
+    return InputBindings.get_bindings(self)
+end
+
+function Game:get_role_for_button(button)
+    return InputBindings.get_role_for_button(button, self:control_bindings())
+end
+
+function Game:get_button_for_role(role)
+    return InputBindings.get_button_for_role(role, self:control_bindings())
+end
+
+function Game:is_role(button, role)
+    return InputBindings.is_role(button, role, self:control_bindings())
+end
+
+function Game:is_menu_activate(button)
+    return InputBindings.is_menu_activate(button, self:control_bindings())
+end
+
+function Game:is_menu_back(button)
+    return InputBindings.is_menu_back(button, self:control_bindings())
+end
+
+function Game:is_role_held(role)
+    return self._role_held and self._role_held[role] == true
+end
+
+function Game:get_role_press_time(role)
+    return self._role_press_time and self._role_press_time[role] or nil
+end
+
+function Game:set_role_held(role, held, press_time)
+    if not InputBindings.HOLD_ROLES[role] then return end
+    if type(self._role_held) ~= "table" then self._role_held = {} end
+    if type(self._role_press_time) ~= "table" then self._role_press_time = {} end
+    if held then
+        self._role_held[role] = true
+        self._role_press_time[role] = press_time or (love and love.timer and love.timer.getTime())
+    else
+        self._role_held[role] = nil
+        self._role_press_time[role] = nil
+    end
+end
+
+function Game:set_control_binding(role, button)
+    if type(self.SETTINGS) ~= "table" then return false end
+    if type(self.SETTINGS.CONTROLS) ~= "table" then
+        self.SETTINGS.CONTROLS = InputBindings.default_settings()
+    end
+    if type(self.SETTINGS.CONTROLS.bindings) ~= "table" then
+        self.SETTINGS.CONTROLS.bindings = InputBindings.normalize_bindings(nil)
+    end
+    local ok = InputBindings.set_role_binding(self.SETTINGS.CONTROLS.bindings, role, button)
+    if ok then
+        self.SETTINGS.CONTROLS.bindings = InputBindings.normalize_bindings(self.SETTINGS.CONTROLS.bindings)
+        self:save_settings()
+    end
+    return ok
+end
+
+function Game:reset_control_bindings()
+    if type(self.SETTINGS) ~= "table" then return false end
+    self.SETTINGS.CONTROLS = InputBindings.default_settings()
+    self:save_settings()
+    return true
+end
+
+function Game:handle_controls_listen_press(button)
+    if self.STATE ~= self.STATES.PAUSED then return false end
+    if type(self._controls_listen_role) ~= "string" then return false end
+    if self:is_role(button, "cancel") then
+        self._controls_listen_role = nil
+        return true
+    end
+    if InputBindings.is_rebindable_button(button) then
+        self:set_control_binding(self._controls_listen_role, button)
+        self._controls_listen_role = nil
+        return true
     end
     return true
 end
@@ -3690,11 +3944,41 @@ function Game:is_joker_pool_swap_active(from_id, to_id)
         and self.joker_pool_replacements[from_id] == to_id
 end
 
+--- Jokers that only enter random pools when the full deck contains a matching enhancement.
+local JOKER_DECK_ENHANCEMENT_REQUIREMENTS = {
+    j_lucky_cat = "lucky",
+    j_stone_joker = "stone",
+    j_glass = "glass",
+    j_ticket = "gold",
+    j_steel_joker = "steel",
+}
+
+---@param enhancement string|nil
+---@return boolean
+function Game:deck_has_enhancement(enhancement)
+    if type(enhancement) ~= "string" or enhancement == "" then return false end
+    return self:count_cards_in_full_deck(function(c) return c.enhancement == enhancement end) > 0
+end
+
+---@param joker_id string|nil
+---@return boolean
+function Game:joker_meets_deck_requirement(joker_id)
+    if type(joker_id) ~= "string" then return true end
+    local required = JOKER_DECK_ENHANCEMENT_REQUIREMENTS[joker_id]
+    if not required then return true end
+    return self:deck_has_enhancement(required)
+end
+
+function Game:reset_joker_pool_replacements()
+    self.joker_pool_replacements = {}
+end
+
 --- Gros Michel / Cavendish and other registered pairs are mutually exclusive in random pools.
 ---@param joker_id string|nil
 ---@return boolean
 function Game:joker_allowed_in_random_pool(joker_id)
     if type(joker_id) ~= "string" then return true end
+    if not self:joker_meets_deck_requirement(joker_id) then return false end
     for from_id, to_id in pairs(self.joker_pool_replacements or {}) do
         if joker_id == from_id then return false end
         if joker_id == to_id then return true end
@@ -4223,9 +4507,13 @@ function Game:apply_consumable_effect(c)
             ord[i]:sync_visual_from_card_data()
         end
     elseif id == "tarot_judgement" then
-        local jid = self:_pick_joker_id_shop_rarity_distribution(function(lo, hi)
-            return math.random(lo, hi)
-        end)
+        local jid = nil
+        for _ = 1, 32 do
+            jid = self:_pick_joker_id_shop_rarity_distribution(function(lo, hi)
+                return math.random(lo, hi)
+            end)
+            if jid then break end
+        end
         if jid then self:add_joker_by_def(jid) end
     end
 
@@ -4868,7 +5156,19 @@ function Game:draw_bottom_game_over()
 end
 
 function Game:draw_bottom_pause()
-    local panel_x, panel_y, panel_w, panel_h = 24, 26, 272, 188
+    local BOTTOM_H = 240
+    local panel_w = 304
+    local panel_x = math.floor((320 - panel_w) * 0.5 + 0.5)
+    local panel_y = 26
+    local panel_h = 188
+    if self._pause_show_settings then
+        if self._pause_settings_tab == "controls" then
+            panel_y = 4
+            panel_h = BOTTOM_H - panel_y - 4
+        else
+            panel_h = 200
+        end
+    end
     if _G.draw_rect_with_shadow then
         draw_rect_with_shadow(panel_x, panel_y, panel_w, panel_h, 6, 3, self.C.BLOCK.BACK, self.C.BLOCK.SHADOW, 3)
     else
@@ -4885,9 +5185,49 @@ function Game:draw_bottom_pause()
             love.graphics.rectangle("line", r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1)
         end
         love.graphics.setColor(self.C.WHITE)
-        love.graphics.setFont(self.FONTS.PIXEL.MEDIUM)
+        local btn_font = (r.h and r.h <= 20) and self.FONTS.PIXEL.SMALL or self.FONTS.PIXEL.MEDIUM
+        love.graphics.setFont(btn_font)
         local ty = r.y + math.floor((r.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
-        love.graphics.printf(label, r.x, ty, r.w, "center")
+        love.graphics.printf(label, r.x, ty - 1, r.w, "center")
+    end
+
+    local function draw_cell(r, label, value, hint, focused, listening)
+        local fill = self.C.CHIPS
+        if listening then
+            fill = self.C.ORANGE
+        elseif focused then
+            fill = self.C.MONEY or self.C.ORANGE
+        end
+        love.graphics.setColor(fill)
+        draw_rect_with_shadow(r.x, r.y, r.w, r.h, 3, 3, fill, self.C.BLOCK.SHADOW, 2)
+        if focused or listening then
+            love.graphics.setColor(1, 1, 1, 1)
+            love.graphics.setLineWidth(2)
+            love.graphics.rectangle("line", r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1)
+        end
+        love.graphics.setFont(self.FONTS.PIXEL.SMALL)
+        love.graphics.setColor(self.C.WHITE)
+        love.graphics.printf(string.format("%s (%s)", label, value), r.x + 4, r.y + 4, r.w - 8, "center")
+        if hint and hint ~= "" then
+            love.graphics.setColor(self.C.WHITE)
+            love.graphics.printf(hint, r.x + 4, r.y + 15, r.w - 8, "left")
+        end
+    end
+
+    local function is_controls_cell_focused(col, row)
+        if self._controls_listen_role then return false end
+        return self._controls_focus_zone == "grid"
+            and self._controls_focus_col == col
+            and self._controls_focus_row == row
+    end
+
+    local function is_controls_cell_listening(role)
+        return self._controls_listen_role == role
+    end
+
+    local function is_controls_footer_focused(which)
+        if self._controls_listen_role then return false end
+        return self._controls_focus_zone == "footer" and self._controls_focus_footer == which
     end
 
     local function is_pause_focused(kind, index)
@@ -4902,84 +5242,164 @@ function Game:draw_bottom_pause()
     end
 
     if self._pause_show_settings then
-        -- ===== SETTINGS PAGE =====
         love.graphics.setColor(self.C.WHITE)
         love.graphics.setFont(self.FONTS.PIXEL.MEDIUM)
-        love.graphics.printf("Settings", panel_x, panel_y + 10, panel_w, "center")
-
-        love.graphics.setColor(self.C.GREY)
-        love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-        love.graphics.printf("Game Speed", panel_x, panel_y + 38, panel_w, "center")
-
-        local speeds = { 0.5, 1, 1.5, 2, 2.5, 3}
-        local speed_labels = { "x0.5", "x1", "x1.5", "x2", "x2.5", "x3"}
-        local cur_speed = (self.SETTINGS and self.SETTINGS.GAMESPEED) or 1
-        local sb_w = 38
-        local sb_h = 28
-        local sb_gap = 6
-        local total_sb = #speeds * sb_w + (#speeds - 1) * sb_gap
-        local sb_start_x = panel_x + math.floor((panel_w - total_sb) * 0.5 + 0.5)
-        local sb_y = panel_y + 56
-        self._pause_speed_rects = {}
-        for i, spd in ipairs(speeds) do
-            local rx = sb_start_x + (i - 1) * (sb_w + sb_gap)
-            local r = { x = rx, y = sb_y, w = sb_w, h = sb_h, speed = spd }
-            self._pause_speed_rects[i] = r
-            local is_active = math.abs(cur_speed - spd) < 0.01
-            local btn_color = is_active and self.C.ORANGE or self.C.PANEL
-            love.graphics.setColor(btn_color)
-            draw_rect_with_shadow(rx, sb_y, sb_w, sb_h, 4, 4, btn_color, self.C.BLOCK.SHADOW, 4)
-            if is_active then
-                love.graphics.setColor(self.C.WHITE)
+        if self._pause_settings_tab == "controls" then
+            love.graphics.printf("Controls", panel_x, panel_y + 4, panel_w, "center")
+            if self._controls_listen_role then
+                love.graphics.setColor(self.C.ORANGE)
+                love.graphics.setFont(self.FONTS.PIXEL.SMALL)
+                local listen_label = string.format(
+                    "Press button for %s",
+                    InputBindings.role_label(self._controls_listen_role)
+                )
+                love.graphics.printf(listen_label, panel_x, panel_y + 24, panel_w , "center")
             else
-                love.graphics.setColor(self.C.DARK_WHITE or self.C.GREY)
+                love.graphics.setColor(self.C.GREY)
+                love.graphics.setFont(self.FONTS.PIXEL.SMALL)
+                love.graphics.printf("D-pad: move  A: rebind  B: back", panel_x, panel_y + 24, panel_w, "center")
             end
+
+            local bindings = self:control_bindings()
+            local grid_cols, grid_rows = self:controls_grid_dims()
+            local grid_pad = 8
+            local grid_gap = 4
+            local grid_x = panel_x + grid_pad
+            local grid_w = panel_w - grid_pad * 2
+            local cell_w = math.floor((grid_w - grid_gap) * 0.5)
+            local cell_h = 42
+            local grid_y = panel_y + 42
+            local footer_h = 18
+            self._controls_role_rects = {}
+
+            for row = 1, grid_rows do
+                for col = 1, grid_cols do
+                    local idx = (row - 1) * grid_cols + col
+                    local role = InputBindings.ROLES[idx]
+                    if role then
+                        local btn = bindings[role] or InputBindings.DEFAULT_BINDINGS[role]
+                        local cx = grid_x + (col - 1) * (cell_w + grid_gap)
+                        local cy = grid_y + (row - 1) * (cell_h + grid_gap)
+                        local r = {
+                            x = cx,
+                            y = cy,
+                            w = cell_w,
+                            h = cell_h,
+                            role = role,
+                            col = col,
+                            row = row,
+                        }
+                        self._controls_role_rects[idx] = r
+                        draw_cell(
+                            r,
+                            InputBindings.role_label(role),
+                            InputBindings.button_label(btn),
+                            InputBindings.role_hint(role),
+                            is_controls_cell_focused(col, row),
+                            is_controls_cell_listening(role)
+                        )
+                    end
+                end
+            end
+
+            local footer_y = grid_y + grid_rows * cell_h + (grid_rows - 1) * grid_gap + 6
+            local footer_w = math.floor((grid_w - grid_gap) * 0.5)
+            self._pause_controls_reset_rect = {
+                x = grid_x,
+                y = footer_y,
+                w = footer_w,
+                h = footer_h,
+            }
+            self._pause_back_rect = {
+                x = grid_x + footer_w + grid_gap,
+                y = footer_y,
+                w = footer_w,
+                h = footer_h,
+            }
+            draw_btn(self._pause_controls_reset_rect, "Reset", self.C.RED, is_controls_footer_focused("reset"))
+            draw_btn(self._pause_back_rect, "Back", self.C.MULT, is_controls_footer_focused("back"))
+        else
+            -- ===== SETTINGS GENERAL TAB =====
+            love.graphics.printf("Settings", panel_x, panel_y + 10, panel_w, "center")
+
+            love.graphics.setColor(self.C.GREY)
             love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-            local ty = sb_y + math.floor((sb_h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
-            love.graphics.printf(speed_labels[i], rx, ty, sb_w, "center")
-            if is_pause_focused("speed", i) then
-                love.graphics.setColor(1, 1, 1, 1)
-                love.graphics.setLineWidth(2)
-                love.graphics.rectangle("line", rx + 0.5, sb_y + 0.5, sb_w - 1, sb_h - 1)
+            love.graphics.printf("Game Speed", panel_x, panel_y + 34, panel_w, "center")
+
+            local speeds = { 0.5, 1, 1.5, 2, 2.5, 3}
+            local speed_labels = { "x0.5", "x1", "x1.5", "x2", "x2.5", "x3"}
+            local cur_speed = (self.SETTINGS and self.SETTINGS.GAMESPEED) or 1
+            local sb_w = 38
+            local sb_h = 24
+            local sb_gap = 6
+            local total_sb = #speeds * sb_w + (#speeds - 1) * sb_gap
+            local sb_start_x = panel_x + math.floor((panel_w - total_sb) * 0.5 + 0.5)
+            local sb_y = panel_y + 50
+            self._pause_speed_rects = {}
+            for i, spd in ipairs(speeds) do
+                local rx = sb_start_x + (i - 1) * (sb_w + sb_gap)
+                local r = { x = rx, y = sb_y, w = sb_w, h = sb_h, speed = spd }
+                self._pause_speed_rects[i] = r
+                local is_active = math.abs(cur_speed - spd) < 0.01
+                local btn_color = is_active and self.C.ORANGE or self.C.PANEL
+                love.graphics.setColor(btn_color)
+                draw_rect_with_shadow(rx, sb_y, sb_w, sb_h, 4, 4, btn_color, self.C.BLOCK.SHADOW, 4)
+                if is_active then
+                    love.graphics.setColor(self.C.WHITE)
+                else
+                    love.graphics.setColor(self.C.DARK_WHITE or self.C.GREY)
+                end
+                love.graphics.setFont(self.FONTS.PIXEL.SMALL)
+                local ty = sb_y + math.floor((sb_h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
+                love.graphics.printf(speed_labels[i], rx, ty, sb_w, "center")
+                if is_pause_focused("speed", i) then
+                    love.graphics.setColor(1, 1, 1, 1)
+                    love.graphics.setLineWidth(2)
+                    love.graphics.rectangle("line", rx + 0.5, sb_y + 0.5, sb_w - 1, sb_h - 1)
+                end
             end
+
+            love.graphics.setColor(self.C.WHITE)
+            love.graphics.setFont(self.FONTS.PIXEL.SMALL)
+            local speed_str = string.format("Current: x%.4g", cur_speed)
+            love.graphics.printf(speed_str, panel_x, panel_y + 82, panel_w, "center")
+
+            love.graphics.setColor(self.C.GREY)
+            love.graphics.printf("Music Volume", panel_x, panel_y + 98, panel_w, "center")
+
+            local track_x = panel_x + 36
+            local track_w = panel_w - 72
+            local track_y = panel_y + 116
+            local knob_r = 7
+            local vol = self:get_music_volume()
+            local knob_x = track_x + (vol / 100) * track_w
+            local prev_lw = love.graphics.getLineWidth()
+            love.graphics.setColor(self.C.GREY)
+            love.graphics.setLineWidth(2)
+            love.graphics.line(track_x, track_y, track_x + track_w, track_y)
+            love.graphics.setColor(self.C.WHITE)
+            love.graphics.circle("fill", knob_x, track_y, knob_r)
+            love.graphics.setLineWidth(prev_lw)
+            self._pause_music_slider_rect = {
+                x = track_x - knob_r,
+                y = track_y - 14,
+                w = track_w + knob_r * 2,
+                h = 28,
+                track_x = track_x,
+                track_w = track_w,
+                track_y = track_y,
+            }
+
+            local open_w, open_h = 140, 24
+            local open_x = panel_x + math.floor((panel_w - open_w) * 0.5 + 0.5)
+            self._pause_controls_open_rect = { x = open_x, y = panel_y + 136, w = open_w, h = open_h }
+            draw_btn(self._pause_controls_open_rect, "Controls", self.C.BOOSTER, is_pause_focused("controls_open"))
+
+            local back_w, back_h = 120, 24
+            local back_x = panel_x + math.floor((panel_w - back_w) * 0.5 + 0.5)
+            self._pause_back_rect = { x = back_x, y = panel_y + 166, w = back_w, h = back_h }
+            draw_btn(self._pause_back_rect, "Back", self.C.MULT, is_pause_focused("back"))
         end
-
-        love.graphics.setColor(self.C.WHITE)
-        love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-        local speed_str = string.format("Current: x%.4g", cur_speed)
-        love.graphics.printf(speed_str, panel_x, panel_y + 96, panel_w, "center")
-
-        love.graphics.setColor(self.C.GREY)
-        love.graphics.printf("Music Volume", panel_x, panel_y + 114, panel_w, "center")
-
-        local track_x = panel_x + 36
-        local track_w = panel_w - 72
-        local track_y = panel_y + 136
-        local knob_r = 7
-        local vol = self:get_music_volume()
-        local knob_x = track_x + (vol / 100) * track_w
-        local prev_lw = love.graphics.getLineWidth()
-        love.graphics.setColor(self.C.GREY)
-        love.graphics.setLineWidth(2)
-        love.graphics.line(track_x, track_y, track_x + track_w, track_y)
-        love.graphics.setColor(self.C.WHITE)
-        love.graphics.circle("fill", knob_x, track_y, knob_r)
-        love.graphics.setLineWidth(prev_lw)
-        self._pause_music_slider_rect = {
-            x = track_x - knob_r,
-            y = track_y - 14,
-            w = track_w + knob_r * 2,
-            h = 28,
-            track_x = track_x,
-            track_w = track_w,
-            track_y = track_y,
-        }
-
-        -- Back button
-        local back_w, back_h = 120, 28
-        local back_x = panel_x + math.floor((panel_w - back_w) * 0.5 + 0.5)
-        self._pause_back_rect = { x = back_x, y = panel_y + 156, w = back_w, h = back_h }
-        draw_btn(self._pause_back_rect, "Back", self.C.MULT, is_pause_focused("back"))
     else
         -- ===== MAIN PAUSE PAGE =====
         love.graphics.setColor(self.C.WHITE)
@@ -5100,6 +5520,7 @@ function Game:clear_run_assets_for_main_menu()
     self:_clear_pending_discard_nodes()
     self.jokers_on_bottom = false
     self.consumables_on_bottom = false
+    self:reset_joker_pool_replacements()
 
     local run_atlases = { "Tarot", "cards_1", "cards_2", "Booster", "Voucher", "stickers" }
     for _, name in ipairs(run_atlases) do
@@ -5185,6 +5606,7 @@ function Game:start_run_from_main_menu()
     self._shop_rng_state = nil
     self._pause_prev_state = nil
     self._pause_save_error = nil
+    self:reset_joker_pool_replacements()
     self:initialize_run_loop()
 end
 
@@ -6530,6 +6952,7 @@ function Game:initialize_run_loop()
     self.hand_size_delta_spectral = 0
     self.hand_size_delta_juggle = 0
     self:reset_run_stats()
+    self:reset_joker_pool_replacements()
     
     if not self.hand and Hand then
         self.hand = Hand(self)
@@ -6545,8 +6968,6 @@ function Game:initialize_run_loop()
     self:init_shop_offer_queue()
     self:roll_skips()
     self:set_state(self.STATES.BLIND_SELECT)
-    self.joker_pool_replacements = {}
-    self:add_joker_by_def("j_matador",{edition="negative"})
 end
 
 function Game:enter_blind_select()
@@ -7108,11 +7529,21 @@ end
 
 function Game:_pop_shop_queue_entry()
     self:_refill_shop_offer_queue(64)
-    local entry = table.remove(self.shop_offer_queue, 1)
-    if entry then
+    local guard = 0
+    while guard < 64 do
+        guard = guard + 1
+        if #(self.shop_offer_queue or {}) == 0 then break end
+        local entry = table.remove(self.shop_offer_queue, 1)
+        if not entry then break end
         self:remap_shop_joker_offer(entry)
+        local is_joker = entry.kind == "joker" or entry.kind == nil
+        if is_joker and type(entry.id) == "string" and not self:joker_meets_deck_requirement(entry.id) then
+            -- Skip deck-gated jokers that were queued before the requirement was met.
+        else
+            return entry
+        end
     end
-    return entry
+    return self:_generate_next_shop_queue_offer()
 end
 
 function Game:_shop_queue_emergency_joker_offer()
@@ -8881,6 +9312,37 @@ function Game:handle_failed_blind_reset()
     self:set_state(self.STATES.GAME_OVER)
 end
 
+function Game:refocus_after_bottom_panel_closed(closed_layer)
+    if self:get_gamepad_focus_layer() ~= closed_layer then return end
+
+    if closed_layer == "jokers" and self.consumables_on_bottom and #(self.consumables or {}) > 0 then
+        self:set_gamepad_focus_layer("consumables")
+        return
+    end
+    if closed_layer == "consumables" and self.jokers_on_bottom and #(self.jokers or {}) > 0 then
+        self:set_gamepad_focus_layer("jokers")
+        return
+    end
+
+    if self.STATE == self.STATES.SHOP then
+        self:set_gamepad_shop_focus()
+    elseif self.STATE == self.STATES.OPEN_BOOSTER then
+        if self:is_booster_hand_mode() then
+            self:set_gamepad_focus_layer("hand")
+        else
+            self:set_gamepad_focus_layer("booster")
+        end
+    elseif self.STATE == self.STATES.SELECTING_HAND then
+        self:set_gamepad_focus_layer("hand")
+    else
+        self._gamepad_focus_layer = "hand"
+        self._joker_focus_index = nil
+        self.active_tooltip_joker = nil
+        self._consumable_focus_index = nil
+        self.active_tooltip_consumable_index = nil
+    end
+end
+
 function Game:set_jokers_location(on_bottom)
     if on_bottom == true and #(self.jokers or {}) == 0 then return end
     if self.jokers_on_bottom == (on_bottom == true) then return end
@@ -8894,19 +9356,7 @@ function Game:set_jokers_location(on_bottom)
     self.jokers_on_bottom = to_bottom
     if not to_bottom then
         self.active_tooltip_joker = nil
-        if self:get_gamepad_focus_layer() == "jokers" then
-            if self.STATE == self.STATES.SHOP then
-                self:set_gamepad_shop_focus()
-            elseif self.STATE == self.STATES.OPEN_BOOSTER then
-                if self:is_booster_hand_mode() then
-                    self:set_gamepad_focus_layer("hand")
-                else
-                    self:set_gamepad_focus_layer("booster")
-                end
-            else
-                self:set_gamepad_focus_layer("hand")
-            end
-        end
+        self:refocus_after_bottom_panel_closed("jokers")
     end
     self:recompute_joker_slot_layout()
     self:recompute_consumable_slot_layout()
@@ -8959,19 +9409,7 @@ function Game:set_consumables_location(on_bottom)
     self.consumables_on_bottom = to_bottom
     if not to_bottom then
         self.active_tooltip_consumable_index = nil
-        if self:get_gamepad_focus_layer() == "consumables" then
-            if self.STATE == self.STATES.SHOP then
-                self:set_gamepad_shop_focus()
-            elseif self.STATE == self.STATES.OPEN_BOOSTER then
-                if self:is_booster_hand_mode() then
-                    self:set_gamepad_focus_layer("hand")
-                else
-                    self:set_gamepad_focus_layer("booster")
-                end
-            else
-                self:set_gamepad_focus_layer("hand")
-            end
-        end
+        self:refocus_after_bottom_panel_closed("consumables")
     end
     self:recompute_joker_slot_layout()
     self:recompute_consumable_slot_layout()
@@ -9219,7 +9657,32 @@ function Game:touchpressed(id, x, y)
     end
     if self.STATE == self.STATES.PAUSED then
         if self._pause_show_settings then
-            -- Settings page touch
+            if self._pause_settings_tab == "controls" then
+                for _, r in ipairs(self._controls_role_rects or {}) do
+                    if self:_point_in_rect_simple(x, y, r) then
+                        self._controls_focus_zone = "grid"
+                        self._controls_focus_col = r.col or 1
+                        self._controls_focus_row = r.row or 1
+                        self._controls_listen_role = r.role
+                        return
+                    end
+                end
+                if self._pause_controls_reset_rect and self:_point_in_rect_simple(x, y, self._pause_controls_reset_rect) then
+                    self:reset_control_bindings()
+                    self._controls_listen_role = nil
+                    self._controls_focus_zone = "footer"
+                    self._controls_focus_footer = "reset"
+                    return
+                end
+                if self._pause_back_rect and self:_point_in_rect_simple(x, y, self._pause_back_rect) then
+                    self._pause_settings_tab = "general"
+                    self._controls_listen_role = nil
+                    self:reset_controls_grid_focus()
+                    return
+                end
+                return
+            end
+            -- Settings general tab touch
             for _, r in ipairs(self._pause_speed_rects or {}) do
                 if self:_point_in_rect_simple(x, y, r) then
                     if self.set_game_speed then
@@ -9235,6 +9698,13 @@ function Game:touchpressed(id, x, y)
                 self._pause_music_slider_drag = true
                 local vol = self:_music_volume_from_slider_x(x)
                 if vol ~= nil then self:set_music_volume(vol, { skip_save = true }) end
+                return
+            end
+            if self._pause_controls_open_rect and self:_point_in_rect_simple(x, y, self._pause_controls_open_rect) then
+                self._pause_settings_tab = "controls"
+                self._controls_listen_role = nil
+                self:reset_controls_grid_focus()
+                self._pause_focus_index = 1
                 return
             end
             if self._pause_back_rect and self:_point_in_rect_simple(x, y, self._pause_back_rect) then
@@ -9254,6 +9724,8 @@ function Game:touchpressed(id, x, y)
         end
         if self._pause_settings_rect and self:_point_in_rect_simple(x, y, self._pause_settings_rect) then
             self._pause_show_settings = true
+            self._pause_settings_tab = "general"
+            self._controls_listen_role = nil
             return
         end
         if self._pause_new_run_rect and self:_point_in_rect_simple(x, y, self._pause_new_run_rect) then
@@ -9787,14 +10259,35 @@ function Game:set_gamepad_shop_focus()
     end
 end
 
+function Game:_bottom_inventory_focus_locked()
+    local layer = self:get_gamepad_focus_layer()
+    if layer == "jokers" and self.jokers_on_bottom then return true end
+    if layer == "consumables" and self.consumables_on_bottom then return true end
+    return false
+end
+
+function Game:_handle_bottom_inventory_vertical(button)
+    if not self:_bottom_inventory_focus_locked() then return false end
+    if button ~= "up" and button ~= "dpup" and button ~= "down" and button ~= "dpdown" then
+        return false
+    end
+    local up = (button == "up" or button == "dpup")
+    if self.jokers_on_bottom and self.consumables_on_bottom then
+        if up then
+            self:set_gamepad_focus_layer("jokers")
+        else
+            self:set_gamepad_focus_layer("consumables")
+        end
+    end
+    return true
+end
+
 function Game:handle_gamepad_shop_vertical(button)
     if button ~= "up" and button ~= "dpup" and button ~= "down" and button ~= "dpdown" then
         return false
     end
     self:ensure_shop_gamepad_nav()
-    local layer = self:get_gamepad_focus_layer()
-    if layer == "jokers" or layer == "consumables" then
-        self:set_gamepad_shop_focus()
+    if self:_handle_bottom_inventory_vertical(button) then
         return true
     end
     return false
@@ -9847,6 +10340,10 @@ function Game:handle_gamepad_focus_vertical(button)
         return self:handle_gamepad_shop_vertical(button)
     end
 
+    if self:_bottom_inventory_focus_locked() then
+        return self:_handle_bottom_inventory_vertical(button)
+    end
+
     if self:is_booster_hand_mode() then
         if up then
             self:set_gamepad_focus_layer("hand")
@@ -9856,12 +10353,11 @@ function Game:handle_gamepad_focus_vertical(button)
         return true
     end
 
+    if self.STATE == self.STATES.BLIND_SELECT then
+        return false
+    end
+
     if self.STATE == self.STATES.OPEN_BOOSTER then
-        local layer = self:get_gamepad_focus_layer()
-        if layer == "jokers" or layer == "consumables" then
-            self:set_gamepad_focus_layer("booster")
-            return true
-        end
         return false
     end
 
@@ -10108,6 +10604,33 @@ function Game:toggle_hand_sort()
     return true
 end
 
+function Game:handle_gamepad_blind_select(button)
+    if self.STATE ~= self.STATES.BLIND_SELECT then return false end
+    local layer = self:get_gamepad_focus_layer()
+
+    if self:is_role(button, "confirm") then
+        if layer == "jokers" and self.jokers_on_bottom then
+            return self:gamepad_joker_press_select()
+        end
+        if layer == "consumables" and self.consumables_on_bottom then
+            return self:gamepad_consumable_use()
+        end
+        return false
+    end
+
+    if self:is_role(button, "cancel") then
+        if layer == "jokers" and self.jokers_on_bottom then
+            return self:gamepad_joker_sell()
+        end
+        if layer == "consumables" and self.consumables_on_bottom then
+            return self:gamepad_consumable_sell()
+        end
+        return false
+    end
+
+    return false
+end
+
 function Game:try_gamepad_boss_reroll()
     if self.STATE ~= self.STATES.BLIND_SELECT then return false end
     if not (self:has_voucher("v_directors_cut") or self:has_voucher("v_retcon")) then return false end
@@ -10220,7 +10743,7 @@ function Game:handle_gamepad_selecting_hand(button)
 
     local layer = self:get_gamepad_focus_layer()
 
-    if button == "a" then
+    if self:is_role(button, "confirm") then
         if layer == "hand" then
             local node = self:dpad_cursor_node()
             if node and self.hand then
@@ -10234,7 +10757,7 @@ function Game:handle_gamepad_selecting_hand(button)
         end
     end
 
-    if button == "b" then
+    if self:is_role(button, "cancel") then
         if layer == "hand" then
             if self.hand and self.hand:has_selection() then
                 self.hand:discard_selected()
@@ -10249,7 +10772,7 @@ function Game:handle_gamepad_selecting_hand(button)
         return false
     end
 
-    if button == "x" then
+    if self:is_role(button, "use") then
         if layer == "hand" and self.hand and self.hand:has_selection() then
             self.hand:play_selected()
             return true
@@ -10263,7 +10786,7 @@ function Game:handle_gamepad_booster_hand_button(button)
     if not self:is_booster_hand_mode() then return false end
     local layer = self:get_gamepad_focus_layer()
 
-    if button == "a" and layer == "hand" then
+    if self:is_role(button, "confirm") and layer == "hand" then
         local node = self:dpad_cursor_node()
         if node and self.hand then
             self.hand:toggle_selection(node)
@@ -10271,25 +10794,25 @@ function Game:handle_gamepad_booster_hand_button(button)
         return true
     end
 
-    if button == "b" and layer == "hand" and self.hand and self.hand:has_selection() then
+    if self:is_role(button, "cancel") and layer == "hand" and self.hand and self.hand:has_selection() then
         self.hand:discard_selected()
         return true
     end
 
-    if button == "x" then
+    if self:is_role(button, "use") then
         if layer == "hand" and self.hand and self.hand:has_selection() then
             return self:gamepad_booster_apply_hand_targeted()
         end
     end
 
     if layer == "consumables" then
-        if button == "a" then return self:gamepad_consumable_use() end
-        if button == "b" then return self:gamepad_consumable_sell() end
+        if self:is_role(button, "confirm") then return self:gamepad_consumable_use() end
+        if self:is_role(button, "cancel") then return self:gamepad_consumable_sell() end
     end
 
     if layer == "jokers" then
-        if button == "a" then return self:gamepad_joker_press_select() end
-        if button == "b" then return self:gamepad_joker_sell() end
+        if self:is_role(button, "confirm") then return self:gamepad_joker_press_select() end
+        if self:is_role(button, "cancel") then return self:gamepad_joker_sell() end
     end
 
     return false
@@ -10358,6 +10881,21 @@ function Game:should_draw_gamepad_focus_outline(node)
             if sess and node._booster_choice_index then
                 return tonumber(sess.active_choice_index) == node._booster_choice_index
             end
+        end
+    end
+    if self.STATE == self.STATES.BLIND_SELECT then
+        local layer = self:get_gamepad_focus_layer()
+        if layer == "jokers" and self:is_gamepad_joker_focused(node) then
+            return true
+        end
+        if layer == "consumables" and self.consumables_on_bottom then
+            local idx = tonumber(self._consumable_focus_index) or tonumber(self.active_tooltip_consumable_index)
+            if idx and self.consumable_nodes and self.consumable_nodes[idx] == node then
+                return true
+            end
+        end
+        if self:is_joker_swap_pick(node) then
+            return true
         end
     end
     return false
@@ -10549,24 +11087,24 @@ function Game:handle_gamepad_shop(button)
     local layer = self:get_gamepad_focus_layer()
 
     if layer == "consumables" then
-        if button == "a" then return self:gamepad_consumable_use() end
-        if button == "b" then return self:gamepad_consumable_sell() end
+        if self:is_role(button, "confirm") then return self:gamepad_consumable_use() end
+        if self:is_role(button, "cancel") then return self:gamepad_consumable_sell() end
         return false
     end
 
     if layer == "jokers" then
-        if button == "a" then return self:gamepad_joker_press_select() end
-        if button == "b" then return self:gamepad_joker_sell() end
+        if self:is_role(button, "confirm") then return self:gamepad_joker_press_select() end
+        if self:is_role(button, "cancel") then return self:gamepad_joker_sell() end
         return false
     end
 
-    if button == "a" then
+    if self:is_role(button, "confirm") then
         return self:gamepad_shop_buy()
     end
-    if button == "x" then
+    if self:is_role(button, "use") then
         return self:gamepad_shop_buy_use()
     end
-    if button == "y" then
+    if self:is_role(button, "sort") then
         if self:reroll_shop_offers() then
             self:clear_shop_selection()
         end
@@ -10620,18 +11158,18 @@ function Game:handle_gamepad_booster(button)
     local layer = self:get_gamepad_focus_layer()
 
     if layer == "jokers" then
-        if button == "a" then return self:gamepad_joker_press_select() end
-        if button == "b" then return self:gamepad_joker_sell() end
+        if self:is_role(button, "confirm") then return self:gamepad_joker_press_select() end
+        if self:is_role(button, "cancel") then return self:gamepad_joker_sell() end
         return false
     end
 
     if layer == "consumables" then
-        if button == "a" then return self:gamepad_consumable_use() end
-        if button == "b" then return self:gamepad_consumable_sell() end
+        if self:is_role(button, "confirm") then return self:gamepad_consumable_use() end
+        if self:is_role(button, "cancel") then return self:gamepad_consumable_sell() end
         return false
     end
 
-    if button == "a" then
+    if self:is_role(button, "confirm") then
         local ok = self:gamepad_booster_confirm()
         if ok == true and self:is_booster_mega_pack() then
             self:booster_gamepad_focus_next_after_pick()
@@ -10642,7 +11180,42 @@ function Game:handle_gamepad_booster(button)
     return false
 end
 
+function Game:_bottom_inventory_nav_active()
+    local layer = self:get_gamepad_focus_layer()
+    if layer == "jokers" and self.jokers_on_bottom and #(self.jokers or {}) > 0 then
+        return true
+    end
+    if layer == "consumables" and self.consumables_on_bottom and self.consumable_nodes and #self.consumable_nodes > 0 then
+        return true
+    end
+    return false
+end
+
+function Game:_bottom_inventory_horizontal_step(dir)
+    local layer = self:get_gamepad_focus_layer()
+    if layer == "jokers" and self.jokers_on_bottom and #(self.jokers or {}) > 0 then
+        if self:is_joker_reorder_mode() then
+            self:joker_reorder_gamepad_step(dir)
+        else
+            self:joker_gamepad_move(dir)
+        end
+        return true
+    end
+    if layer == "consumables" and self.consumables_on_bottom and self.consumable_nodes and #self.consumable_nodes > 0 then
+        if self:is_consumable_reorder_mode() then
+            self:consumable_reorder_gamepad_step(dir)
+        else
+            self:consumable_gamepad_move(dir)
+        end
+        return true
+    end
+    return false
+end
+
 function Game:_gamepad_horizontal_nav_active()
+    if self.STATE == self.STATES.BLIND_SELECT then
+        return self:_bottom_inventory_nav_active()
+    end
     if self.STATE == self.STATES.SELECTING_HAND then
         local layer = self:get_gamepad_focus_layer()
         if layer == "hand" and self.hand and #(self.hand.card_nodes or {}) > 0 then
@@ -10769,9 +11342,9 @@ end
 
 function Game:update_sweep_seed()
     if not self:is_sweep_select_mode() or self._y_sweep_seeded then return end
-    local press_time = self._y_press_time
+    local press_time = self:get_role_press_time("sort")
     if not press_time then return end
-    if love.timer.getTime() - press_time >= 0.25 then
+    if love.timer.getTime() - press_time >= InputBindings.GESTURES.sweep_seed_hold_ms / 1000 then
         self:ensure_sweep_seed()
     end
 end
@@ -10782,6 +11355,10 @@ function Game:_dpad_sweep_toggle(node)
 end
 
 function Game:_dpad_horizontal_step(dir, sweep)
+    if self:_bottom_inventory_horizontal_step(dir) then
+        return
+    end
+
     if self.STATE == self.STATES.SHOP then
         self:ensure_shop_gamepad_nav()
         if self:get_gamepad_focus_layer() == "consumables" then
@@ -10897,23 +11474,23 @@ function Game:update_dpad_horizontal_repeat(dt)
 end
 
 function Game:is_hand_reorder_mode()
-    if self._a_held ~= true then return false end
+    if not self:is_role_held("confirm") then return false end
     if not self:is_hand_cursor_active() then return false end
     return self.hand and self.hand:has_selection()
 end
 
 function Game:is_joker_reorder_mode()
-    if self._a_held ~= true or self.jokers_on_bottom ~= true then return false end
+    if not self:is_role_held("confirm") or self.jokers_on_bottom ~= true then return false end
     return self:get_gamepad_focus_layer() == "jokers"
 end
 
 function Game:is_consumable_reorder_mode()
-    if self._a_held ~= true or self.consumables_on_bottom ~= true then return false end
+    if not self:is_role_held("confirm") or self.consumables_on_bottom ~= true then return false end
     return self:get_gamepad_focus_layer() == "consumables"
 end
 
 function Game:is_sweep_select_mode()
-    if self._y_held ~= true then return false end
+    if not self:is_role_held("sort") then return false end
     return self:is_hand_cursor_active()
 end
 
@@ -10936,32 +11513,39 @@ function Game:enter_card_select_mode()
     self:ensure_dpad_cursor()
 end
 
---- Keep A/B/Y held flags aligned with hardware (release events can be dropped mid-play).
+--- Keep hold roles aligned with hardware (release events can be dropped mid-play).
 function Game:sync_shoulder_input()
-    local a_down, b_down, y_down = false, false, false
+    local bindings = self:control_bindings()
+    local down = {}
     local joysticks = love.joystick.getJoysticks()
     local joy = joysticks and joysticks[1]
     if joy and joy.isGamepad and joy:isGamepad() then
-        a_down = joy:isGamepadDown("a")
-        b_down = joy:isGamepadDown("b")
-        y_down = joy:isGamepadDown("y")
+        for btn in pairs(InputBindings.REBINDABLE_BUTTONS) do
+            down[btn] = joy:isGamepadDown(btn) == true
+        end
     elseif love.keyboard.isDown then
-        a_down = love.keyboard.isDown("z") or love.keyboard.isDown("return")
-        b_down = love.keyboard.isDown("x")
-        y_down = love.keyboard.isDown("v") or love.keyboard.isDown("y")
+        local KEY_TO_GAMEPAD = {
+            z = "a", x = "b", c = "x", v = "y", y = "y",
+            q = "leftshoulder", e = "rightshoulder",
+        }
+        for key, btn in pairs(KEY_TO_GAMEPAD) do
+            if love.keyboard.isDown(key) then
+                down[btn] = true
+            end
+        end
+        if love.keyboard.isDown("return") then
+            down.a = true
+        end
     end
-    if not a_down then
-        self._a_held = false
-        self._a_press_time = nil
-    end
-    if not b_down then
-        self._b_held = false
-        self._b_press_time = nil
-    end
-    if not y_down then
-        self._y_held = false
-        self._y_press_time = nil
-        self._y_sweep_seeded = false
+
+    for role in pairs(InputBindings.HOLD_ROLES) do
+        local btn = bindings[role]
+        if btn and not down[btn] then
+            self:set_role_held(role, false)
+            if role == "sort" then
+                self._y_sweep_seeded = false
+            end
+        end
     end
 end
 

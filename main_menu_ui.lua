@@ -112,17 +112,20 @@ MainMenuUI.HOW_TO_PLAY_PAGES = {
             "Select: Open Deck View",
             "Start: Pause Menu",
             "",
-            "Blind select:",
-            "A/Y: Start blind   B: Skip blind",
-            "Y: Reroll boss blind (with voucher)",
+            "Rebind A/B/X/Y/L/R under",
+            "Pause > Settings > Controls.",
             "",
-            "Main menu: D-pad moves focus, A activates",
-            "Continue, New Run, How to Play, Collection,",
-            "Profiles, and Delete Save.",
+            "Blind select:",
+            "Confirm: Start blind   Cancel: Skip",
+            "Sort: Reroll boss (with voucher)",
+            "",
+            "Main menu: D-pad moves focus,",
+            "Confirm activates menu items,",
+            "Use opens How to Play.",
             "",
             "Deck select:",
-            "Left/Right: Pick deck   Up/Down: Pick Stake",
-            "A/Y: Begin   B/X: Back",
+            "Left/Right: Pick deck   Up/Down: Stake",
+            "Confirm: Begin   Cancel/Use: Back",
         },
     },
 }
@@ -1028,7 +1031,7 @@ function MainMenuUI._button_how_to_play(game, btn)
         if page_idx < page_count then
             game._how_to_play_page = page_idx + 1
         end
-    elseif btn == "b" or btn == "x" then
+    elseif game.is_menu_back and game:is_menu_back(btn) then
         game._menu_sub_state = "main"
     end
 end
@@ -1050,11 +1053,11 @@ function MainMenuUI._button_main(game, btn)
         MainMenuUI.main_menu_focus_move(game, 1)
         return
     end
-    if btn == "a" or btn == "y" then
+    if game.is_menu_activate and game:is_menu_activate(btn) then
         MainMenuUI.activate_main_menu_focus(game)
         return
     end
-    if btn == "x" then
+    if game.is_role and game:is_role(btn, "use") then
         MainMenuUI.open_how_to_play(game)
     end
 end
@@ -1073,9 +1076,9 @@ function MainMenuUI._button_deck_select(game, btn)
         game._stake_select_idx = math.max(1, stake_idx + 1)
     elseif btn == "dpdown" or btn == "down" then
         game._stake_select_idx = math.min(#stake_list, stake_idx - 1)
-    elseif btn == "a" or btn == "y" then
+    elseif game.is_menu_activate and game:is_menu_activate(btn) then
         MainMenuUI._start_run(game)
-    elseif btn == "b" or btn == "x" then
+    elseif game.is_menu_back and game:is_menu_back(btn) then
         game._menu_sub_state = "main"
     end
 end

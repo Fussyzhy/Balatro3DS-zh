@@ -919,8 +919,8 @@ local SPECIAL = {
     },
     j_throwback = {
         matches_trigger = function(_, e) return e == "on_hand_scored" end,
-        apply_effect = function(j, ctx)
-            local skipped = tonumber(j.runtime_counter) or 0
+        apply_effect = function(_, ctx)
+            local skipped = (G and tonumber(G.skipsTaken)) or 0
             mul_mult(ctx, 1 + (0.25 * skipped))
         end
     },
@@ -1149,6 +1149,9 @@ local SPECIAL = {
                         for i, jj in ipairs(G.jokers) do
                             if jj == j then
                                 Sfx.play("resources/sounds/slice1.ogg")
+                                local p = Popup()
+                                p:spawn("Extinct!", "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
+                                Top:addPopup(p)
                                 if G.activate_joker_pool_swap then
                                     G:activate_joker_pool_swap("j_gros_michel", "j_cavendish")
                                 end
@@ -1339,6 +1342,9 @@ local SPECIAL = {
                         for i, jj in ipairs(G.jokers) do
                             if jj == j then
                                 Sfx.play("resources/sounds/slice1.ogg")
+                                local p = Popup()
+                                p:spawn("Extinct!", "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
+                                Top:addPopup(p)
                                 G:remove_owned_joker_at(i)
                                 break
                             end
