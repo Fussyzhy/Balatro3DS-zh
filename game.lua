@@ -475,15 +475,38 @@ function Game:boss_reset_for_new_blind()
     end
 end
 
-function Game:boss_on_hand_refilled(is_new_blind)
+function Game:boss_on_hand_refilled(is_new_blind, refill_reason)
     local boss_id = self:get_active_boss_blind_id()
     if not boss_id or not self.hand or not self.hand.card_nodes then return end
-    if boss_id == "bl_final_heart" then
-        local count = #self.jokers
-        if count > 0 then
-            self.boss_runtime.crimson_disabled_joker = math.random(1, count)
-        else
+    if boss_id == "bl_final_heart" and (is_new_blind == true or refill_reason == "play") then
+        local sorted = {}
+        for _, j in ipairs(self.jokers or {}) do
+            if j then sorted[#sorted + 1] = j end
+        end
+        table.sort(sorted, function(a, b)
+            local ax = (a.T and a.T.x) or (a.VT and a.VT.x) or 0
+            local bx = (b.T and b.T.x) or (b.VT and b.VT.x) or 0
+            return ax < bx
+        end)
+        local count = #sorted
+        if count <= 0 then
             self.boss_runtime.crimson_disabled_joker = nil
+        elseif count == 1 then
+            self.boss_runtime.crimson_disabled_joker = 1
+        else
+            local prev_idx = tonumber(self.boss_runtime.crimson_disabled_joker)
+            local prev_joker = (prev_idx and prev_idx >= 1 and prev_idx <= count) and sorted[prev_idx] or nil
+            local candidates = {}
+            for i = 1, count do
+                if sorted[i] ~= prev_joker then
+                    candidates[#candidates + 1] = i
+                end
+            end
+            if #candidates == 0 then
+                self.boss_runtime.crimson_disabled_joker = math.random(1, count)
+            else
+                self.boss_runtime.crimson_disabled_joker = candidates[math.random(1, #candidates)]
+            end
         end
     end
     self:_boss_select_forced_card_if_needed()

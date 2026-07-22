@@ -470,7 +470,7 @@ function Hand:_discard_selected_impl(reason)
             end
             self:fill_from_deck()
             if self.game.boss_on_hand_refilled then
-                self.game:boss_on_hand_refilled(false)
+                self.game:boss_on_hand_refilled(false, reason)
             end
             self:calculate_play()
         end
@@ -572,7 +572,7 @@ function Hand:_discard_selected_impl(reason)
     end
     self:fill_from_deck()
     if self.game and self.game.boss_on_hand_refilled then
-        self.game:boss_on_hand_refilled(false)
+        self.game:boss_on_hand_refilled(false, reason)
     end
     self:calculate_play()
 end
