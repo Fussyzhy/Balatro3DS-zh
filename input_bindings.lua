@@ -1,5 +1,7 @@
---- Role-based 3DS gamepad bindings (A/B/X/Y/L/R only).
+--- Role-based 3DS gamepad bindings (A/B/X/Y/L/R/ZL/ZR).
 local InputBindings = {}
+
+InputBindings.SLOTS_PER_ROLE = 2
 
 InputBindings.ROLES = {
     "confirm",
@@ -17,6 +19,8 @@ InputBindings.REBINDABLE_BUTTONS = {
     y = true,
     leftshoulder = true,
     rightshoulder = true,
+    lefttrigger = true,
+    righttrigger = true,
 }
 
 InputBindings.DEFAULT_BINDINGS = {
@@ -56,6 +60,8 @@ local BUTTON_LABELS = {
     y = "Y",
     leftshoulder = "L",
     rightshoulder = "R",
+    righttrigger = "ZR",
+    lefttrigger = "ZL",
 }
 
 local ROLE_HINTS = {
