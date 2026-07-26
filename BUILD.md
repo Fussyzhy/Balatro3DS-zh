@@ -65,7 +65,7 @@ At this point your folder structure should look like this.
 
 7. Once that finishes we can create the metadata file.
 > [!NOTE]
-> Make sure to use the original `Balatro3DS` folder when referencing the `icon.png` file as the one under 
+> Make sure to use the original `Balatro3DS` folder when referencing the `icon.png` file as the one under `build/game` could have been converted into a `.t3x` file in the previous step.
 
 ```sh 
     smdhtool --create "Balatro3DS" "A Remake of Balatro for the 3DS" "Gazpacho" ./Balatro3DS/resources/textures/1x/icon.png ./build/metadata.smdh
