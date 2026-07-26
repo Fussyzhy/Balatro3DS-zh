@@ -27,6 +27,8 @@ You can download a release.
 3. Open Homebrew launcher
 4. Play the game
 
+##### Manual Build
+Instructions on building the files manually can be found in [BUILD.md](BUILD.md)
 
 ### License
 
