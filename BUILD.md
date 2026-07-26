@@ -4,11 +4,9 @@ These instructions are provided for users to create and package a Balatro3DS.3ds
 
 Shoutout to @natesquared in the lovebrew discord, these steps are based on a similar set of instructions they gave to a different user. 
 ## Windows 
----
 TODO
 
 ## Linux and macOS
----
 1. We will start off by making a folder to contain all our files.
 
 ```sh
