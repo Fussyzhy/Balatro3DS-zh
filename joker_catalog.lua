@@ -525,7 +525,7 @@ JOKER_DEFS = {
 
         sell_cost = 2,
         effect = "1 in 6 mult",
-        config = { extra = { Xmult = 4, every = 6, remaining = 6 } },
+        config = { extra = { Xmult = 4, every = 6 } },
         pos = {
             atlas = "Joker1_p2",
             index = 0

@@ -60,7 +60,6 @@ local function capture_joker_runtime_snapshot(joker)
         stored_xmult = tonumber(joker and joker.stored_xmult) or 1,
         runtime_counter = tonumber(joker and joker.runtime_counter) or 0,
         sell_cost = tonumber(joker and joker.sell_cost) or 0,
-        loyalty_remaining = tonumber(joker and joker.loyalty_remaining) or 0,
         free_joker_slots = tonumber(joker and joker.free_joker_slots) or 0,
         money = tonumber((G or {}).money) or 0,
         joker_count = (type((G or {}).jokers) == "table") and #G.jokers or 0,
@@ -83,7 +82,6 @@ local function runtime_snapshot_delta(before, after)
         or after.stored_xmult ~= before.stored_xmult
         or after.runtime_counter ~= before.runtime_counter
         or after.sell_cost ~= before.sell_cost
-        or after.loyalty_remaining ~= before.loyalty_remaining
         or after.free_joker_slots ~= before.free_joker_slots
         or after.money ~= before.money
         or after.joker_count ~= before.joker_count
@@ -274,56 +272,8 @@ function Joker:init(X, Y, W, H, def, params)
     self.stored_chips = tonumber(self.effect_config.chips) or 0
     self.stored_xmult = tonumber(self.effect_config.Xmult) or 1
     self.runtime_counter = 0
-    self.loyalty_remaining = nil
     self.free_joker_slots = nil
     self.perishable_counter = 5
-
-    -- Effect interpreter fields:
-    -- Supported Balatro-like effect types:
-    --   "Mult", "Suit Mult", "Type Mult", and optional chips variants.
-    self.effect_type = nil
-
-    if type(self.def.effect) == "string" then
-        self.effect_type = self.def.effect
-    elseif type(self.def.effect) == "table" then
-        -- Legacy compatibility with the earlier prototype `{type="add_mult", amount=...}`.
-        if self.def.effect.type == "add_mult" then
-            self.effect_type = "Mult"
-            self.effect_config = self.effect_config or {}
-            self.effect_config.mult = tonumber(self.def.effect.amount) or 0
-        elseif self.def.effect.type == "add_chips" then
-            self.effect_type = "Chips"
-            self.effect_config = self.effect_config or {}
-            self.effect_config.chips = tonumber(self.def.effect.amount) or 0
-        end
-    end
-
-    -- Infer effect type when missing (based on config).
-    if self.effect_type == nil then
-        if type(self.effect_config) == "table" then
-            if self.effect_config.mult ~= nil then
-                self.effect_type = "Mult"
-            elseif type(self.effect_config.extra) == "table" and self.effect_config.extra.s_mult ~= nil then
-                self.effect_type = "Suit Mult"
-            elseif self.effect_config.t_mult ~= nil then
-                self.effect_type = "Type Mult"
-            elseif type(self.effect_config.extra) == "table" and self.effect_config.extra.s_chips ~= nil then
-                self.effect_type = "Suit Chips"
-            elseif self.effect_config.t_chips ~= nil then
-                self.effect_type = "Type Chips"
-            end
-        end
-    end
-
-    if self.effect_type == "1 in 6 mult" or self.effect_type == "1 in 10 mult" then
-        local extra = type(self.effect_config.extra) == "table" and self.effect_config.extra or {}
-        local every = math.max(1, tonumber(extra.every) or 6)
-        local remaining = tonumber(extra.remaining) or every
-        if remaining < 1 or remaining > every then
-            remaining = every
-        end
-        self.loyalty_remaining = remaining
-    end
 
     self.effect_impl = JokerEffects.get(self)
 
@@ -341,6 +291,10 @@ function Joker:init(X, Y, W, H, def, params)
         elseif self.def.id == "j_rocket" then
             local ex = type(self.def.config) == "table" and self.def.config.extra
             self.running_count = math.max(1, math.floor(tonumber(ex and ex.dollars) or 1))
+        elseif self.def.id == "j_loyalty_card" then
+            local extra = type(self.effect_config.extra) == "table" and self.effect_config.extra or {}
+            local every = math.max(1, tonumber(extra.every) or 6)
+            self.runtime_counter = every
         end
     end
 
@@ -501,8 +455,38 @@ local function fmt_runtime_number(n, decimals)
     return s
 end
 
+local function joker_effect_kind(joker)
+    local def = type(joker) == "table" and joker.def or {}
+    local et = def.effect
+    if type(et) == "string" then return et end
+    if type(et) == "table" then
+        if et.type == "add_mult" then return "Mult" end
+        if et.type == "add_chips" then return "Chips" end
+    end
+    local cfg = joker.effect_config or {}
+    if cfg.mult ~= nil then return "Mult" end
+    if type(cfg.extra) == "table" and cfg.extra.s_mult ~= nil then return "Suit Mult" end
+    if cfg.t_mult ~= nil then return "Type Mult" end
+    if type(cfg.extra) == "table" and cfg.extra.s_chips ~= nil then return "Suit Chips" end
+    if cfg.t_chips ~= nil then return "Type Chips" end
+    return nil
+end
+
+local function rank_to_label(r)
+    if r == 14 then
+        return "Ace"
+    elseif r == 13 then
+        return "King"
+    elseif r == 12 then
+        return "Queen"
+    elseif r ~= nil then
+        return tostring(r)
+    end
+    return "-"
+end
+
 local function describe_joker_effect_lines(joker)
-    local et = joker.effect_type
+    local et = joker_effect_kind(joker)
     local cfg = joker.effect_config or {}
     if et == nil then
         return { "No effect description yet." }
@@ -581,7 +565,7 @@ local function describe_joker_effect_lines(joker)
         local extra = type(cfg.extra) == "table" and cfg.extra or {}
         local every = math.max(1, tonumber(extra.every) or 6)
         local xm = tonumber(extra.Xmult) or tonumber(cfg.Xmult) or 1
-        local remaining = tonumber(joker.loyalty_remaining) or every
+        local remaining = tonumber(joker.runtime_counter) or every
         return {
             string.format("X%d mult every %dth hand played", xm, every),
             string.format("%d remaining", remaining)
@@ -703,37 +687,15 @@ function Joker:get_live_current_tooltip_text(base_text)
     end
     if id == "j_mail" then
         local r = tonumber(self.random_rank)
-        local label = "—"
-        if r == 14 then
-            label = "Ace"
-        elseif r == 13 then
-            label = "King"
-        elseif r == 12 then
-            label = "Queen"
-        elseif r == 11 then
-            label = "Jack"
-        elseif r ~= nil then
-            label = tostring(r)
-        end
+        local label = rank_to_label(r)
         return string.format("Earn *$5* for each discarded *%s*,", label)
     end
     if id == "j_idol" then
         local r = tonumber(self.random_rank)
-        local label = "—"
-        if r == 14 then
-            label = "Ace"
-        elseif r == 13 then
-            label = "King"
-        elseif r == 12 then
-            label = "Queen"
-        elseif r == 11 then
-            label = "Jack"
-        elseif r ~= nil then
-            label = tostring(r)
-        end
+        local label = rank_to_label(r)
         local s = self.random_suit
         if type(s) ~= "string" or s == "" then
-            s = "—"
+            s = "-"
         end
         return string.format("Each played *%s* of *%s* gives *X3 Mult* when scored,", label, s)
     end
@@ -745,13 +707,13 @@ function Joker:get_live_current_tooltip_text(base_text)
         return string.format("(Currently %d)", enhanced)
     end
     if id == "j_loyalty_card" then
-        local remaining = tonumber(self.loyalty_remaining) or 6
+        local remaining = tonumber(self.runtime_counter) or 6
         return string.format("%d remaining", math.floor(remaining))
     end
     if id == "j_ancient_joker" then
         local s = self.random_suit
         if type(s) ~= "string" or s == "" then
-            s = "—"
+            s = "-"
         end
         return string.format("Each played card with %s gives X1.5 Mult when scored", s)
     end
@@ -773,14 +735,14 @@ function Joker:get_live_current_tooltip_text(base_text)
         end
         local s = self.random_suit
         if type(s) ~= "string" or s == "" then
-            s = "—"
+            s = "-"
         end
         return string.format("This Joker gains +3 Chips per discarded %s", s)
     end
     if id == "j_todo_list" then
         local rh = self.random_hand
         if type(rh) ~= "string" or rh == "" then
-            rh = "—"
+            rh = "-"
         end
         return string.format("Earn *$4* if poker hand is a *%s*,", rh)
     end

@@ -1093,11 +1093,14 @@ function Hand:_update_play_sequence(dt)
                 free_joker_slots = free_joker_slots,
                 discards_left = tonumber(G and G.discards) or 0,
             }
-            if G and G.begin_joker_emit and G:begin_joker_emit("on_hand_scored", ctx) then
-                seq.phase = "wait_jokers"
-                seq.joker_wait_resume = { phase = "finalize", finalize_step = 2 }
-                seq.timer = 0
-                return
+            if G and G.begin_joker_emit then
+                local pause = G:begin_joker_emit("on_hand_scored", ctx)
+                if pause then
+                    seq.phase = "wait_jokers"
+                    seq.joker_wait_resume = { phase = "finalize", finalize_step = 2 }
+                    seq.timer = 0
+                    return
+                end
             elseif G and G.emit_joker_event then
                 G:emit_joker_event("on_hand_scored", ctx)
             end
@@ -1265,7 +1268,7 @@ function Hand:score_selected_hand()
         print(string.format(
             "Card %d [%s of %s]: +%d chips, modifier +%d chips / +%d mult -> chips=%d mult=%d%s",
             i, tostring(rank), tostring(suit), card_chips, mod_chip_bonus, mod_mult_bonus, chips, mult,
-            score_this and "" or " (kicker — not scored)"
+            score_this and "" or " (kicker - not scored)"
         ))
     end
 

@@ -2512,7 +2512,6 @@ function Game:build_run_snapshot()
                 stored_xmult = tonumber(j.stored_xmult) or 1,
                 runtime_counter = tonumber(j.runtime_counter) or 0,
                 sell_cost = tonumber(j.sell_cost) or 0,
-                loyalty_remaining = j.loyalty_remaining,
                 free_joker_slots = j.free_joker_slots,
                 perishable = j.perishable,
                 perishable_counter = tonumber(j.perishable_counter) or 5,
@@ -2815,7 +2814,6 @@ function Game:load_run_snapshot(snapshot)
                 j.stored_xmult = tonumber(jrec.stored_xmult) or j.stored_xmult
                 j.runtime_counter = tonumber(jrec.runtime_counter) or j.runtime_counter
                 j.sell_cost = tonumber(jrec.sell_cost) or j.sell_cost
-                j.loyalty_remaining = jrec.loyalty_remaining
                 j.free_joker_slots = jrec.free_joker_slots
                 j.perishable = jrec.perishable
                 j.perishable_counter = jrec.perishable_counter or 5
