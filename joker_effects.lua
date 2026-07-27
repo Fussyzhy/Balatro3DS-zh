@@ -1785,7 +1785,7 @@ end
 function JokerEffects.apply_shake_if_needed(joker, ctx)
     if not joker or not JokerEffects.should_shake_for_context(ctx) then return false end
     joker.scoring_shake_timer = JokerEffects.SHAKE_MAX_DURATION
-    joker.scoring_shake_t0 = love.timer.getTime()
+    joker.scoring_shake_phase = 0
     return true
 end
 

@@ -884,10 +884,7 @@ function Joker:get_layout_draw_xy()
 
     if self.scoring_shake_timer and self.scoring_shake_timer > 0 then
         local mag = SHAKE_MAGNITUDE * (self.scoring_shake_timer / SHAKE_MAX_DURATION)
-        local t = love.timer.getTime()
-        if self.scoring_shake_t0 then
-            t = t - self.scoring_shake_t0
-        end
+        local t = self.scoring_shake_phase or 0
         draw_x = draw_x + math.sin(t * 85) * mag
         draw_y = draw_y + math.cos(t * 73) * mag * 0.65
     end
@@ -1021,8 +1018,9 @@ function Joker:update(dt)
     end
     if self.scoring_shake_timer and self.scoring_shake_timer > 0 then
         self.scoring_shake_timer = self.scoring_shake_timer - dt
+        self.scoring_shake_phase = (self.scoring_shake_phase or 0) + dt
         if self.scoring_shake_timer < 0 then self.scoring_shake_timer = 0 end
-        if self.scoring_shake_timer <= 0 then self.scoring_shake_t0 = nil end
+        if self.scoring_shake_timer <= 0 then self.scoring_shake_phase = nil end
     end
 end
 
@@ -1062,7 +1060,7 @@ function Joker:apply_edition_on_hand_scored(ctx)
     end
 
     self.scoring_shake_timer = SHAKE_MAX_DURATION
-    self.scoring_shake_t0 = love.timer.getTime()
+    self.scoring_shake_phase = 0
     if ed == "foil" and Sfx and Sfx.play_chips then
         Sfx.play_chips()
     elseif ed == "polychrome" and Sfx and Sfx.play_mult2 then

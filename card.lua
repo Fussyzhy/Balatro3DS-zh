@@ -673,8 +673,9 @@ function Card:update(dt)
     Moveable.update(self, dt)
     if self.scoring_shake_timer and self.scoring_shake_timer > 0 then
         self.scoring_shake_timer = self.scoring_shake_timer - dt
+        self.scoring_shake_phase = (self.scoring_shake_phase or 0) + dt
         if self.scoring_shake_timer < 0 then self.scoring_shake_timer = 0 end
-        if self.scoring_shake_timer <= 0 then self.scoring_shake_t0 = nil end
+        if self.scoring_shake_timer <= 0 then self.scoring_shake_phase = nil end
     end
 end
 
@@ -686,10 +687,7 @@ function Card:get_layout_draw_xy()
 
     if self.scoring_shake_timer and self.scoring_shake_timer > 0 then
         local mag = SHAKE_MAGNITUDE * (self.scoring_shake_timer / SHAKE_MAX_DURATION)
-        local t = love.timer.getTime()
-        if self.scoring_shake_t0 then
-            t = t - self.scoring_shake_t0
-        end
+        local t = self.scoring_shake_phase or 0
         draw_x = draw_x + math.sin(t * 85) * mag
         draw_y = draw_y + math.cos(t * 73) * mag * 0.65
     end
@@ -889,7 +887,7 @@ function Card:emit_hand_event(event_name, ctx)
     end
     if trigger then
         self.scoring_shake_timer = SHAKE_MAX_DURATION
-        self.scoring_shake_t0 = love.timer.getTime()
+        self.scoring_shake_phase = 0
     end
 end
 

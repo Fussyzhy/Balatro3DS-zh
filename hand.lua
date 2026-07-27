@@ -898,7 +898,7 @@ function Hand:_update_play_sequence(dt)
 
                 if node and score_this then
                     node.scoring_shake_timer = PLAY_SHAKE_DURATION
-                    node.scoring_shake_t0 = love.timer.getTime()
+                    node.scoring_shake_phase = 0
                     self:play_sfx_trigger()
                     local chips, mult = self:accumulate_card_score(
                         tonumber(G.selectedHandChips) or 0,

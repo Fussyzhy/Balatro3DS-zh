@@ -2200,7 +2200,7 @@ function Game:normalize_settings(data)
     local out = copy_table(self:default_settings())
     if type(data) ~= "table" then return out end
 
-    local allowed_speeds = { [0.5] = true, [1] = true, [1.5] = true, [2] = true, [2.5] = true, [3] = true }
+    local allowed_speeds = { [0.5] = true, [1] = true, [1.5] = true, [2] = true, [2.5] = true, [3] = true , [4] = true}
     local speed = tonumber(data.GAMESPEED)
     if speed and allowed_speeds[speed] then
         out.GAMESPEED = speed
@@ -2378,7 +2378,7 @@ end
 
 function Game:set_game_speed(speed)
     if not self.SETTINGS then return end
-    local allowed_speeds = { [0.5] = true, [1] = true, [1.5] = true, [2] = true, [2.5] = true, [3] = true }
+    local allowed_speeds = { [0.5] = true, [1] = true, [1.5] = true, [2] = true, [2.5] = true, [3] = true, [4] = true }
     local s = tonumber(speed)
     if not s or not allowed_speeds[s] then return end
     self.SETTINGS.GAMESPEED = s
@@ -5369,8 +5369,8 @@ function Game:draw_bottom_pause()
             love.graphics.setFont(self.FONTS.PIXEL.SMALL)
             love.graphics.printf("Game Speed", panel_x, panel_y + 34, panel_w, "center")
 
-            local speeds = { 0.5, 1, 1.5, 2, 2.5, 3}
-            local speed_labels = { "x0.5", "x1", "x1.5", "x2", "x2.5", "x3"}
+            local speeds = { 0.5, 1, 1.5, 2, 2.5, 3, 4}
+            local speed_labels = { "x0.5", "x1", "x1.5", "x2", "x2.5", "x3", "x4"}
             local cur_speed = (self.SETTINGS and self.SETTINGS.GAMESPEED) or 1
             local sb_w = 38
             local sb_h = 24
@@ -6854,7 +6854,7 @@ function Game:_update_joker_emit_queue(dt)
         return
     end
 
-    self._joker_emit_timer = 0
+    self._joker_emit_timer = self._joker_emit_timer - interval
     local did_trigger = self:_apply_one_joker_emit()
     if not did_trigger then
         while self._joker_emit_queue and self._joker_emit_next <= #self._joker_emit_queue.list do
