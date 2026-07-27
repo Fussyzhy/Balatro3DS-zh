@@ -19,9 +19,9 @@ InputBindings.REBINDABLE_BUTTONS = {
     y = true,
     leftshoulder = true,
     rightshoulder = true,
-    lefttrigger = true,
-    righttrigger = true,
 }
+
+InputBindings._triggers_enabled = false
 
 InputBindings.DEFAULT_BINDINGS = {
     confirm = "a",
@@ -198,6 +198,115 @@ function InputBindings.apply_to_game(game)
     if not game then return end
     if type(game.SETTINGS) ~= "table" then return end
     game.SETTINGS.CONTROLS = InputBindings.normalize_controls(game.SETTINGS.CONTROLS)
+end
+
+InputBindings.N3DS_ONLY_BUTTONS = {
+    lefttrigger = true,
+    righttrigger = true,
+}
+
+InputBindings.TRIGGER_AXIS_THRESHOLD = 0.5
+
+--- LovePotion reports ZL/ZR as axes (`lefttrigger` / `righttrigger`, sometimes `triggerleft` / `triggerright`).
+InputBindings.AXIS_TO_TRIGGER_BUTTON = {
+    lefttrigger = "lefttrigger",
+    righttrigger = "righttrigger",
+    triggerleft = "lefttrigger",
+    triggerright = "righttrigger",
+}
+
+function InputBindings.is_trigger_button(button)
+    return type(button) == "string" and InputBindings.N3DS_ONLY_BUTTONS[button] == true
+end
+
+function InputBindings.axis_to_trigger_button(axis)
+    if type(axis) ~= "string" then return nil end
+    return InputBindings.AXIS_TO_TRIGGER_BUTTON[axis]
+end
+
+function InputBindings.triggers_enabled()
+    return InputBindings._triggers_enabled == true
+end
+
+function InputBindings.refresh_rebindable_buttons()
+    InputBindings.REBINDABLE_BUTTONS = {
+        a = true,
+        b = true,
+        x = true,
+        y = true,
+        leftshoulder = true,
+        rightshoulder = true,
+    }
+    if InputBindings._triggers_enabled then
+        InputBindings.REBINDABLE_BUTTONS.lefttrigger = true
+        InputBindings.REBINDABLE_BUTTONS.righttrigger = true
+    end
+end
+
+--- O3DS has 2 ARM11 cores; New 3DS has more (LovePotion on 3DS only).
+function InputBindings.detect_console_capabilities()
+    InputBindings._triggers_enabled = false
+
+    if love and love._console and love._console == "3ds" then
+        if love.system and love.system.getProcessorCount then
+            local count = love.system.getProcessorCount()
+            if count ~= 2 then
+                InputBindings._triggers_enabled = true
+            end
+        end
+    else
+        -- Desktop / non-3DS: allow ZL/ZR for keyboard testing.
+        InputBindings._triggers_enabled = true
+    end
+
+    InputBindings.refresh_rebindable_buttons()
+    return InputBindings._triggers_enabled
+end
+
+function InputBindings.safe_is_trigger_down(joy, button)
+    if not InputBindings.is_trigger_button(button) then return false end
+    if not joy or not joy.getGamepadAxis then return false end
+    local axes = { button }
+    if button == "lefttrigger" then
+        axes = { "lefttrigger", "triggerleft" }
+    elseif button == "righttrigger" then
+        axes = { "righttrigger", "triggerright" }
+    end
+    local threshold = InputBindings.TRIGGER_AXIS_THRESHOLD
+    for _, axis in ipairs(axes) do
+        local ok, value = pcall(function()
+            return joy:getGamepadAxis(axis)
+        end)
+        if ok and (tonumber(value) or 0) > threshold then
+            return true
+        end
+    end
+    return false
+end
+
+function InputBindings.safe_is_gamepad_down(joy, button)
+    if InputBindings.is_trigger_button(button) then
+        return InputBindings.safe_is_trigger_down(joy, button)
+    end
+    if not joy or not joy.isGamepad or not joy:isGamepad() then return false end
+    if type(button) ~= "string" or button == "" then return false end
+    local ok, pressed = pcall(function()
+        return joy:isGamepadDown(button) == true
+    end)
+    return ok and pressed == true
+end
+
+--- Build a map of pressed buttons; skips unsupported names (e.g. ZL/ZR on O3DS).
+function InputBindings.build_gamepad_down_map(joy, button_set)
+    local down = {}
+    if not joy or not joy.isGamepad or not joy:isGamepad() then return down end
+    local set = button_set or InputBindings.REBINDABLE_BUTTONS
+    for btn in pairs(set) do
+        if InputBindings.safe_is_gamepad_down(joy, btn) then
+            down[btn] = true
+        end
+    end
+    return down
 end
 
 function InputBindings.is_rebindable_button(button)

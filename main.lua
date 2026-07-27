@@ -68,6 +68,10 @@ local function set_role_hold_from_button(game, button, held)
 end
 
 function love.load()
+    if InputBindings.detect_console_capabilities then
+        InputBindings.detect_console_capabilities()
+    end
+
     if Sfx and Sfx.preload_game_sounds then
         Sfx.preload_game_sounds()
     end
@@ -307,8 +311,23 @@ function love.gamepadreleased(_, button)
     set_role_hold_from_button(G, button, false)
 end
 
-function love.gamepadaxis(_, axis, value)
-    print(axis, value)
+function love.gamepadaxis(joystick, axis, value)
+    if not G or not InputBindings.triggers_enabled or not InputBindings.triggers_enabled() then return end
+    local trigger_btn = InputBindings.axis_to_trigger_button(axis)
+    if not trigger_btn or not InputBindings.is_rebindable_button(trigger_btn) then return end
+
+    local threshold = InputBindings.TRIGGER_AXIS_THRESHOLD
+    local pressed = (tonumber(value) or 0) > threshold
+    G._trigger_axis_held = G._trigger_axis_held or {}
+    local was = G._trigger_axis_held[trigger_btn] == true
+
+    if pressed and not was then
+        G._trigger_axis_held[trigger_btn] = true
+        love.gamepadpressed(joystick, trigger_btn)
+    elseif not pressed and was then
+        G._trigger_axis_held[trigger_btn] = false
+        love.gamepadreleased(joystick, trigger_btn)
+    end
 end
 
 function love.touchpressed(id, x, y, dx, dy, pressure)

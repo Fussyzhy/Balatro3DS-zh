@@ -11543,9 +11543,7 @@ function Game:sync_shoulder_input()
     local joysticks = love.joystick.getJoysticks()
     local joy = joysticks and joysticks[1]
     if joy and joy.isGamepad and joy:isGamepad() then
-        for btn in pairs(InputBindings.REBINDABLE_BUTTONS) do
-            down[btn] = joy:isGamepadDown(btn) == true
-        end
+        down = InputBindings.build_gamepad_down_map(joy, InputBindings.REBINDABLE_BUTTONS)
     elseif love.keyboard.isDown then
         local KEY_TO_GAMEPAD = {
             z = "a", x = "b", c = "x", v = "y", y = "y",
