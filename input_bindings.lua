@@ -73,10 +73,35 @@ local ROLE_HINTS = {
     shoulder_r = "Toggle consumables panel",
 }
 
+local function normalize_role_bindings(data, fallback_single)
+    local out = {}
+    if type(data) == "string" then
+        data = { data }
+    elseif type(data) ~= "table" then
+        if type(fallback_single) == "string" then
+            data = { fallback_single }
+        else
+            return out
+        end
+    end
+    for i = 1, InputBindings.SLOTS_PER_ROLE do
+        local btn = data[i]
+        if type(btn) == "string" and InputBindings.REBINDABLE_BUTTONS[btn] then
+            out[i] = btn
+        end
+    end
+    return out
+end
+
 local function copy_bindings(bindings)
     local out = {}
     for _, role in ipairs(InputBindings.ROLES) do
-        out[role] = bindings[role]
+        local src = bindings and bindings[role]
+        local fb = InputBindings.DEFAULT_BINDINGS[role]
+        out[role] = normalize_role_bindings(src, fb)
+        if not next(out[role]) and type(fb) == "string" then
+            out[role] = { [1] = fb }
+        end
     end
     return out
 end
@@ -91,24 +116,11 @@ function InputBindings.normalize_bindings(data)
     local out = copy_bindings(InputBindings.DEFAULT_BINDINGS)
     if type(data) ~= "table" then return out end
 
-    local used = {}
-    local valid = true
     for _, role in ipairs(InputBindings.ROLES) do
-        local btn = data[role]
-        if type(btn) ~= "string" or not InputBindings.REBINDABLE_BUTTONS[btn] then
-            valid = false
-            break
+        local normalized = normalize_role_bindings(data[role], InputBindings.DEFAULT_BINDINGS[role])
+        if next(normalized) then
+            out[role] = normalized
         end
-        if used[btn] then
-            valid = false
-            break
-        end
-        used[btn] = role
-        out[role] = btn
-    end
-
-    if not valid then
-        return copy_bindings(InputBindings.DEFAULT_BINDINGS)
     end
     return out
 end
@@ -128,26 +140,58 @@ function InputBindings.get_bindings(game)
     return copy_bindings(InputBindings.DEFAULT_BINDINGS)
 end
 
+function InputBindings.get_role_buttons(role, bindings)
+    if type(role) ~= "string" then return {} end
+    bindings = bindings or copy_bindings(InputBindings.DEFAULT_BINDINGS)
+    local out = {}
+    for i = 1, InputBindings.SLOTS_PER_ROLE do
+        local btn = InputBindings.get_role_slot_button(role, i, bindings)
+        if btn then
+            out[#out + 1] = btn
+        end
+    end
+    return out
+end
+
+function InputBindings.get_role_slot_button(role, slot, bindings)
+    slot = math.floor(tonumber(slot) or 0)
+    if slot < 1 or slot > InputBindings.SLOTS_PER_ROLE then return nil end
+    bindings = bindings or copy_bindings(InputBindings.DEFAULT_BINDINGS)
+    local data = bindings[role]
+    if type(data) == "string" then
+        return slot == 1 and data or nil
+    end
+    if type(data) ~= "table" then return nil end
+    local btn = data[slot]
+    if type(btn) == "string" and InputBindings.REBINDABLE_BUTTONS[btn] then
+        return btn
+    end
+    return nil
+end
+
 function InputBindings.get_role_for_button(button, bindings)
     if type(button) ~= "string" or button == "" then return nil end
     bindings = bindings or copy_bindings(InputBindings.DEFAULT_BINDINGS)
     for _, role in ipairs(InputBindings.ROLES) do
-        if bindings[role] == button then
-            return role
+        for _, btn in ipairs(InputBindings.get_role_buttons(role, bindings)) do
+            if btn == button then
+                return role
+            end
         end
     end
     return nil
 end
 
 function InputBindings.get_button_for_role(role, bindings)
-    if type(role) ~= "string" then return nil end
-    bindings = bindings or copy_bindings(InputBindings.DEFAULT_BINDINGS)
-    return bindings[role]
+    return InputBindings.get_role_slot_button(role, 1, bindings)
 end
 
 function InputBindings.is_role(button, role, bindings)
     if type(role) ~= "string" then return false end
-    return InputBindings.get_role_for_button(button, bindings) == role
+    for _, btn in ipairs(InputBindings.get_role_buttons(role, bindings)) do
+        if btn == button then return true end
+    end
+    return false
 end
 
 function InputBindings.is_menu_activate(button, bindings)
@@ -160,24 +204,51 @@ function InputBindings.is_menu_back(button, bindings)
         or InputBindings.is_role(button, "use", bindings)
 end
 
-function InputBindings.set_role_binding(bindings, role, button)
-    if type(role) ~= "string" or not InputBindings.REBINDABLE_BUTTONS[button] then
+function InputBindings.set_role_slot_binding(bindings, role, slot, button)
+    if type(role) ~= "string" then return false end
+    slot = math.floor(tonumber(slot) or 0)
+    if slot < 1 or slot > InputBindings.SLOTS_PER_ROLE then return false end
+    if button ~= nil and not InputBindings.REBINDABLE_BUTTONS[button] then
         return false
     end
     bindings = bindings or copy_bindings(InputBindings.DEFAULT_BINDINGS)
-    local other_role = InputBindings.get_role_for_button(button, bindings)
-    local prev_button = bindings[role]
-    if other_role and other_role ~= role then
-        bindings[other_role] = prev_button
+    local slots = { nil, nil }
+    for i = 1, InputBindings.SLOTS_PER_ROLE do
+        slots[i] = InputBindings.get_role_slot_button(role, i, bindings)
     end
-    bindings[role] = button
+    if button == nil then
+        slots[slot] = nil
+    else
+        slots[slot] = button
+        for i = 1, InputBindings.SLOTS_PER_ROLE do
+            if i ~= slot and slots[i] == button then
+                slots[i] = nil
+            end
+        end
+    end
+    bindings[role] = {}
+    for i = 1, InputBindings.SLOTS_PER_ROLE do
+        if slots[i] then
+            bindings[role][i] = slots[i]
+        end
+    end
     return true
+end
+
+function InputBindings.set_role_binding(bindings, role, button)
+    return InputBindings.set_role_slot_binding(bindings, role, 1, button)
 end
 
 function InputBindings.reset_bindings(bindings)
     local defaults = copy_bindings(InputBindings.DEFAULT_BINDINGS)
     for _, role in ipairs(InputBindings.ROLES) do
-        bindings[role] = defaults[role]
+        bindings[role] = {}
+        for i = 1, InputBindings.SLOTS_PER_ROLE do
+            local btn = defaults[role][i]
+            if btn then
+                bindings[role][i] = btn
+            end
+        end
     end
     return bindings
 end
@@ -187,7 +258,14 @@ function InputBindings.role_label(role)
 end
 
 function InputBindings.button_label(button)
-    return BUTTON_LABELS[button] or tostring(button or "?")
+    if button == nil or button == "" then return "-" end
+    return BUTTON_LABELS[button] or tostring(button)
+end
+
+function InputBindings.slot_label(role, slot, bindings)
+    local btn = InputBindings.get_role_slot_button(role, slot, bindings)
+    if not btn then return "-" end
+    return InputBindings.button_label(btn)
 end
 
 function InputBindings.role_hint(role)
@@ -222,6 +300,12 @@ end
 function InputBindings.axis_to_trigger_button(axis)
     if type(axis) ~= "string" then return nil end
     return InputBindings.AXIS_TO_TRIGGER_BUTTON[axis]
+end
+
+--- Map alternate ZL/ZR names to stored/rebindable ids (`lefttrigger` / `righttrigger`).
+function InputBindings.normalize_gamepad_button(button)
+    if type(button) ~= "string" then return button end
+    return InputBindings.AXIS_TO_TRIGGER_BUTTON[button] or button
 end
 
 function InputBindings.triggers_enabled()

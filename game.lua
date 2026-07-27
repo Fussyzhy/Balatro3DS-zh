@@ -127,8 +127,9 @@ function Game:init(seed)
     self._y_sweep_seeded = false
     self._pause_settings_tab = "general"
     self._controls_listen_role = nil
+    self._controls_listen_slot = nil
     self._controls_role_rects = {}
-    self._controls_focus_zone = "grid"
+    self._controls_focus_zone = "list"
     self._controls_focus_col = 1
     self._controls_focus_row = 1
     self._controls_focus_footer = "reset"
@@ -1796,8 +1797,9 @@ function Game:enter_pause_menu()
     self._pause_show_settings = false
     self._pause_settings_tab = "general"
     self._controls_listen_role = nil
+    self._controls_listen_slot = nil
     self._controls_role_rects = {}
-    self._controls_focus_zone = "grid"
+    self._controls_focus_zone = "list"
     self._controls_focus_col = 1
     self._controls_focus_row = 1
     self._controls_focus_footer = "reset"
@@ -1811,21 +1813,21 @@ function Game:enter_pause_menu()
     return true
 end
 
-function Game:controls_grid_role_at(col, row)
-    local cols = 2
+function Game:controls_list_at(col, row)
     col = math.floor(tonumber(col) or 1)
     row = math.floor(tonumber(row) or 1)
-    if col < 1 or col > cols or row < 1 then return nil end
-    local idx = (row - 1) * cols + col
-    return InputBindings.ROLES[idx]
+    local role = InputBindings.ROLES[row]
+    if not role then return nil, nil end
+    if col < 1 or col > InputBindings.SLOTS_PER_ROLE then return nil, nil end
+    return role, col
 end
 
-function Game:controls_grid_dims()
-    return 2, 3
+function Game:controls_list_dims()
+    return InputBindings.SLOTS_PER_ROLE, #InputBindings.ROLES
 end
 
 function Game:reset_controls_grid_focus()
-    self._controls_focus_zone = "grid"
+    self._controls_focus_zone = "list"
     self._controls_focus_col = 1
     self._controls_focus_row = 1
     self._controls_focus_footer = "reset"
@@ -1833,7 +1835,7 @@ end
 
 function Game:pause_controls_nav(button)
     if self._pause_settings_tab ~= "controls" then return false end
-    local cols, rows = self:controls_grid_dims()
+    local cols, rows = self:controls_list_dims()
 
     if self._controls_focus_zone == "footer" then
         if button == "left" or button == "dpleft" then
@@ -1845,7 +1847,7 @@ function Game:pause_controls_nav(button)
             return true
         end
         if button == "up" or button == "dpup" then
-            self._controls_focus_zone = "grid"
+            self._controls_focus_zone = "list"
             self._controls_focus_row = rows
             return true
         end
@@ -1885,11 +1887,13 @@ function Game:activate_controls_focus()
         if self._controls_focus_footer == "reset" then
             self:reset_control_bindings()
             self._controls_listen_role = nil
+            self._controls_listen_slot = nil
             return true
         end
         if self._controls_focus_footer == "back" then
             self._pause_settings_tab = "general"
             self._controls_listen_role = nil
+            self._controls_listen_slot = nil
             self:reset_controls_grid_focus()
             self._pause_focus_index = 1
             return true
@@ -1897,9 +1901,10 @@ function Game:activate_controls_focus()
         return false
     end
 
-    local role = self:controls_grid_role_at(self._controls_focus_col, self._controls_focus_row)
-    if role then
+    local role, slot = self:controls_list_at(self._controls_focus_col, self._controls_focus_row)
+    if role and slot then
         self._controls_listen_role = role
+        self._controls_listen_slot = slot
         return true
     end
     return false
@@ -2013,6 +2018,7 @@ function Game:handle_gamepad_pause(button)
         if self:is_role(button, "cancel") then
             if self._controls_listen_role then
                 self._controls_listen_role = nil
+                self._controls_listen_slot = nil
             else
                 self._pause_settings_tab = "general"
                 self:reset_controls_grid_focus()
@@ -2067,8 +2073,9 @@ function Game:exit_pause_menu()
     self._pause_show_settings = false
     self._pause_settings_tab = "general"
     self._controls_listen_role = nil
+    self._controls_listen_slot = nil
     self._controls_role_rects = {}
-    self._controls_focus_zone = "grid"
+    self._controls_focus_zone = "list"
     self._controls_focus_col = 1
     self._controls_focus_row = 1
     self._controls_focus_footer = "reset"
@@ -2327,7 +2334,7 @@ function Game:set_role_held(role, held, press_time)
     end
 end
 
-function Game:set_control_binding(role, button)
+function Game:set_control_binding(role, slot, button)
     if type(self.SETTINGS) ~= "table" then return false end
     if type(self.SETTINGS.CONTROLS) ~= "table" then
         self.SETTINGS.CONTROLS = InputBindings.default_settings()
@@ -2335,7 +2342,8 @@ function Game:set_control_binding(role, button)
     if type(self.SETTINGS.CONTROLS.bindings) ~= "table" then
         self.SETTINGS.CONTROLS.bindings = InputBindings.normalize_bindings(nil)
     end
-    local ok = InputBindings.set_role_binding(self.SETTINGS.CONTROLS.bindings, role, button)
+    slot = math.floor(tonumber(slot) or 1)
+    local ok = InputBindings.set_role_slot_binding(self.SETTINGS.CONTROLS.bindings, role, slot, button)
     if ok then
         self.SETTINGS.CONTROLS.bindings = InputBindings.normalize_bindings(self.SETTINGS.CONTROLS.bindings)
         self:save_settings()
@@ -2353,13 +2361,16 @@ end
 function Game:handle_controls_listen_press(button)
     if self.STATE ~= self.STATES.PAUSED then return false end
     if type(self._controls_listen_role) ~= "string" then return false end
+    local slot = math.floor(tonumber(self._controls_listen_slot) or 1)
     if self:is_role(button, "cancel") then
         self._controls_listen_role = nil
+        self._controls_listen_slot = nil
         return true
     end
     if InputBindings.is_rebindable_button(button) then
-        self:set_control_binding(self._controls_listen_role, button)
+        self:set_control_binding(self._controls_listen_role, slot, button)
         self._controls_listen_role = nil
+        self._controls_listen_slot = nil
         return true
     end
     return true
@@ -5237,15 +5248,15 @@ function Game:draw_bottom_pause()
         end
     end
 
-    local function is_controls_cell_focused(col, row)
+    local function is_controls_bind_focused(col, row)
         if self._controls_listen_role then return false end
-        return self._controls_focus_zone == "grid"
+        return self._controls_focus_zone == "list"
             and self._controls_focus_col == col
             and self._controls_focus_row == row
     end
 
-    local function is_controls_cell_listening(role)
-        return self._controls_listen_role == role
+    local function is_controls_bind_listening(role, slot)
+        return self._controls_listen_role == role and self._controls_listen_slot == slot
     end
 
     local function is_controls_footer_focused(which)
@@ -5273,8 +5284,9 @@ function Game:draw_bottom_pause()
                 love.graphics.setColor(self.C.ORANGE)
                 love.graphics.setFont(self.FONTS.PIXEL.SMALL)
                 local listen_label = string.format(
-                    "Press button for %s",
-                    InputBindings.role_label(self._controls_listen_role)
+                    "Press button for %s (slot %d)",
+                    InputBindings.role_label(self._controls_listen_role),
+                    math.floor(tonumber(self._controls_listen_slot) or 1)
                 )
                 love.graphics.printf(listen_label, panel_x, panel_y + 24, panel_w , "center")
             else
@@ -5284,57 +5296,67 @@ function Game:draw_bottom_pause()
             end
 
             local bindings = self:control_bindings()
-            local grid_cols, grid_rows = self:controls_grid_dims()
-            local grid_pad = 8
-            local grid_gap = 4
-            local grid_x = panel_x + grid_pad
-            local grid_w = panel_w - grid_pad * 2
-            local cell_w = math.floor((grid_w - grid_gap) * 0.5)
-            local cell_h = 42
-            local grid_y = panel_y + 42
+            local slot_cols, role_rows = self:controls_list_dims()
+            local list_pad = 8
+            local list_x = panel_x + list_pad
+            local list_w = panel_w - list_pad * 2
+            local row_h = 28
+            local list_y = panel_y + 40
+            local bind_w = 28
+            local bind_h = 18
+            local bind_gap = 4
             local footer_h = 18
             self._controls_role_rects = {}
 
-            for row = 1, grid_rows do
-                for col = 1, grid_cols do
-                    local idx = (row - 1) * grid_cols + col
-                    local role = InputBindings.ROLES[idx]
-                    if role then
-                        local btn = bindings[role] or InputBindings.DEFAULT_BINDINGS[role]
-                        local cx = grid_x + (col - 1) * (cell_w + grid_gap)
-                        local cy = grid_y + (row - 1) * (cell_h + grid_gap)
+            for row = 1, role_rows do
+                local role = InputBindings.ROLES[row]
+                if role then
+                    local ry = list_y + (row - 1) * row_h
+                    local text_w = list_w - slot_cols * bind_w - (slot_cols - 1) * bind_gap - 6
+                    love.graphics.setFont(self.FONTS.PIXEL.SMALL)
+                    love.graphics.setColor(self.C.WHITE)
+                    love.graphics.printf(InputBindings.role_label(role), list_x, ry + 1, text_w, "left")
+                    local hint = InputBindings.role_hint(role)
+                    if hint and hint ~= "" then
+                        love.graphics.setColor(self.C.GREY)
+                        love.graphics.printf(hint, list_x, ry + 12, text_w, "left")
+                    end
+                    for slot = 1, slot_cols do
+                        local bx = list_x + list_w - (slot_cols - slot + 1) * bind_w - (slot_cols - slot) * bind_gap
+                        local by = ry + 3
                         local r = {
-                            x = cx,
-                            y = cy,
-                            w = cell_w,
-                            h = cell_h,
+                            x = bx,
+                            y = by,
+                            w = bind_w,
+                            h = bind_h,
                             role = role,
-                            col = col,
+                            slot = slot,
+                            col = slot,
                             row = row,
                         }
-                        self._controls_role_rects[idx] = r
-                        draw_cell(
-                            r,
-                            InputBindings.role_label(role),
-                            InputBindings.button_label(btn),
-                            InputBindings.role_hint(role),
-                            is_controls_cell_focused(col, row),
-                            is_controls_cell_listening(role)
-                        )
+                        self._controls_role_rects[#self._controls_role_rects + 1] = r
+                        local label = InputBindings.slot_label(role, slot, bindings)
+                        local listening = is_controls_bind_listening(role, slot)
+                        local focused = is_controls_bind_focused(slot, row)
+                        local color = self.C.RED
+                        if listening then
+                            color = self.C.ORANGE
+                        end
+                        draw_btn(r, label, color, focused or listening)
                     end
                 end
             end
 
-            local footer_y = grid_y + grid_rows * cell_h + (grid_rows - 1) * grid_gap + 6
-            local footer_w = math.floor((grid_w - grid_gap) * 0.5)
+            local footer_y = list_y + role_rows * row_h + 4
+            local footer_w = math.floor((list_w - bind_gap) * 0.5)
             self._pause_controls_reset_rect = {
-                x = grid_x,
+                x = list_x,
                 y = footer_y,
                 w = footer_w,
                 h = footer_h,
             }
             self._pause_back_rect = {
-                x = grid_x + footer_w + grid_gap,
+                x = list_x + footer_w + bind_gap,
                 y = footer_y,
                 w = footer_w,
                 h = footer_h,
@@ -9683,16 +9705,18 @@ function Game:touchpressed(id, x, y)
             if self._pause_settings_tab == "controls" then
                 for _, r in ipairs(self._controls_role_rects or {}) do
                     if self:_point_in_rect_simple(x, y, r) then
-                        self._controls_focus_zone = "grid"
+                        self._controls_focus_zone = "list"
                         self._controls_focus_col = r.col or 1
                         self._controls_focus_row = r.row or 1
                         self._controls_listen_role = r.role
+                        self._controls_listen_slot = r.slot or 1
                         return
                     end
                 end
                 if self._pause_controls_reset_rect and self:_point_in_rect_simple(x, y, self._pause_controls_reset_rect) then
                     self:reset_control_bindings()
                     self._controls_listen_role = nil
+                    self._controls_listen_slot = nil
                     self._controls_focus_zone = "footer"
                     self._controls_focus_footer = "reset"
                     return
@@ -9700,6 +9724,7 @@ function Game:touchpressed(id, x, y)
                 if self._pause_back_rect and self:_point_in_rect_simple(x, y, self._pause_back_rect) then
                     self._pause_settings_tab = "general"
                     self._controls_listen_role = nil
+                    self._controls_listen_slot = nil
                     self:reset_controls_grid_focus()
                     return
                 end
@@ -11560,11 +11585,20 @@ function Game:sync_shoulder_input()
     end
 
     for role in pairs(InputBindings.HOLD_ROLES) do
-        local btn = bindings[role]
-        if btn and not down[btn] then
-            self:set_role_held(role, false)
-            if role == "sort" then
-                self._y_sweep_seeded = false
+        local buttons = InputBindings.get_role_buttons(role, bindings)
+        if #buttons > 0 then
+            local any_down = false
+            for _, btn in ipairs(buttons) do
+                if down[btn] then
+                    any_down = true
+                    break
+                end
+            end
+            if not any_down then
+                self:set_role_held(role, false)
+                if role == "sort" then
+                    self._y_sweep_seeded = false
+                end
             end
         end
     end

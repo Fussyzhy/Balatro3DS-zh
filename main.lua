@@ -173,6 +173,7 @@ function love.keyreleased(key)
 end
 
 function love.gamepadpressed(_, button)
+    button = InputBindings.normalize_gamepad_button(button)
     if G and G.STATE == G.STATES.PAUSED and G.handle_controls_listen_press then
         if G:handle_controls_listen_press(button) then
             return
@@ -284,6 +285,7 @@ end
 
 function love.gamepadreleased(_, button)
     if not G then return end
+    button = InputBindings.normalize_gamepad_button(button)
 
     local role = G:get_role_for_button(button)
     local press_time = role and G:get_role_press_time(role) or nil
