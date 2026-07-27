@@ -62,14 +62,15 @@ function Popup:pick_font(effectiveScale)
     return fonts.SMALL
 end
 
-function Popup:draw()
+function Popup:draw(depthOffset)
+    depthOffset = tonumber(depthOffset) or 0
     local effectiveScale, timeFactor = self:get_anim_scale()
     local font = self:pick_font(effectiveScale)
     love.graphics.setFont(font)
 
     local w = font:getWidth(self.text)
     local h = font:getHeight(self.text)
-    local drawX = math.floor(self.pos.x - w / 2 + 0.5)
+    local drawX = math.floor(self.pos.x - w / 2 + 0.5 - depthOffset)
     local drawY = math.floor(self.pos.y - h / 2 + 0.5)
     local alpha = math.min(1, self.time * 2)
 
@@ -79,7 +80,7 @@ function Popup:draw()
         love.graphics.setColor(self.Color)
         local r, g, b = love.graphics.getColor()
         love.graphics.setColor(r, g, b, alpha)
-        love.graphics.translate(math.floor(self.pos.x + 0.5), math.floor(self.pos.y + 0.5))
+        love.graphics.translate(math.floor(self.pos.x + 0.5 - depthOffset), math.floor(self.pos.y + 0.5))
         love.graphics.rotate(math.rad(self.speed * timeFactor))
         love.graphics.rectangle("fill", -w / 2 - 5, -h / 2 - 5, w + 10, h + 10)
         love.graphics.pop()

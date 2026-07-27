@@ -14,6 +14,13 @@ CollectionUI.COLS = COLS
 CollectionUI.ROWS = ROWS
 CollectionUI.PER_PAGE = PER_PAGE
 
+sysDepth = 0
+buttonHeight = 1
+textHeight = 2
+signHeight = 3
+jokerHeight = 2
+PopupHeight = 4
+
 ---@class CollectionStaticNode : Moveable
 local CollectionStaticNode = Moveable:extend()
 
@@ -642,7 +649,12 @@ function CollectionUI.draw_grid_nodes(game)
     CollectionUI.draw_grid_tooltips(game)
 end
 
-function CollectionUI.draw_top(game)
+function CollectionUI.draw_top(screen, game)
+    sysDepth = -love.graphics.getDepth()
+    if screen == "right" then
+        sysDepth = -sysDepth
+    end
+    local textDepth = sysDepth * textHeight
     local W = TOP_W
     love.graphics.setColor(game.C.WHITE)
     love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
@@ -652,12 +664,12 @@ function CollectionUI.draw_top(game)
         local label = cat and cat.label or "Collection"
         local page = tonumber(game._collection_page) or 1
         local pages = CollectionUI.page_count(game)
-        love.graphics.printf(label, 0, 12, W, "center")
+        love.graphics.printf(label, 0 - textDepth, 12, W, "center")
         love.graphics.setFont(game.FONTS.PIXEL.SMALL)
         love.graphics.setColor(game.C.GREY)
-        love.graphics.printf(string.format("%d / %d", page, pages), 0, 32, W, "center")
+        love.graphics.printf(string.format("%d / %d", page, pages), 0 - textDepth, 32, W, "center")
     else
-        love.graphics.printf("Collection", 0, 20, W, "center")
+        love.graphics.printf("Collection", 0 - textDepth, 20, W, "center")
     end
 end
 

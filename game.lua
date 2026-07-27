@@ -5374,7 +5374,7 @@ function Game:draw_bottom_pause()
             local cur_speed = (self.SETTINGS and self.SETTINGS.GAMESPEED) or 1
             local sb_w = 38
             local sb_h = 24
-            local sb_gap = 6
+            local sb_gap = 4
             local total_sb = #speeds * sb_w + (#speeds - 1) * sb_gap
             local sb_start_x = panel_x + math.floor((panel_w - total_sb) * 0.5 + 0.5)
             local sb_y = panel_y + 50

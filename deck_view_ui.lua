@@ -13,6 +13,13 @@ local SUIT_SYMBOLS = {
     Spades = "S",
 }
 
+sysDepth = 0
+buttonHeight = 1
+textHeight = 2
+signHeight = 3
+jokerHeight = 2
+PopupHeight = 4
+
 ---@param cards table[]
 ---@return table<string, table[]>
 function DeckViewUI.group_by_suit(cards)
@@ -414,7 +421,14 @@ local function draw_voucher_icon(game, voucher_id, x, y)
     return false
 end
 
-function DeckViewUI.draw_top(game)
+function DeckViewUI.draw_top(screen, game)
+    sysDepth = -love.graphics.getDepth()
+    if screen == "right" then
+        sysDepth = -sysDepth
+    end
+    local textDepth = sysDepth * textHeight
+    local buttonDepth = sysDepth * buttonHeight
+    local signDepth = sysDepth * signHeight
     local margin_x = 8
     local panel_y = DECK_HEADER_H
     local panel_h = TOP_H - panel_y
@@ -431,27 +445,27 @@ function DeckViewUI.draw_top(game)
     love.graphics.setColor(game.C.BLOCK.BACK)
     love.graphics.rectangle("fill", 0, 0, TOP_W, DECK_HEADER_H, 8, 8)
 
-    local deck_sprite_x = margin_x
+    local deck_sprite_x = margin_x - signDepth
     local deck_sprite_y = math.floor((DECK_HEADER_H - DECK_SPRITE_BOX_H) * 0.5 + 0.5)
     draw_deck_sprite(game, deck_def, deck_sprite_x, deck_sprite_y, DECK_SPRITE_BOX_W, DECK_SPRITE_BOX_H)
 
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
-    local label_x = deck_sprite_x + DECK_SPRITE_BOX_W + padding * 2
+    local label_x = margin_x + DECK_SPRITE_BOX_W + padding * 2
     
     love.graphics.setColor(game.C.PANEL)
-    draw_rect_with_shadow(label_x - padding, currentY, deck_width, DECK_HEADER_H - 2 * padding, 4, 4, game.C.PANEL, game.C.BLOCK.SHADOW, 2)
+    draw_rect_with_shadow(label_x - padding, currentY, deck_width, DECK_HEADER_H - 2 * padding, 4, 4, game.C.PANEL, game.C.BLOCK.SHADOW, 2, buttonDepth)
     currentY = currentY + padding
 
     love.graphics.setColor(game.C.WHITE)
-    love.graphics.print(deck_def and deck_def.name or "Deck", label_x + padding, currentY)
+    love.graphics.print(deck_def and deck_def.name or "Deck", label_x + padding - textDepth, currentY)
     currentY = currentY + love.graphics.getFont():getHeight() + padding
 
     if deck_def and deck_def.description then
         love.graphics.setColor(game.C.PANEL)
-        draw_rect_with_shadow(label_x, currentY, deck_width - 2 * padding, DECK_HEADER_H - currentY - 2 * padding, 4, 4, game.C.BLOCK.BACK, game.C.BLOCK.SHADOW, 2)
+        draw_rect_with_shadow(label_x, currentY, deck_width - 2 * padding, DECK_HEADER_H - currentY - 2 * padding, 4, 4, game.C.BLOCK.BACK, game.C.BLOCK.SHADOW, 2, buttonDepth)
         
         love.graphics.setColor(game.C.WHITE)
-        love.graphics.printf(deck_def.description, label_x + padding, deck_sprite_y + 18, deck_width - padding * 2, "left")
+        love.graphics.printf(deck_def.description, label_x + padding - textDepth, deck_sprite_y + 18, deck_width - padding * 2, "left")
         currentY = currentY + love.graphics.getFont():getHeight() + padding
     end
 
@@ -460,20 +474,20 @@ function DeckViewUI.draw_top(game)
     local stake_label_x = margin_x + deck_width + DECK_SPRITE_BOX_W + 2 * padding
     local stake_width = 120
 
-    draw_rect_with_shadow(stake_label_x, currentY, stake_width, DECK_HEADER_H - 2 * padding, 4, 4, game.C.PANEL, game.C.BLOCK.SHADOW, 2)
+    draw_rect_with_shadow(stake_label_x, currentY, stake_width, DECK_HEADER_H - 2 * padding, 4, 4, game.C.PANEL, game.C.BLOCK.SHADOW, 2, buttonDepth)
     currentY = currentY + padding
 
     local stake_id = game.selected_stake_id or game._pending_stake_id or "stake_white"
     local stake_def = STAKE_DEFS_BY_ID and STAKE_DEFS_BY_ID[stake_id]
     if stake_def and stake_def.name then
         love.graphics.setColor(game.C.WHITE)
-        love.graphics.print(stake_def.name, stake_label_x + padding * 2, currentY)
+        love.graphics.print(stake_def.name, stake_label_x + padding * 2 - textDepth, currentY)
         currentY = currentY + love.graphics.getFont():getHeight() + padding
-        draw_rect_with_shadow(stake_label_x + padding, currentY, stake_width - 2 * padding, DECK_HEADER_H - currentY - 2 * padding, 4, 4, game.C.BLOCK.BACK, game.C.BLOCK.SHADOW, 2)
+        draw_rect_with_shadow(stake_label_x + padding, currentY, stake_width - 2 * padding, DECK_HEADER_H - currentY - 2 * padding, 4, 4, game.C.BLOCK.BACK, game.C.BLOCK.SHADOW, 2, buttonDepth)
         currentY = currentY + padding
 
         love.graphics.setColor(game.C.WHITE)
-        love.graphics.printf(stake_def.description, stake_label_x + padding * 2, currentY, stake_width - 2 * padding, "left")
+        love.graphics.printf(stake_def.description, stake_label_x + padding * 2 - textDepth, currentY, stake_width - 2 * padding, "left")
         currentY = currentY + love.graphics.getFont():getHeight() + padding
     end
 
@@ -481,7 +495,7 @@ function DeckViewUI.draw_top(game)
     currentY = padding
     local blind_label_x = stake_label_x + stake_width + padding
     local blind_width = 104
-    draw_rect_with_shadow(blind_label_x, currentY, blind_width, DECK_HEADER_H - 2 * padding, 4, 4, game.C.PANEL, game.C.BLOCK.SHADOW, 2)
+    draw_rect_with_shadow(blind_label_x, currentY, blind_width, DECK_HEADER_H - 2 * padding, 4, 4, game.C.PANEL, game.C.BLOCK.SHADOW, 2, buttonDepth)
     currentY = currentY + padding
 
     local blind_index = game.current_blind_index or game.selected_blind_index or 1
@@ -489,13 +503,13 @@ function DeckViewUI.draw_top(game)
     local blind_desc = (game.get_blind_description and game:get_blind_description(blind_index)) or ""
 
     love.graphics.setColor(game.C.WHITE)
-    love.graphics.print(blind_name, blind_label_x + padding * 2, currentY)
+    love.graphics.print(blind_name, blind_label_x + padding * 2 - textDepth, currentY)
     currentY = currentY + love.graphics.getFont():getHeight() + padding
-    draw_rect_with_shadow(blind_label_x + padding, currentY, blind_width - 2 * padding, DECK_HEADER_H - currentY - 2 * padding, 4, 4, game.C.BLOCK.BACK, game.C.BLOCK.SHADOW, 2)
+    draw_rect_with_shadow(blind_label_x + padding, currentY, blind_width - 2 * padding, DECK_HEADER_H - currentY - 2 * padding, 4, 4, game.C.BLOCK.BACK, game.C.BLOCK.SHADOW, 2, buttonDepth)
     currentY = currentY + padding
 
     love.graphics.setColor(game.C.WHITE)
-    love.graphics.printf(blind_desc, blind_label_x + padding * 2, currentY, blind_width - 4 * padding, "left")
+    love.graphics.printf(blind_desc, blind_label_x + padding * 2 - textDepth, currentY, blind_width - 4 * padding, "left")
 
     love.graphics.setColor(game.C.PANEL)
     love.graphics.rectangle("fill", 0, panel_y, TOP_W, panel_h, 8, 8)
@@ -508,7 +522,7 @@ function DeckViewUI.draw_top(game)
 
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
     love.graphics.setColor(game.C.WHITE or game.C.GREY)
-    love.graphics.print("Vouchers", margin_x, panel_y + 2)
+    love.graphics.print("Vouchers", margin_x - textDepth, panel_y + 2)
 
     if n_vouchers > 0 then
         local step, _, rel_start = compute_fanned_step(n_vouchers, inner_w, VOUCHER_CELL_W, VOUCHER_GAP)
@@ -519,7 +533,7 @@ function DeckViewUI.draw_top(game)
         end
     else
         love.graphics.setColor(game.C.WHITE)
-        love.graphics.printf("None", margin_x, voucher_row_y + math.floor(VOUCHER_ROW_H * 0.35), inner_w, "center")
+        love.graphics.printf("None", margin_x - textDepth, voucher_row_y + math.floor(VOUCHER_ROW_H * 0.35), inner_w, "center")
     end
 
     local rank_section_y = voucher_row_y + VOUCHER_ROW_H + 8
@@ -538,10 +552,10 @@ function DeckViewUI.draw_top(game)
         local cx = margin_x + (i - 1) * col_w
         -- Draw rectangle
         if draw_rect_with_shadow then
-            draw_rect_with_shadow(cx + padding, label_y - padding, col_w - 2 * padding, count_y - label_y + label_h + 2 * padding, 4, 4, game.C.BLOCK.BACK, game.C.BLOCK.SHADOW, 2)
+            draw_rect_with_shadow(cx + padding, label_y - padding, col_w - 2 * padding, count_y - label_y + label_h + 2 * padding, 4, 4, game.C.BLOCK.BACK, game.C.BLOCK.SHADOW, 2, buttonDepth)
         end
         love.graphics.setColor(game.C.WHITE)
-        love.graphics.printf(RANK_LABELS[rank], cx, label_y, col_w, "center")
+        love.graphics.printf(RANK_LABELS[rank], cx - textDepth, label_y, col_w, "center")
     end
 
     for i, rank in ipairs(RANKS) do
@@ -550,7 +564,7 @@ function DeckViewUI.draw_top(game)
         love.graphics.rectangle("fill", cx + padding, count_y - padding/2, col_w - 2 * padding, label_h + padding, 4, 4)
         
         love.graphics.setColor(game.C.BLACK)
-        love.graphics.printf(tostring(counts[rank] or 0), cx, count_y, col_w, "center")
+        love.graphics.printf(tostring(counts[rank] or 0), cx - textDepth, count_y, col_w, "center")
     end
 
     local total = game.deck and game.deck:size() or 0

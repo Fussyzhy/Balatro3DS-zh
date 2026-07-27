@@ -204,11 +204,17 @@ function MainMenuUI.draw_background(game, screen)
     love.graphics.draw(atlas.image, quad, dx, dy, 0, s, s)
 end
 
-function MainMenuUI.draw_top(game)
+function MainMenuUI.draw_top(screen, game)
     if game._menu_sub_state == "collection_menu" or game._menu_sub_state == "collection_grid" then
-        CollectionUI.draw_top(game)
+        CollectionUI.draw_top(screen,game)
         return
     end
+
+    local sysDepth = -love.graphics.getDepth()
+    if screen == "right" then
+        sysDepth = -sysDepth
+    end
+    local titleDepth = 5
 
     local panel_x, panel_y, panel_w = 24, 10, 352
 
@@ -227,7 +233,7 @@ function MainMenuUI.draw_top(game)
         local dx = panel_x + math.floor((panel_w - draw_w) * 0.5 + 0.5)
         local dy = panel_y 
         love.graphics.setColor(game.C.WHITE)
-        love.graphics.draw(atlas.image, dx, dy, 0, s, s)
+        love.graphics.draw(atlas.image, dx - titleDepth * sysDepth, dy, 0, s, s)
     end
 end
 

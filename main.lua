@@ -109,13 +109,13 @@ function love.draw(screen)
         G:draw()
     else
         if G and G.STATE == G.STATES.MENU then
-            MainMenuUI.draw_top(G)
+            MainMenuUI.draw_top(screen, G)
         elseif G and G.STATE == G.STATES.YOU_WIN then
             YouWinUI.drawTop(G)
         elseif G._deck_view_open then
-            DeckViewUI.draw_top(G)
+            DeckViewUI.draw_top(screen, G)
         else
-            Top:draw()
+            Top:draw(screen)
         end
     end
 end
