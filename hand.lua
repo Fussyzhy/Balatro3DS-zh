@@ -451,8 +451,12 @@ function Hand:discard_selected()
 end
 
 --- Internal discard used after play sequence (or directly when not scoring).
-function Hand:_discard_selected_impl(reason)
+---@param reason string|nil
+---@param opts table|nil `{ skip_events = true }` skips joker/card discard events (e.g. Psychic void).
+function Hand:_discard_selected_impl(reason, opts)
     if not self.game then return end
+    opts = type(opts) == "table" and opts or {}
+    local skip_events = opts.skip_events == true
     self:sync_cards_from_nodes()
     -- Played cards may have been destroyed during scoring (e.g. Sixth Sense); still finish the play.
     if #self.selected == 0 then
@@ -477,7 +481,7 @@ function Hand:_discard_selected_impl(reason)
         return
     end
     -- Glass: 1/4 destroy only when played cards leave the hand after scoring
-    if reason == "play" then
+    if reason == "play" and not skip_events then
         local to_try = {}
         for _, node in ipairs(self.selected) do
             to_try[#to_try + 1] = node
@@ -516,7 +520,7 @@ function Hand:_discard_selected_impl(reason)
     end
     local selected_set = {}
     for _, n in ipairs(self.selected) do selected_set[n] = true end
-    if self.game and self.game.emit_joker_event then
+    if not skip_events and self.game and self.game.emit_joker_event then
         self.game:emit_joker_event("on_discard", {
             event = "on_discard",
             event_name = "on_discard",
@@ -525,7 +529,7 @@ function Hand:_discard_selected_impl(reason)
             discard_reason = reason,
         })
     end
-    if reason == "discard" then
+    if reason == "discard" and not skip_events then
         if self.game.record_cards_discarded then
             self.game:record_cards_discarded(#discarded_nodes)
         end
@@ -601,6 +605,13 @@ end
 ---@param index integer
 ---@return boolean
 function Hand:destroy_card_at_index(index)
+    local node = self.card_nodes and self.card_nodes[index]
+    local cd = node and node.card_data or (self.cards and self.cards[index])
+    local runtime = self.game and self.game.boss_runtime
+    if runtime and runtime.forced_card_uid ~= nil and cd and cd.uid == runtime.forced_card_uid then
+        -- Cerulean Bell: destroying the forced card frees selection for this hand (no re-pick until refill).
+        runtime.forced_card_uid = nil
+    end
     return self:remove_card_at_index(index)
 end
 
@@ -611,7 +622,7 @@ function Hand:destroy_card_node(node)
     if not node then return false end
     for i, n in ipairs(self.card_nodes) do
         if n == node then
-            return self:remove_card_at_index(i)
+            return self:destroy_card_at_index(i)
         end
     end
     return false
@@ -1335,7 +1346,9 @@ function Hand:play_selected()
     if self.game and self.game.boss_apply_on_hand_submitted then
         self.game:boss_apply_on_hand_submitted(cards)
     end
-    if self.game and self.game.emit_joker_event then
+    local psychic_void = self.game and self.game.boss_runtime and self.game.boss_runtime.psychic_void_play == true
+    -- Psychic <5 cards: consume the hand with no score and no joker/card events.
+    if not psychic_void and self.game and self.game.emit_joker_event then
         self.game:emit_joker_event("on_hand_played", {
             event = "on_hand_played",
             event_name = "on_hand_played",
@@ -1346,7 +1359,12 @@ function Hand:play_selected()
         })
     end
     if self.game and self.game.boss_should_void_current_play and self.game:boss_should_void_current_play() then
-        self:_discard_selected_impl("play")
+        if Popup and Top and Top.addPopup then
+            local p = Popup()
+            p:spawn("Not Allowed", "Nope", 200, 120)
+            Top:addPopup(p)
+        end
+        self:_discard_selected_impl("play", psychic_void and { skip_events = true } or nil)
         if G and G.evaluate_blind_progress then
             G:evaluate_blind_progress()
         end
@@ -1798,6 +1816,14 @@ function Hand:calculate_play()
         mark_all_ordered()
     end
 
+    -- Stone cards always score when played
+    for _, node in ipairs(ordered) do
+        local enh = node.enhancement or (node.card_data and node.card_data.enhancement)
+        if enh == "stone" then
+            node.counts_for_play_score = true
+        end
+    end
+
     -- Mark debuffs for scoring preview only; notify once on play (see play_selected).
     self._pending_boss_debuff_notify = false
     if G and G.boss_is_card_debuffed_for_scoring then
@@ -1812,8 +1838,7 @@ function Hand:calculate_play()
         for _, node in ipairs(ordered) do
             node.counts_for_play_score = false
         end
-        if G.notify_boss_effect_triggered then
-            G:notify_boss_effect_triggered({ reason = "psychic_min_cards" })
-        end
+        G.selectedHandChips = 0
+        G.selectedHandMult = 0
     end
 end

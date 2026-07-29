@@ -430,6 +430,7 @@ function Game:boss_reset_for_new_blind()
         locked_hand_type = nil,
         mouth_void_play = false,
         eye_void_play = false,
+        psychic_void_play = false,
         forced_card_uid = nil,
         house_face_down_draws = 0,
         fish_face_down_draws = 0,
@@ -591,6 +592,7 @@ function Game:boss_before_play_selected(selected_nodes)
     self.boss_runtime.hand_count = (tonumber(self.boss_runtime.hand_count) or 0) + 1
     self.boss_runtime.mouth_void_play = false
     self.boss_runtime.eye_void_play = false
+    self.boss_runtime.psychic_void_play = false
     if boss_id == "bl_mouth" then
         if self.boss_runtime.locked_hand_type == nil then
             self.boss_runtime.locked_hand_type = hand_name
@@ -606,9 +608,14 @@ function Game:boss_before_play_selected(selected_nodes)
         end
         self.boss_runtime.seen_hand_types[hand_name] = true
     end
+    if boss_id == "bl_psychic" and n < 5 then
+        self.boss_runtime.psychic_void_play = true
+        self:notify_boss_effect_triggered({ reason = "psychic_min_cards" })
+    end
     if boss_id == "bl_final_bell" then
         local forced_uid = self.boss_runtime.forced_card_uid
-        if forced_uid ~= nil then
+        -- Only enforce while the forced card is still in hand
+        if forced_uid ~= nil and self:_boss_find_hand_node_by_uid(forced_uid) ~= nil then
             local has_forced = false
             for _, node in ipairs(selected_nodes or {}) do
                 local d = node and node.card_data
@@ -621,6 +628,8 @@ function Game:boss_before_play_selected(selected_nodes)
                 self:notify_boss_effect_triggered({ reason = "final_bell_missing_forced" })
                 return false
             end
+        elseif forced_uid ~= nil then
+            self.boss_runtime.forced_card_uid = nil
         end
     end
     return true
@@ -628,7 +637,9 @@ end
 
 function Game:boss_should_void_current_play()
     if not self.boss_runtime then return false end
-    return self.boss_runtime.mouth_void_play == true or self.boss_runtime.eye_void_play == true
+    return self.boss_runtime.mouth_void_play == true
+        or self.boss_runtime.eye_void_play == true
+        or self.boss_runtime.psychic_void_play == true
 end
 
 function Game:boss_apply_on_hand_submitted(selected_nodes)
@@ -6984,6 +6995,7 @@ function Game:initialize_run_loop()
     self.voucher_hands_delta = 0
     self.boss_rerolls_used_this_ante = 0
     self:reset_bosses_used_cycle()
+    self.current_boss_blind_id = nil
     self.hand_play_counts = {}
     self.blind_hand_play_counts = {}
     self.tarots_used = 0
