@@ -112,6 +112,8 @@ function Game:init(seed)
     self._pause_save_quit_rect = nil
     self._pause_save_error = nil
     self._deck_view_open = false
+    self._deck_view_hand_panel_open = false
+    self._deck_view_hand_panel_t = 0
     self._pause_settings_rect = nil
     self._pause_show_settings = false
     self._pause_speed_rects = {}
@@ -2465,6 +2467,8 @@ function Game:enter_deck_view()
     if self._deck_view_open or not self:can_open_deck_view() then return false end
     self.dragging = nil
     self.active_tooltip_card = nil
+    self._deck_view_hand_panel_open = false
+    self._deck_view_hand_panel_t = 0
     self._deck_view_open = true
     DeckViewUI.build(self)
     return true
@@ -2474,6 +2478,8 @@ function Game:exit_deck_view()
     if not self._deck_view_open then return false end
     self.dragging = nil
     self.active_tooltip_card = nil
+    self._deck_view_hand_panel_open = false
+    self._deck_view_hand_panel_t = 0
     DeckViewUI.destroy(self)
     self._deck_view_open = false
     return true
@@ -3499,6 +3505,9 @@ end
 
 --- Draw all bottom-screen card / joker / consumable tooltips after other UI.
 function Game:draw_tooltips_on_top()
+    if self:is_hand_scoring_active() then
+        return
+    end
     love.graphics.setColor(1, 1, 1, 1)
     if self._collection_open and self._menu_sub_state == "collection_grid" then
         return
@@ -3920,6 +3929,31 @@ function Game:has_played_hand_name(hand_name)
     end
     if not idx then return false end
     return (self.hand_play_counts and tonumber(self.hand_play_counts[idx]) or 0) >= 1
+end
+
+--- Secret hands (indices 1–3) only appear in stats UI after being played once.
+---@param hand_index integer
+---@return boolean
+function Game:is_hand_stats_visible(hand_index)
+    hand_index = tonumber(hand_index)
+    if not hand_index then return false end
+    if hand_index <= 3 then
+        return (tonumber(self.hand_play_counts and self.hand_play_counts[hand_index]) or 0) > 0
+    end
+    return hand_index >= 4 and hand_index <= #(self.handlist or {})
+end
+
+--- Level-scaled chips/mult for a poker hand (no boss modifiers).
+---@param hand_index integer
+---@return integer level, integer chips, number mult
+function Game:get_hand_level_stats(hand_index)
+    hand_index = tonumber(hand_index)
+    local stats = hand_index and self.hand_stats and self.hand_stats[hand_index]
+    if not stats then return 1, 0, 0 end
+    local level = math.max(1, tonumber(stats.level) or 1)
+    local chips = (tonumber(stats.base_chips) or 0) + ((level - 1) * (tonumber(stats.chips_per_level) or 0))
+    local mult = (tonumber(stats.base_mult) or 0) + ((level - 1) * (tonumber(stats.mult_per_level) or 0))
+    return level, math.floor(chips), mult
 end
 
 function Game:planet_consumable_unlocked(def_id, def)
@@ -5686,6 +5720,9 @@ function Game:update(dt)
         self:update_dpad_horizontal_repeat(dt)
     end
     if self._deck_view_open then
+        if DeckViewUI.update then
+            DeckViewUI.update(self, dt)
+        end
         for _, node in ipairs(self._deck_view_nodes or {}) do
             if node and node.update then
                 node:update(dt)

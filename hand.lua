@@ -1300,11 +1300,7 @@ function Hand:play_selected()
     if self._play_sequence then return end
 
     if self.game then
-        if self.game.clear_bottom_tooltips then
-            self.game:clear_bottom_tooltips()
-        else
-            self.game.active_tooltip_card = nil
-        end
+        self.game:clear_bottom_tooltips()
     end
 
     self:calculate_play()

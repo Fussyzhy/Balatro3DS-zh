@@ -696,6 +696,7 @@ end
 
 function Card:should_draw_tooltip()
     if not self.face_up then return false end
+    if G and G.is_hand_scoring_active and G:is_hand_scoring_active() then return false end
     if G and G._collection_open and G._collection_tooltip_node == self then return true end
     if G and G.is_hand_cursor_active and G:is_hand_cursor_active() then
         return G:dpad_cursor_node() == self

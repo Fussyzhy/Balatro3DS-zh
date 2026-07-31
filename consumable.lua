@@ -203,6 +203,7 @@ end
 
 function Consumable:tooltip_is_active()
     if not G then return false end
+    if G.is_hand_scoring_active and G:is_hand_scoring_active() then return false end
     if G._collection_open and G._collection_tooltip_node == self then return true end
     if G.is_card_select_mode and G:is_card_select_mode() then return false end
     if self.shop_offer_slot and G.STATE == G.STATES.SHOP and G.active_tooltip_joker == self then

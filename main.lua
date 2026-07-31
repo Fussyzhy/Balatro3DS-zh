@@ -221,14 +221,14 @@ function love.gamepadpressed(_, button)
         end
         return
     end
-    if button == "back" and G.toggle_deck_view then
-        G:toggle_deck_view()
+    if G._deck_view_open then
+        if DeckViewUI.handle_gamepad(G, button) then
+            return
+        end
         return
     end
-    if G._deck_view_open then
-        if G:is_menu_back(button) or G:is_menu_activate(button) or button == "select" then
-            G:exit_deck_view()
-        end
+    if button == "back" and G.toggle_deck_view then
+        G:toggle_deck_view()
         return
     end
 

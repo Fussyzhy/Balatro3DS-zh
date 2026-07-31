@@ -4,6 +4,8 @@ local SCREEN_W, SCREEN_H = 320, 240
 local CARD_W, CARD_H = 71, 95
 local TAP_THRESHOLD = 15
 
+local TOP_W, TOP_H = 400, 240
+
 local SUITS = { "Hearts", "Clubs", "Diamonds", "Spades" }
 
 local SUIT_SYMBOLS = {
@@ -269,6 +271,171 @@ function DeckViewUI.handle_touchreleased(game, id, x, y)
     game.dragging = nil
 end
 
+function DeckViewUI.update(game, dt)
+    if not game then return end
+    local target = game._deck_view_hand_panel_open and 1 or 0
+    local t = tonumber(game._deck_view_hand_panel_t) or 0
+    local speed = math.min(1, 10 * (tonumber(dt) or 0))
+    t = t + (target - t) * speed
+    if math.abs(t - target) < 0.001 then
+        t = target
+    end
+    game._deck_view_hand_panel_t = t
+end
+
+---@return boolean handled
+function DeckViewUI.handle_gamepad(game, button)
+    if not game or not game._deck_view_open then return false end
+    if button == "dpright" or button == "right" then
+        game._deck_view_hand_panel_open = true
+        return true
+    end
+    if button == "dpleft" or button == "left" then
+        game._deck_view_hand_panel_open = false
+        return true
+    end
+    if button == "back" or (game.is_menu_back and game:is_menu_back(button)) then
+        if game._deck_view_hand_panel_open then
+            game._deck_view_hand_panel_open = false
+            return true
+        end
+        game:exit_deck_view()
+        return true
+    end
+    if button == "select" or (game.is_menu_activate and game:is_menu_activate(button)) then
+        game:exit_deck_view()
+        return true
+    end
+    return false
+end
+
+local function center_text_in_rect(text, x, y, w, h)
+    local font = love.graphics.getFont()
+    local ty = y + math.floor(h * 0.5 - font:getHeight() * 0.5 + 0.5)
+    love.graphics.printf(tostring(text or ""), x, ty, w, "center")
+end
+
+local function format_hand_mult(mult)
+    local raw = tonumber(mult) or 0
+    if math.abs(raw) >= 100000 then
+        return string.format("%.1e", raw)
+    end
+    if raw % 1 == 0 then
+        return string.format("%.0f", raw)
+    end
+    return string.format("%.1f", raw)
+end
+
+local HAND_PANEL_W = 340
+local HAND_PANEL_HEADER_H = 20
+local HAND_ROW_H = 18
+local HAND_ROW_GAP = 2
+local HAND_LEVEL_W = 44
+local HAND_COUNT_W = 24
+local HAND_CHIP_W = 40
+local HAND_MULT_W = 40
+local HAND_X_W = 12
+
+function DeckViewUI.draw_hand_level_row(game, x, y, w, hand_name, level, chips, mult, play_count, textDepth, buttonDepth)
+    textDepth = tonumber(textDepth) or 0
+    buttonDepth = tonumber(buttonDepth) or 0
+    local gap = 2
+    local inner_pad = 2
+
+    if draw_rect_with_shadow then
+        draw_rect_with_shadow(x, y, w, HAND_ROW_H, 4, 0, game.C.GREY, game.C.BLOCK.SHADOW, 2, buttonDepth)
+    end
+
+    local inner_x = x + inner_pad
+    local inner_y = y + inner_pad
+    local inner_h = HAND_ROW_H - inner_pad * 2
+    local inner_w = w - inner_pad * 2
+
+    local chips_x = inner_x + inner_w - HAND_COUNT_W - gap - HAND_MULT_W - gap - HAND_X_W - gap - HAND_CHIP_W
+    local mult_x = chips_x + HAND_CHIP_W + gap + HAND_X_W + gap
+    local count_x = inner_x + inner_w - HAND_COUNT_W
+    local name_x = inner_x + HAND_LEVEL_W + gap
+    local name_w = math.max(0, chips_x - gap - name_x)
+
+    if draw_rounded_rect then
+        if level <= 0 then
+            love.graphics.setColor(G.C.WHITE)
+        else
+            if G.C.HAND_LEVELS and G.C.HAND_LEVELS[level] then
+                love.graphics.setColor(G.C.HAND_LEVELS[level])
+            else 
+                love.graphics.setColor(G.C.HAND_LEVELS[#G.C.HAND_LEVELS])
+            end
+        end
+        draw_rounded_rect(inner_x, inner_y, HAND_LEVEL_W, inner_h, 4, 0, "fill")
+        love.graphics.setColor(G.C.CHIPS)
+        draw_rounded_rect(chips_x, inner_y, HAND_CHIP_W, inner_h, 4, 0, "fill")
+        love.graphics.setColor(G.C.MULT)
+        draw_rounded_rect(mult_x, inner_y, HAND_MULT_W, inner_h, 4, 0, "fill")
+        love.graphics.setColor(G.C.PANEL)
+        draw_rounded_rect(count_x, inner_y, HAND_COUNT_W, inner_h, 4, 0, "fill")
+    end
+
+    love.graphics.setFont(G.FONTS.PIXEL.SMALL)
+    love.graphics.setColor(G.C.PANEL)
+    center_text_in_rect("lvl." .. tostring(level), inner_x - textDepth, inner_y, HAND_LEVEL_W, inner_h)
+    love.graphics.setColor(G.C.WHITE)
+    center_text_in_rect(hand_name or "", name_x - textDepth, inner_y, name_w, inner_h)
+    center_text_in_rect(tostring(chips), chips_x - textDepth, inner_y, HAND_CHIP_W, inner_h)
+    love.graphics.setColor(G.C.RED)
+    center_text_in_rect("X", chips_x + HAND_CHIP_W + gap - textDepth, inner_y, HAND_X_W, inner_h)
+    love.graphics.setColor(G.C.WHITE)
+    center_text_in_rect(format_hand_mult(mult), mult_x - textDepth, inner_y, HAND_MULT_W, inner_h)
+    love.graphics.setColor(G.C.MONEY)
+    center_text_in_rect(tostring(play_count or 0), count_x - textDepth, inner_y, HAND_COUNT_W, inner_h)
+end
+
+function DeckViewUI.draw_hand_level_panel(screen, game, textDepth, buttonDepth)
+    local panel_t = tonumber(game._deck_view_hand_panel_t) or 0
+    if panel_t <= 0 then return end
+
+    local panel_x = math.floor(TOP_W - HAND_PANEL_W * panel_t + 0.5)
+    local panel_y = 4
+    local panel_h = TOP_H - 8
+
+    love.graphics.setColor(game.C.PANEL)
+    love.graphics.rectangle("fill", panel_x, panel_y, HAND_PANEL_W, panel_h, 8, 8)
+    love.graphics.setColor(game.C.WHITE)
+    love.graphics.rectangle("line", panel_x, panel_y, HAND_PANEL_W, panel_h, 8, 8)
+
+    local pad = 6
+    local content_x = panel_x + pad
+    local content_w = HAND_PANEL_W - pad * 2
+    local row_y = panel_y + pad
+
+    love.graphics.setFont(game.FONTS.PIXEL.SMALL)
+    love.graphics.setColor(game.C.WHITE)
+    love.graphics.printf("Poker Hands", content_x - textDepth, row_y, content_w, "center")
+    row_y = row_y + HAND_PANEL_HEADER_H
+
+    local handlist = game.handlist or {}
+    for i, hand_name in ipairs(handlist) do
+        if game.is_hand_stats_visible and game:is_hand_stats_visible(i) then
+            local level, chips, mult = 1, 0, 0
+            if game.get_hand_level_stats then
+                level, chips, mult = game:get_hand_level_stats(i)
+            end
+            local play_count = tonumber(game.hand_play_counts and game.hand_play_counts[i]) or 0
+            DeckViewUI.draw_hand_level_row(
+                game, content_x, row_y, content_w,
+                hand_name, level, chips, mult, play_count,
+                textDepth, buttonDepth
+            )
+            row_y = row_y + HAND_ROW_H + HAND_ROW_GAP
+            if row_y + HAND_ROW_H > panel_y + panel_h - pad then
+                break
+            end
+        end
+    end
+
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
 function DeckViewUI.draw_bottom(game)
     love.graphics.setColor(G.C.PANEL)
     love.graphics.rectangle("fill", 0, 0, SCREEN_W, SCREEN_H)
@@ -310,11 +477,14 @@ function DeckViewUI.draw_bottom(game)
 
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
     love.graphics.setColor(game.C.WHITE or { 0.65, 0.65, 0.65, 1 })
-    love.graphics.printf("SELECT / B to close", 0, SCREEN_H - m.footer_h, SCREEN_W, "center")
+    local footer = "SELECT / B to close"
+    if not game._deck_view_hand_panel_open and (tonumber(game._deck_view_hand_panel_t) or 0) <= 0.01 then
+        footer = footer .. "  Right: Hand Levels"
+    end
+    love.graphics.printf(footer, 0, SCREEN_H - m.footer_h, SCREEN_W, "center")
     love.graphics.setColor(1, 1, 1, 1)
 end
 
-local TOP_W, TOP_H = 400, 240
 
 local RANKS = {}
 local RANK_LABELS = {}
@@ -571,6 +741,8 @@ function DeckViewUI.draw_top(screen, game)
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
     love.graphics.setColor(game.C.GREY or game.C.DARK_WHITE)
     love.graphics.setColor(1, 1, 1, 1)
+
+    DeckViewUI.draw_hand_level_panel(screen, game, textDepth, buttonDepth)
 end
 
 function DeckViewUI.draw_tooltips(game)

@@ -893,6 +893,7 @@ end
 
 function Joker:should_draw_tooltip()
     if not self.face_up or not G then return false end
+    if G.is_hand_scoring_active and G:is_hand_scoring_active() then return false end
     if G._collection_open and G._collection_tooltip_node == self then return true end
     if G.is_card_select_mode and G:is_card_select_mode() then return false end
     if G.STATE == G.STATES.BLIND_SELECT and G.active_tooltip_skip_blind_index then return false end
