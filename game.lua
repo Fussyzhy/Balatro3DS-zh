@@ -7043,6 +7043,7 @@ function Game:initialize_run_loop()
     self._victory_progress_recorded = false
     self.hand_size_delta_spectral = 0
     self.hand_size_delta_juggle = 0
+    self.ectoplasm_used = 0
     self:reset_run_stats()
     self:reset_joker_pool_replacements()
     
