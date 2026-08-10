@@ -3529,7 +3529,7 @@ local TOOLTIP_BY_ID = {
         "(Currently +0 Mult)",
     },
     j_popcorn = {
-        "+20 Mult",
+        { kind = "current", text = "+20 Mult" },
         "-4 Mult per round played",
     },
     j_spare_trousers = {
