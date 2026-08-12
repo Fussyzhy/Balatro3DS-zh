@@ -606,7 +606,7 @@ local SPECIAL = {
                         for i, jj in ipairs(G.jokers) do
                             if jj == j then
                                 local p = Popup()
-                                p:spawn("Eaten!", "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
+                                p:spawn(I18N.t("popup.eaten"), "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
                                 Top:addPopup(p)
                                 Sfx.play("resources/sounds/slice1.ogg")
                                 G:remove_owned_joker_at(i)
@@ -950,7 +950,7 @@ local SPECIAL = {
                         for i, jj in ipairs(G.jokers) do
                             if jj == j then
                                 local p = Popup()
-                                p:spawn("Eaten!", "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
+                                p:spawn(I18N.t("popup.eaten"), "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
                                 Top:addPopup(p)
                                 Sfx.play("resources/sounds/slice1.ogg")
                                 G:remove_owned_joker_at(i)
@@ -986,7 +986,7 @@ local SPECIAL = {
                     for i, jj in ipairs(G.jokers) do
                         if jj == j then
                             local p = Popup()
-                            p:spawn("Drank!", "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
+                            p:spawn(I18N.t("popup.drank"), "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
                             Top:addPopup(p)
                             Sfx.play("resources/sounds/slice1.ogg")
                             G:remove_owned_joker_at(i)
@@ -1069,7 +1069,7 @@ local SPECIAL = {
                             if jj == j then
                                 Sfx.play("resources/sounds/slice1.ogg")
                                 local p = Popup()
-                                p:spawn("Extinct!", "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
+                                p:spawn(I18N.t("popup.extinct"), "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
                                 Top:addPopup(p)
                                 if G.activate_joker_pool_swap then
                                     G:activate_joker_pool_swap("j_gros_michel", "j_cavendish")
@@ -1128,7 +1128,7 @@ local SPECIAL = {
                     for i, jj in ipairs(G.jokers) do
                         if jj == j then
                             local p = Popup()
-                            p:spawn("Eaten!", "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
+                            p:spawn(I18N.t("popup.eaten"), "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
                             Top:addPopup(p)
                             Sfx.play("resources/sounds/slice1.ogg")
                             G:remove_owned_joker_at(i)
@@ -1265,7 +1265,7 @@ local SPECIAL = {
                             if jj == j then
                                 Sfx.play("resources/sounds/slice1.ogg")
                                 local p = Popup()
-                                p:spawn("Extinct!", "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
+                                p:spawn(I18N.t("popup.extinct"), "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
                                 Top:addPopup(p)
                                 G:remove_owned_joker_at(i)
                                 break
@@ -1319,7 +1319,7 @@ local SPECIAL = {
                     for i, jj in ipairs(G.jokers) do
                         if jj == j then
                             local p = Popup()
-                            p:spawn("Eaten!", "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
+                            p:spawn(I18N.t("popup.eaten"), "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
                             Top:addPopup(p)
                             Sfx.play("resources/sounds/slice1.ogg")
                             G:remove_owned_joker_at(i)

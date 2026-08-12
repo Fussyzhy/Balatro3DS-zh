@@ -250,6 +250,16 @@ function main() {
     "hand.four_of_a_kind", "hand.full_house", "hand.flush", "hand.straight",
     "hand.three_of_a_kind", "hand.two_pair", "hand.pair", "hand.high_card",
     "suit.hearts", "suit.clubs", "suit.diamonds", "suit.spades",
+    "enhancement.bonus.name", "enhancement.bonus.description",
+    "enhancement.mult.name", "enhancement.mult.description",
+    "enhancement.wild.name", "enhancement.wild.description",
+    "enhancement.glass.name", "enhancement.glass.description",
+    "enhancement.steel.name", "enhancement.steel.description",
+    "enhancement.stone.name", "enhancement.stone.description",
+    "enhancement.gold.name", "enhancement.gold.description",
+    "enhancement.lucky.name", "enhancement.lucky.description",
+    "seal.gold.name", "seal.gold.description", "seal.red.name", "seal.red.description",
+    "seal.blue.name", "seal.blue.description", "seal.purple.name", "seal.purple.description",
   ]) {
     if (!chineseTerms.has(key)) errors.push(`terminology coverage: missing ${key}`);
   }

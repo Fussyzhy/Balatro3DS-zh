@@ -1066,36 +1066,36 @@ function Game:get_drag_zones_for_context(ctx)
     if ctx.kind == "shop_offer" then
         local offer = self.shop_offers and self.shop_offers[ctx.slot_index]
         local can_buy = self:can_buy_shop_offer(ctx.slot_index)
-        zones.top = DragZonesUI.make_zone("BUY", can_buy, can_buy and C.MONEY or C.GREY, "buy", true)
+        zones.top = DragZonesUI.make_zone(I18N.t("action.buy"), can_buy, can_buy and C.MONEY or C.GREY, "buy", true)
         if offer and (offer.kind == "tarot" or offer.kind == "planet" or offer.kind == "spectral") then
             -- Instant-use does not need an inventory slot (planets, Hermit, Temperance, etc.).
             local can_afford = self:can_afford_price(self:get_shop_offer_price(offer))
             local can_buy_use = can_afford and self:shop_offer_consumable_use_enabled(offer)
-            zones.top_right = DragZonesUI.make_zone("BUY and USE", can_buy_use, can_buy_use and C.GREEN or C.GREY, "buy_use", true)
+            zones.top_right = DragZonesUI.make_zone(I18N.t("action.buy_use"), can_buy_use, can_buy_use and C.GREEN or C.GREY, "buy_use", true)
         end
     elseif ctx.kind == "shop_booster" then
         local offer = self.shop_booster_offers and self.shop_booster_offers[ctx.slot_index]
         local can_buy = offer and self:can_afford_price(self:get_shop_booster_price(offer))
-        zones.top = DragZonesUI.make_zone("BUY", can_buy, can_buy and C.MONEY or C.GREY, "buy", true)
+        zones.top = DragZonesUI.make_zone(I18N.t("action.buy"), can_buy, can_buy and C.MONEY or C.GREY, "buy", true)
     elseif ctx.kind == "shop_voucher" then
         local offer = self.shop_voucher_offers and self.shop_voucher_offers[ctx.slot_index]
         local can_buy = offer and self:can_afford_price(self:get_shop_voucher_price(offer))
             and not self:_voucher_already_owned(offer.id)
-        zones.top = DragZonesUI.make_zone("BUY", can_buy, can_buy and C.MONEY or C.GREY, "buy", true)
+        zones.top = DragZonesUI.make_zone(I18N.t("action.buy"), can_buy, can_buy and C.MONEY or C.GREY, "buy", true)
     elseif ctx.kind == "owned_joker" then
         local joker = self.jokers and self.jokers[ctx.index]
         local eternal = joker and joker.eternal == true
         local sell_value = math.floor(tonumber(joker and joker.sell_cost) or 0)
         zones.bottom = DragZonesUI.make_zone(
-            string.format("Sell $%d", sell_value),
+            I18N.t("action.sell_price", { price = sell_value }),
             not eternal, eternal and C.GREY or C.MULT, "sell", true)
     elseif ctx.kind == "owned_consumable" then
         local can_use = self:consumable_use_enabled(ctx.index)
-        zones.top = DragZonesUI.make_zone("USE", can_use, can_use and C.GREEN or C.GREY, "use", true)
+        zones.top = DragZonesUI.make_zone(I18N.t("action.use"), can_use, can_use and C.GREEN or C.GREY, "use", true)
         local c = self.consumables and self.consumables[ctx.index]
         local sell_value = math.floor(self:consumable_sell_value(c))
         zones.bottom = DragZonesUI.make_zone(
-            string.format("Sell $%d", sell_value),
+            I18N.t("action.sell_price", { price = sell_value }),
             true, C.MULT, "sell", true)
     elseif ctx.kind == "booster_choice" then
         -- Single full-width strip: USE for hand-targeting cards, PICK otherwise.
@@ -1107,7 +1107,7 @@ function Game:get_drag_zones_for_context(ctx)
         if needs_use then
             local can_use = ch and not ch.taken and (tonumber(sess.picks_remaining) or 0) > 0
                 and c and self:pack_consumable_can_apply(c)
-            zones.full = DragZonesUI.make_zone("USE", can_use, can_use and C.GREEN or C.GREY, "use", true)
+            zones.full = DragZonesUI.make_zone(I18N.t("action.use"), can_use, can_use and C.GREEN or C.GREY, "use", true)
         else
             local can_pick = ch and not ch.taken and (tonumber(sess.picks_remaining) or 0) > 0
             if can_pick and ch.kind == "joker" then
@@ -1115,7 +1115,7 @@ function Game:get_drag_zones_for_context(ctx)
             elseif can_pick and (ch.kind == "planet" or ch.kind == "tarot" or ch.kind == "spectral") then
                 can_pick = c and self:pack_consumable_can_apply(c)
             end
-            zones.full = DragZonesUI.make_zone("PICK", can_pick, can_pick and C.GREEN or C.GREY, "pick", true)
+            zones.full = DragZonesUI.make_zone(I18N.t("action.pick"), can_pick, can_pick and C.GREEN or C.GREY, "pick", true)
         end
     end
 
@@ -2976,13 +2976,13 @@ end
 
 function Game:enter_main_menu_deck_select()
     if self:is_hand_scoring_active() then
-        self._pause_save_error = "Cannot save while scoring."
+        self._pause_save_error = I18N.t("save.scoring_blocked")
         return false
     end
     local snapshot = self:build_run_snapshot()
     local ok, err = self:write_run_snapshot(snapshot)
     if not ok then
-        self._pause_save_error = "Save failed: " .. tostring(err or "unknown")
+        self._pause_save_error = I18N.t("save.failed", { error = tostring(err or I18N.t("save.unknown_error")) })
         return false
     end
     self._pause_prev_state = nil
@@ -2994,13 +2994,13 @@ end
 
 function Game:pause_save_and_quit()
     if self:is_hand_scoring_active() then
-        self._pause_save_error = "Cannot save while scoring."
+        self._pause_save_error = I18N.t("save.scoring_blocked")
         return false
     end
     local snapshot = self:build_run_snapshot()
     local ok, err = self:write_run_snapshot(snapshot)
     if not ok then
-        self._pause_save_error = "Save failed: " .. tostring(err or "unknown")
+        self._pause_save_error = I18N.t("save.failed", { error = tostring(err or I18N.t("save.unknown_error")) })
         return false
     end
     self._pause_prev_state = nil
@@ -4566,7 +4566,7 @@ function Game:apply_consumable_effect(c)
             end
         else 
             local p = Popup()
-            p:spawn("Nope!", "Nope", 160, 120)
+            p:spawn(I18N.t("popup.nope"), "Nope", 160, 120)
             G:addPopup(p)
         end
     elseif id == "tarot_hanged_man" then
@@ -5011,9 +5011,9 @@ function Game:draw_bottom_blind_select()
         love.graphics.setLineWidth(1)
 
 
-        local selectText = "Upcoming"
+        local selectText = I18N.t("blind.upcoming")
         if selectable then
-            selectText = "Select"
+            selectText = I18N.t("blind.select")
         end
         local selectWidth = 60
         local selectHeight = 16
@@ -5131,7 +5131,7 @@ function Game:draw_bottom_blind_select()
             self._blind_skip_tap_rects = self._blind_skip_tap_rects or {}
             self._blind_skip_tap_rects[i] = { x = buttonX, y = buttonY, w = buttonW, h = buttonH, blind_index = i }
             love.graphics.setColor(self.C.WHITE)
-            local buttonText = "Skip Blind (B)"
+            local buttonText = I18N.t("blind.skip_button")
             love.graphics.print(buttonText, buttonX + math.floor(buttonW/2) - math.floor(love.graphics.getFont():getWidth(buttonText)/2), buttonY + math.floor(buttonH/2) - math.floor(love.graphics.getFont():getHeight(buttonText)/2))
 
             love.graphics.pop()
