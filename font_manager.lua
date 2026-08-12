@@ -2,12 +2,18 @@ local FontManager = {}
 
 local FONT_PROFILES = {
     en = {
-        path = "resources/fonts/m6x11plus.ttf",
+        paths = {
+            "resources/fonts/m6x11plus.bcfnt",
+            "resources/fonts/m6x11plus.ttf",
+        },
         sizes = { small = 11, medium = 22, large = 33 },
         filter = "nearest",
     },
     zh_CN = {
-        path = "resources/fonts/NotoSansSC-Bold.ttf",
+        paths = {
+            "resources/fonts/NotoSansSC-Bold.bcfnt",
+            "resources/fonts/NotoSansSC-Bold.ttf",
+        },
         sizes = { small = 11, medium = 21, large = 31 },
         filter = "linear",
     },
@@ -37,15 +43,23 @@ local function create_font(path, size, filter)
     return font
 end
 
+local function create_font_from_profile(profile, size)
+    for _, path in ipairs(profile.paths) do
+        local font = create_font(path, size, profile.filter)
+        if font then return font, path end
+    end
+    return nil, nil
+end
+
 local function resolve_profile(language)
     return FONT_PROFILES[language] or FONT_PROFILES.en, FONT_PROFILES[language] and language or "en"
 end
 
 function FontManager.build(language)
     local profile, resolved_language = resolve_profile(language)
-    local small = create_font(profile.path, profile.sizes.small, profile.filter)
-    local medium = create_font(profile.path, profile.sizes.medium, profile.filter)
-    local large = create_font(profile.path, profile.sizes.large, profile.filter)
+    local small, active_path = create_font_from_profile(profile, profile.sizes.small)
+    local medium = active_path and create_font(active_path, profile.sizes.medium, profile.filter)
+    local large = active_path and create_font(active_path, profile.sizes.large, profile.filter)
 
     if not small or not medium or not large then
         release_font(small)
@@ -53,14 +67,15 @@ function FontManager.build(language)
         release_font(large)
         profile = FONT_PROFILES.en
         resolved_language = "en"
-        small = assert(create_font(profile.path, profile.sizes.small, profile.filter))
-        medium = assert(create_font(profile.path, profile.sizes.medium, profile.filter))
-        large = assert(create_font(profile.path, profile.sizes.large, profile.filter))
+        small, active_path = create_font_from_profile(profile, profile.sizes.small)
+        small = assert(small)
+        medium = assert(create_font(active_path, profile.sizes.medium, profile.filter))
+        large = assert(create_font(active_path, profile.sizes.large, profile.filter))
     end
 
     return {
         ACTIVE_LANGUAGE = resolved_language,
-        ACTIVE_PATH = profile.path,
+        ACTIVE_PATH = active_path,
         PIXEL = {
             SMALL_HEIGHT = small:getHeight(),
             MEDIUM_HEIGHT = medium:getHeight(),
@@ -82,7 +97,7 @@ function FontManager.profile_for(language)
     local profile, resolved_language = resolve_profile(language)
     return {
         language = resolved_language,
-        path = profile.path,
+        paths = profile.paths,
         sizes = {
             small = profile.sizes.small,
             medium = profile.sizes.medium,
