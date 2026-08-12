@@ -423,6 +423,54 @@ function MainMenuUI.draw_main(game)
         love.graphics.setLineWidth(2)
         love.graphics.rectangle("line", r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1)
     end
+
+    -- Language entry stays on the bottom-screen home page.
+    local globe = { x = 286, y = 8, w = 26, h = 26 }
+    game._main_menu_language_rect = globe
+    love.graphics.setColor(game.C.PANEL)
+    love.graphics.rectangle("fill", globe.x, globe.y, globe.w, globe.h, 4, 4)
+    love.graphics.setColor(game.C.WHITE)
+    love.graphics.setLineWidth(2)
+    love.graphics.circle("line", globe.x + 13, globe.y + 13, 8)
+    love.graphics.line(globe.x + 5, globe.y + 13, globe.x + 21, globe.y + 13)
+    love.graphics.arc("line", "open", globe.x + 13, globe.y + 13, 5, -math.pi / 2, math.pi / 2)
+    love.graphics.arc("line", "open", globe.x + 13, globe.y + 13, 5, math.pi / 2, 3 * math.pi / 2)
+
+    if game._main_menu_language_open then
+        local modal = { x = 42, y = 45, w = 236, h = 150 }
+        game._main_menu_language_modal_rect = modal
+        draw_rect_with_shadow(modal.x, modal.y, modal.w, modal.h, 6, 6,
+            game.C.PANEL, game.C.BLOCK.SHADOW, 3)
+        love.graphics.setColor(game.C.WHITE)
+        love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
+        love.graphics.printf(I18N.t("settings.language"), modal.x, modal.y + 12, modal.w, "center")
+        game._main_menu_language_rects = {}
+        local languages = I18N.available_languages and I18N.available_languages() or { "en", "zh_CN" }
+        local bw, bh, gap = 190, 30, 8
+        local by = modal.y + 52
+        for i, language in ipairs(languages) do
+            local r = { x = modal.x + (modal.w - bw) / 2, y = by + (i - 1) * (bh + gap), w = bw, h = bh, language = language }
+            game._main_menu_language_rects[i] = r
+            local selected = I18N.get_language and I18N.get_language() == language
+            draw_rect_with_shadow(r.x, r.y, r.w, r.h, 4, 4,
+                selected and game.C.GREEN or game.C.MULT, game.C.BLOCK.SHADOW, 2)
+            love.graphics.setColor(game.C.WHITE)
+            love.graphics.setFont(game.FONTS.PIXEL.SMALL)
+            love.graphics.printf(I18N.t("language." .. language), r.x, r.y + 8, r.w, "center")
+        end
+        local language_index = math.max(1, math.min(#languages, tonumber(game._main_menu_language_focus) or 1))
+        game._main_menu_language_focus = language_index
+        local focused_language = game._main_menu_language_rects[language_index]
+        if focused_language then
+            love.graphics.setColor(game.C.WHITE)
+            love.graphics.setLineWidth(2)
+            love.graphics.rectangle("line", focused_language.x + 0.5, focused_language.y + 0.5,
+                focused_language.w - 1, focused_language.h - 1)
+        end
+    else
+        game._main_menu_language_rects = nil
+        game._main_menu_language_modal_rect = nil
+    end
 end
 
 function MainMenuUI.build_main_menu_focus_targets(game)
@@ -438,6 +486,9 @@ function MainMenuUI.build_main_menu_focus_targets(game)
     end
     if game._main_menu_collection_rect then
         targets[#targets + 1] = { kind = "collection", rect = game._main_menu_collection_rect }
+    end
+    if game._main_menu_language_rect then
+        targets[#targets + 1] = { kind = "language", rect = game._main_menu_language_rect }
     end
     for i, pr in ipairs(game._main_menu_profile_rects or {}) do
         if pr then
@@ -480,6 +531,10 @@ function MainMenuUI.activate_main_menu_focus(game)
         return true
     elseif t.kind == "collection" then
         CollectionUI.open(game)
+        return true
+    elseif t.kind == "language" then
+        game._main_menu_language_open = true
+        game._main_menu_language_focus = 1
         return true
     elseif t.kind == "profile" and t.index and game.switch_profile then
         game:switch_profile(t.index)
@@ -909,6 +964,23 @@ function MainMenuUI.handle_touch(game, x, y)
 end
 
 function MainMenuUI._touch_main(game, x, y)
+    if game._main_menu_language_open then
+        for _, r in ipairs(game._main_menu_language_rects or {}) do
+            if game:_point_in_rect_simple(x, y, r) then
+                if game.set_language then game:set_language(r.language) end
+                game._main_menu_language_open = false
+                return true
+            end
+        end
+        game._main_menu_language_open = false
+        return true
+    end
+
+    if game._main_menu_language_rect and game:_point_in_rect_simple(x, y, game._main_menu_language_rect) then
+        game._main_menu_language_open = true
+        return true
+    end
+
     local profile_rects = game._main_menu_profile_rects or {}
     for i, pr in ipairs(profile_rects) do
         if pr and game:_point_in_rect_simple(x, y, pr) then
@@ -1053,6 +1125,22 @@ function MainMenuUI._button_how_to_play(game, btn)
 end
 
 function MainMenuUI._button_main(game, btn)
+    if game._main_menu_language_open then
+        local languages = I18N.available_languages and I18N.available_languages() or { "en", "zh_CN" }
+        local idx = math.max(1, math.min(#languages, tonumber(game._main_menu_language_focus) or 1))
+        if btn == "dpup" or btn == "up" or btn == "dpleft" or btn == "left" then
+            game._main_menu_language_focus = math.max(1, idx - 1)
+        elseif btn == "dpdown" or btn == "down" or btn == "dpright" or btn == "right" then
+            game._main_menu_language_focus = math.min(#languages, idx + 1)
+        elseif game.is_menu_activate and game:is_menu_activate(btn) then
+            if game.set_language and languages[idx] then game:set_language(languages[idx]) end
+            game._main_menu_language_open = false
+        elseif game.is_menu_back and game:is_menu_back(btn) then
+            game._main_menu_language_open = false
+        end
+        return
+    end
+
     if btn == "dpup" or btn == "up" then
         MainMenuUI.main_menu_focus_move(game, -1)
         return

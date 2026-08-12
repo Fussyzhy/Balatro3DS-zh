@@ -117,7 +117,6 @@ function Game:init(seed)
     self._pause_settings_rect = nil
     self._pause_show_settings = false
     self._pause_speed_rects = {}
-    self._pause_language_rects = {}
     self._pause_music_slider_rect = nil
     self._pause_music_slider_drag = false
     -- D-pad card cursor and gamepad focus layers (hand / jokers / consumables)
@@ -1820,7 +1819,6 @@ function Game:enter_pause_menu()
     self._pause_controls_open_rect = nil
     self._pause_controls_reset_rect = nil
     self._pause_speed_rects = {}
-    self._pause_language_rects = {}
     self._pause_music_slider_rect = nil
     self._pause_music_slider_drag = false
     self._pause_focus_index = 1
@@ -1934,9 +1932,6 @@ function Game:build_pause_focus_targets()
         for i, r in ipairs(self._pause_speed_rects or {}) do
             if r then targets[#targets + 1] = { kind = "speed", index = i, rect = r } end
         end
-        for i, r in ipairs(self._pause_language_rects or {}) do
-            if r then targets[#targets + 1] = { kind = "language", index = i, rect = r } end
-        end
         if self._pause_controls_open_rect then
             targets[#targets + 1] = { kind = "controls_open", rect = self._pause_controls_open_rect }
         end
@@ -2019,9 +2014,6 @@ function Game:activate_pause_focus()
         if self.set_game_speed then self:set_game_speed(t.rect.speed) end
         if self.save_settings then self:save_settings() end
         return true
-    elseif t.kind == "language" and t.rect and t.rect.language then
-        if self.set_language then self:set_language(t.rect.language) end
-        return true
     end
     return false
 end
@@ -2103,7 +2095,6 @@ function Game:exit_pause_menu()
     self._pause_controls_open_rect = nil
     self._pause_controls_reset_rect = nil
     self._pause_speed_rects = {}
-    self._pause_language_rects = {}
     self._pause_music_slider_rect = nil
     self._pause_music_slider_drag = false
     self:set_state(resume)
@@ -5521,36 +5512,14 @@ function Game:draw_bottom_pause()
                 track_y = track_y,
             }
 
-            love.graphics.setColor(self.C.GREY)
-            love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-            love.graphics.printf(I18N.t("settings.language"), panel_x, panel_y + 124, panel_w, "center")
-
-            local languages = I18N and I18N.available_languages and I18N.available_languages() or { "en" }
-            local lang_gap = 6
-            local lang_w = 100
-            local lang_h = 22
-            local lang_total_w = #languages * lang_w + math.max(0, #languages - 1) * lang_gap
-            local lang_x = panel_x + math.floor((panel_w - lang_total_w) * 0.5 + 0.5)
-            local lang_y = panel_y + 138
-            local current_language = I18N and I18N.get_language and I18N.get_language() or "en"
-            self._pause_language_rects = {}
-            for i, language in ipairs(languages) do
-                local r = { x = lang_x + (i - 1) * (lang_w + lang_gap), y = lang_y, w = lang_w, h = lang_h, language = language }
-                self._pause_language_rects[i] = r
-                local active = language == current_language
-                local color = active and self.C.ORANGE or self.C.PANEL
-                local label = I18N and I18N.t and I18N.t("language." .. language, nil, language) or language
-                draw_btn(r, label, color, is_pause_focused("language", i))
-            end
-
             local open_w, open_h = 140, 24
             local open_x = panel_x + math.floor((panel_w - open_w) * 0.5 + 0.5)
-            self._pause_controls_open_rect = { x = open_x, y = panel_y + 166, w = open_w, h = open_h }
+            self._pause_controls_open_rect = { x = open_x, y = panel_y + 132, w = open_w, h = open_h }
             draw_btn(self._pause_controls_open_rect, I18N.t("settings.controls"), self.C.BOOSTER, is_pause_focused("controls_open"))
 
             local back_w, back_h = 120, 24
             local back_x = panel_x + math.floor((panel_w - back_w) * 0.5 + 0.5)
-            self._pause_back_rect = { x = back_x, y = panel_y + 196, w = back_w, h = back_h }
+            self._pause_back_rect = { x = back_x, y = panel_y + 166, w = back_w, h = back_h }
             draw_btn(self._pause_back_rect, I18N.t("common.back"), self.C.MULT, is_pause_focused("back"))
         end
     else
@@ -5702,6 +5671,10 @@ function Game:enter_main_menu()
     self._main_menu_start_rect = nil
     self._main_menu_continue_rect = nil
     self._main_menu_how_to_play_rect = nil
+    self._main_menu_language_rect = nil
+    self._main_menu_language_rects = nil
+    self._main_menu_language_open = false
+    self._main_menu_language_focus = 1
     self._how_to_play_back_rect = nil
     self._how_to_play_rects = nil
     self._delete_save_confirm = false
@@ -9851,12 +9824,6 @@ function Game:touchpressed(id, x, y)
                     elseif self.SETTINGS then
                         self.SETTINGS.GAMESPEED = r.speed
                     end
-                    return
-                end
-            end
-            for _, r in ipairs(self._pause_language_rects or {}) do
-                if self:_point_in_rect_simple(x, y, r) then
-                    self:set_language(r.language)
                     return
                 end
             end
