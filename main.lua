@@ -5,6 +5,8 @@ function print(...)
     end
 end
 
+I18N = require "localization"
+
 local nest_ok, nest = pcall(function()
     return require("nest").init({ console = "3ds" })
 end)
