@@ -3,7 +3,6 @@ local FontManager = {}
 local FONT_PROFILES = {
     en = {
         paths = {
-            "resources/fonts/m6x11plus.bcfnt",
             "resources/fonts/m6x11plus.ttf",
         },
         sizes = { small = 11, medium = 22, large = 33 },
@@ -11,7 +10,8 @@ local FONT_PROFILES = {
     },
     zh_CN = {
         paths = {
-            "resources/fonts/NotoSansSC-Bold.bcfnt",
+            -- LovePotion exposes the 3DS Simplified Chinese system font by name.
+            "chinese",
             "resources/fonts/NotoSansSC-Bold.ttf",
         },
         sizes = { small = 11, medium = 21, large = 31 },
