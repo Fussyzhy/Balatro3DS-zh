@@ -160,9 +160,13 @@ end
 ---@return string[]
 function Consumable:get_tooltip_body_lines()
     local def = self.def or {}
+    local localized = nil
+    if def.id and I18N.has("consumable." .. tostring(def.id) .. ".description") then
+        localized = I18N.content_description("consumable", def.id, nil)
+    end
     if def.id == "tarot_fool" and G then
         local out = {}
-        local tip = def.tooltip
+        local tip = localized or def.tooltip
         if type(tip) == "table" then
             for _, l in ipairs(tip) do
                 if type(l) == "string" and l ~= "" then out[#out + 1] = l end
@@ -174,16 +178,17 @@ function Consumable:get_tooltip_body_lines()
         end
         local last_id = G.last_consumable_use_id
         if last_id and CONSUMABLE_DEFS and CONSUMABLE_DEFS[last_id] then
-            local name = CONSUMABLE_DEFS[last_id].name or last_id
-            out[#out + 1] = "Currently: " .. tostring(name)
+            local last_def = CONSUMABLE_DEFS[last_id]
+            local name = I18N.content_name("consumable", last_id, last_def.name or last_id)
+            out[#out + 1] = I18N.t("term.fool_current", { name = name })
         end
         if #out > 0 then return out end
     end
     if def.kind == "planet" and type(def.hand) == "string" and def.hand ~= "" then
-        return { string.format("Increases the value of %s", def.hand) }
+        return { I18N.t("term.planet_upgrade", { hand = I18N.hand_name(def.hand) }) }
     end
     if def.kind == "tarot" or def.kind == "spectral" then
-        local tip = def.tooltip
+        local tip = localized or def.tooltip
         if type(tip) == "table" then
             local out = {}
             for _, l in ipairs(tip) do
@@ -235,9 +240,9 @@ function Consumable:draw_tooltip(draw_x, draw_y)
     if #lines == 0 then return end
 
     local def = self.def or {}
-    local title = self.name or def.name or "Consumable"
+    local title = I18N.content_name("consumable", def.id, self.name or def.name or I18N.t("term.consumable"))
     if G and G.is_discovered and def.id and not G:is_discovered(def.id) then
-        title = "Not Discovered"
+        title = I18N.t("term.not_discovered")
     end
     local font = G.FONTS.PIXEL.SMALL or love.graphics.getFont()
     local prev_font = love.graphics.getFont()

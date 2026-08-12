@@ -486,7 +486,7 @@ local SPECIAL = {
                 if jj == joker then
                     local src = G.jokers[i + 1]
                     if type(src) == "table" and not resolve_copy_target(src) then
-                        return { "Incompatible" }
+                        return { I18N.t("term.incompatible") }
                     end
                     break
                 end
@@ -510,7 +510,7 @@ local SPECIAL = {
             local src = G.jokers[1]
             if src == joker then return {} end
             if type(src) == "table" and not resolve_copy_target(src) then
-                return { "Incompatible" }
+                return { I18N.t("term.incompatible") }
             end
             return {}
         end,

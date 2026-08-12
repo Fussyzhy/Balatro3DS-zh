@@ -18,7 +18,7 @@ YouWinUI.information = {
         title_key = "win.most_played_hand",
         content = function(G)
             if G.get_most_played_hand_name then
-                return G:get_most_played_hand_name()
+                return I18N.hand_name(G:get_most_played_hand_name())
             end
             return I18N.t("common.none")
         end,

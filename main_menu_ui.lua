@@ -763,20 +763,24 @@ function MainMenuUI.draw_deck_select(game)
 
     love.graphics.setFont(font_m)
     love.graphics.setColor(C.WHITE)
-    if love.graphics.getFont():getWidth(def.name) > infoW then
+    local deck_name = I18N.content_name("deck", def.id, def.name)
+    local deck_description = I18N.content_description("deck", def.id, def.description or "")
+    local deck_unlock = I18N.t("deck." .. tostring(def.id) .. ".unlock", nil,
+        def.unlock_condition and def.unlock_condition.text or I18N.t("menu.complete_unlock"))
+    if love.graphics.getFont():getWidth(deck_name) > infoW then
         love.graphics.setFont(font_s)
-        love.graphics.printf(def.name, infoX, infoY + 6, infoW, "center")
+        love.graphics.printf(deck_name, infoX, infoY + 6, infoW, "center")
     else
-        love.graphics.printf(def.name, infoX, infoY, infoW, "center")
+        love.graphics.printf(deck_name, infoX, infoY, infoW, "center")
     end
     love.graphics.setFont(font_m)
-    local offset = love.graphics.getFont():getHeight(def.name)
+    local offset = love.graphics.getFont():getHeight()
     love.graphics.rectangle("fill", infoX + padding, infoY + padding + offset, infoW - 2*padding, infoH - 2*padding - offset, 4, 4)
     
     love.graphics.setFont(font_s)
     love.graphics.setColor(C.PANEL)
     love.graphics.printf(
-        def.unlocked and (def.description or "") or def.unlock_condition and def.unlock_condition.text or I18N.t("menu.complete_unlock"),
+        def.unlocked and deck_description or deck_unlock,
         infoX + 2*padding, infoY + 2*padding + offset, infoW - 4*padding, "center"
     )
 
@@ -854,11 +858,13 @@ function MainMenuUI.draw_deck_select(game)
 
     love.graphics.setFont(font_m)
     love.graphics.setColor(stake_unlocked and C.WHITE or C.GREY)
-    if love.graphics.getFont():getWidth(stake_def.name) > stake_info_w then
+    local stake_name = I18N.content_name("stake", stake_def.id, stake_def.name)
+    local stake_description = I18N.content_description("stake", stake_def.id, stake_def.description or "")
+    if love.graphics.getFont():getWidth(stake_name) > stake_info_w then
         love.graphics.setFont(font_s)
-        love.graphics.printf(stake_def.name, stake_info_x, stake_info_y + 6, stake_info_w, "center")
+        love.graphics.printf(stake_name, stake_info_x, stake_info_y + 6, stake_info_w, "center")
     else
-        love.graphics.printf(stake_def.name, stake_info_x, stake_info_y, stake_info_w, "center")
+        love.graphics.printf(stake_name, stake_info_x, stake_info_y, stake_info_w, "center")
     end
     love.graphics.setFont(font_m)
     local stake_name_h = love.graphics.getFont():getHeight()
@@ -868,7 +874,7 @@ function MainMenuUI.draw_deck_select(game)
     love.graphics.setFont(font_s)
     love.graphics.setColor(C.PANEL)
     love.graphics.printf(
-        stake_unlocked and (stake_def.description or "") or I18N.t("menu.clear_previous_stake"),
+        stake_unlocked and stake_description or I18N.t("menu.clear_previous_stake"),
         stake_info_x + 2 * padding, stake_info_y + padding + stake_name_h, stake_info_w - 4 * padding, "center"
     )
 

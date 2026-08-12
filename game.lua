@@ -3161,12 +3161,15 @@ end
 
 function Game:get_blind_display_name(index)
     local def = self:get_blind_def(index)
-    if not def then return "Blind" end
+    if not def then return I18N.t("term.blind") end
     if def.id == "boss" then
         local proto = self:get_boss_blind_prototype()
-        if proto and proto.name then return proto.name end
+        if proto and proto.name then
+            return I18N.content_name("blind", self.current_boss_blind_id, proto.name)
+        end
     end
-    return def.name or "Blind"
+    return I18N.content_name("blind", "bl_" .. tostring(def.id),
+        def.name or I18N.t("term.blind"))
 end
 
 local BLIND_EFFECT_DESCRIPTIONS = {
@@ -3202,13 +3205,13 @@ local BLIND_EFFECT_DESCRIPTIONS = {
 
 function Game:get_blind_effect_text_for_key(blind_key)
     if type(blind_key) ~= "string" then return "" end
-    return BLIND_EFFECT_DESCRIPTIONS[blind_key] or ""
+    return I18N.content_description("blind", blind_key, BLIND_EFFECT_DESCRIPTIONS[blind_key] or "")
 end
 
 function Game:get_blind_prototype_description(blind_key)
     if type(blind_key) ~= "string" then return "" end
     if blind_key == "bl_small" or blind_key == "bl_big" then
-        return "No special effect."
+        return I18N.t("term.no_special_effect")
     end
     return self:get_blind_effect_text_for_key(blind_key)
 end
@@ -3228,7 +3231,7 @@ function Game:get_blind_description(index)
     if not def then return "" end
     if def.id == "boss" then
         if self.boss_runtime and self.boss_runtime.disable_current_boss_ability == true then
-            return "Boss ability disabled this round."
+            return I18N.t("term.boss_disabled")
         end
         local text = self:get_boss_effect_text()
         if text ~= "" then return text end
@@ -3236,13 +3239,13 @@ function Game:get_blind_description(index)
         if proto and proto.debuff_text and proto.debuff_text ~= "" then
             return proto.debuff_text
         end
-        return "Boss blind effect."
+        return I18N.t("term.boss_effect")
     end
     local target = self:get_blind_target(index, self.ante)
     if target and target > 0 then
-        return string.format("Score at least %d chips.", math.floor(target))
+        return I18N.t("term.score_chips", { score = math.floor(target) })
     end
-    return def.name or "Blind"
+    return self:get_blind_display_name(index)
 end
 
 function Game:get_blind_color(index)
@@ -3617,8 +3620,8 @@ function Game:_draw_shop_voucher_tooltip()
     local offer = slot and self.shop_voucher_offers and self.shop_voucher_offers[slot]
     local rect = slot and self._shop_voucher_rects and self._shop_voucher_rects[slot]
     if type(offer) ~= "table" or type(rect) ~= "table" then return end
-    local title = tostring(offer.name or "Voucher")
-    local desc = tostring(offer.description or "")
+    local title = I18N.content_name("voucher", offer.id, offer.name or I18N.t("term.voucher"))
+    local desc = I18N.content_description("voucher", offer.id, offer.description or "")
     local font = (self.FONTS and self.FONTS.PIXEL and self.FONTS.PIXEL.SMALL) or love.graphics.getFont()
     local resolved = TooltipDraw.resolved_lines_from_multiline(desc)
     TooltipDraw.draw_tooltip_layout(font, title, resolved, rect.x, rect.y, rect.w, rect.h)
@@ -4891,7 +4894,8 @@ function Game:get_skip_tag_tooltip(skip_id, blind_index)
     if not type_name then return nil end
     local key = self:tag_key_for_id(skip_id)
     local def = key and self.P_TAGS and self.P_TAGS[key]
-    local name = (def and def.name) or (type_name:sub(1, 1):upper() .. type_name:sub(2) .. " Tag")
+    local name = I18N.content_name("tag", key,
+        (def and def.name) or (type_name:sub(1, 1):upper() .. type_name:sub(2) .. " Tag"))
     local description = Tag and Tag.get_description and Tag.get_description(type_name) or ""
     if type_name == "orbital" and blind_index then
         self:ensure_skip_orbital_hand(blind_index)

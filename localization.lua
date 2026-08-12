@@ -6,6 +6,25 @@ Localization.SUPPORTED_LANGUAGES = { "en", "zh_CN" }
 local locale_cache = {}
 local current_language = Localization.DEFAULT_LANGUAGE
 
+local CONTENT_MODULES = {
+    "terms",
+    "decks",
+    "stakes",
+    "blinds",
+    "vouchers",
+    "tags",
+    "consumables",
+    "jokers",
+}
+
+local function merge_locale(target, source)
+    if type(target) ~= "table" or type(source) ~= "table" then return target end
+    for key, value in pairs(source) do
+        target[key] = value
+    end
+    return target
+end
+
 local function is_supported(language)
     if type(language) ~= "string" then return false end
     for _, code in ipairs(Localization.SUPPORTED_LANGUAGES) do
@@ -19,6 +38,15 @@ local function load_locale(language)
     local ok, locale = pcall(require, "locales." .. language)
     if not ok or type(locale) ~= "table" then
         locale = {}
+    end
+    for _, module_name in ipairs(CONTENT_MODULES) do
+        local content_ok, content = pcall(
+            require,
+            string.format("locales.content.%s.%s", language, module_name)
+        )
+        if content_ok then
+            merge_locale(locale, content)
+        end
     end
     locale_cache[language] = locale
     return locale
@@ -74,6 +102,13 @@ function Localization.set_language(language)
     end
     current_language = language
     load_locale(language)
+    local catalog = rawget(_G, "CollectionCatalog")
+    if not catalog and package.loaded["collection_catalog"] then
+        catalog = package.loaded["collection_catalog"]
+    end
+    if catalog and catalog.invalidate_cache then
+        catalog.invalidate_cache()
+    end
     return true
 end
 
@@ -113,6 +148,44 @@ end
 
 function Localization.item_description(kind, id, fallback)
     return Localization.t(string.format("%s.%s.description", tostring(kind), tostring(id)), nil, fallback)
+end
+
+local function identifier_key(value)
+    local key = tostring(value or ""):lower()
+    key = key:gsub("[^%w]+", "_")
+    return key:gsub("^_+", ""):gsub("_+$", "")
+end
+
+function Localization.content_name(kind, id, fallback)
+    return Localization.item_name(kind, id, fallback)
+end
+
+function Localization.content_description(kind, id, fallback)
+    return Localization.item_description(kind, id, fallback)
+end
+
+function Localization.content_lines(kind, id, fallback)
+    local value = Localization.content_description(kind, id, fallback)
+    if type(value) == "table" then return value end
+    local lines = {}
+    for line in tostring(value or ""):gmatch("[^\r\n]+") do
+        lines[#lines + 1] = line
+    end
+    return lines
+end
+
+function Localization.hand_name(internal_name)
+    return Localization.t("hand." .. identifier_key(internal_name), nil, internal_name)
+end
+
+function Localization.suit_name(internal_name)
+    return Localization.t("suit." .. identifier_key(internal_name), nil, internal_name)
+end
+
+function Localization.rank_name(internal_rank)
+    local rank = tonumber(internal_rank)
+    local key = rank and tostring(math.floor(rank)) or identifier_key(internal_rank)
+    return Localization.t("rank." .. key, nil, internal_rank)
 end
 
 load_locale(Localization.DEFAULT_LANGUAGE)

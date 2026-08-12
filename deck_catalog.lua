@@ -500,7 +500,7 @@ function Game:draw_deck_select_ui()
         end
         love.graphics.setFont(font_s)
         love.graphics.printf(
-            (locked and "[?] " or "") .. def.name,
+            (locked and "[?] " or "") .. I18N.content_name("deck", def.id, def.name),
             list_x + 6, iy + 7, list_w - 12, "left"
         )
 
@@ -513,7 +513,8 @@ function Game:draw_deck_select_ui()
         love.graphics.setFont(font_s)
         love.graphics.setColor(sel_def.unlocked and self.C.WHITE or self.C.GREY)
         love.graphics.printf(
-            sel_def.unlocked and sel_def.description or I18N.t("menu.not_unlocked"),
+            sel_def.unlocked and I18N.content_description("deck", sel_def.id, sel_def.description)
+                or I18N.t("menu.not_unlocked"),
             list_x, desc_y, list_w, "left"
         )
     end
@@ -568,7 +569,7 @@ function Game:draw_stake_select_ui()
         love.graphics.setFont(font_s)
         love.graphics.setColor(locked and self.C.GREY or self.C.WHITE)
         love.graphics.printf(
-            (locked and "[?] " or "") .. def.name,
+            (locked and "[?] " or "") .. I18N.content_name("stake", def.id, def.name),
             list_x + 18, iy + 6, list_w - 24, "left"
         )
 
@@ -581,7 +582,8 @@ function Game:draw_stake_select_ui()
         love.graphics.setFont(font_s)
         love.graphics.setColor(sel_def.unlocked and self.C.WHITE or self.C.GREY)
         love.graphics.printf(
-            sel_def.unlocked and sel_def.description or I18N.t("menu.not_unlocked"),
+            sel_def.unlocked and I18N.content_description("stake", sel_def.id, sel_def.description)
+                or I18N.t("menu.not_unlocked"),
             list_x, desc_y, list_w, "left"
         )
     end
