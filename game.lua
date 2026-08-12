@@ -117,6 +117,7 @@ function Game:init(seed)
     self._pause_settings_rect = nil
     self._pause_show_settings = false
     self._pause_speed_rects = {}
+    self._pause_language_rects = {}
     self._pause_music_slider_rect = nil
     self._pause_music_slider_drag = false
     -- D-pad card cursor and gamepad focus layers (hand / jokers / consumables)
@@ -1819,6 +1820,7 @@ function Game:enter_pause_menu()
     self._pause_controls_open_rect = nil
     self._pause_controls_reset_rect = nil
     self._pause_speed_rects = {}
+    self._pause_language_rects = {}
     self._pause_music_slider_rect = nil
     self._pause_music_slider_drag = false
     self._pause_focus_index = 1
@@ -1932,6 +1934,9 @@ function Game:build_pause_focus_targets()
         for i, r in ipairs(self._pause_speed_rects or {}) do
             if r then targets[#targets + 1] = { kind = "speed", index = i, rect = r } end
         end
+        for i, r in ipairs(self._pause_language_rects or {}) do
+            if r then targets[#targets + 1] = { kind = "language", index = i, rect = r } end
+        end
         if self._pause_controls_open_rect then
             targets[#targets + 1] = { kind = "controls_open", rect = self._pause_controls_open_rect }
         end
@@ -2014,6 +2019,9 @@ function Game:activate_pause_focus()
         if self.set_game_speed then self:set_game_speed(t.rect.speed) end
         if self.save_settings then self:save_settings() end
         return true
+    elseif t.kind == "language" and t.rect and t.rect.language then
+        if self.set_language then self:set_language(t.rect.language) end
+        return true
     end
     return false
 end
@@ -2095,6 +2103,7 @@ function Game:exit_pause_menu()
     self._pause_controls_open_rect = nil
     self._pause_controls_reset_rect = nil
     self._pause_speed_rects = {}
+    self._pause_language_rects = {}
     self._pause_music_slider_rect = nil
     self._pause_music_slider_drag = false
     self:set_state(resume)
@@ -2199,6 +2208,7 @@ end
 
 function Game:default_settings()
     return {
+        LANGUAGE = "en",
         GAMESPEED = 1,
         SOUND = { music_volume = 100 },
         GRAPHICS = { texture_scaling = 1 },
@@ -2212,6 +2222,10 @@ end
 function Game:normalize_settings(data)
     local out = copy_table(self:default_settings())
     if type(data) ~= "table" then return out end
+
+    if I18N and I18N.is_supported and I18N.is_supported(data.LANGUAGE) then
+        out.LANGUAGE = data.LANGUAGE
+    end
 
     local allowed_speeds = { [0.5] = true, [1] = true, [1.5] = true, [2] = true, [2.5] = true, [3] = true , [4] = true}
     local speed = tonumber(data.GAMESPEED)
@@ -2243,6 +2257,9 @@ end
 
 function Game:snapshot_settings()
     return {
+        LANGUAGE = (I18N and I18N.get_language and I18N.get_language())
+            or (self.SETTINGS and self.SETTINGS.LANGUAGE)
+            or "en",
         GAMESPEED = tonumber(self.SETTINGS and self.SETTINGS.GAMESPEED) or 1,
         SOUND = { music_volume = self:get_music_volume() },
         GRAPHICS = {
@@ -2258,6 +2275,14 @@ end
 function Game:load_settings()
     self.SETTINGS = copy_table(self:default_settings())
     local function finish_load()
+        local language = self.SETTINGS.LANGUAGE or "en"
+        if I18N and I18N.set_language then
+            I18N.set_language(language)
+            self.SETTINGS.LANGUAGE = I18N.get_language()
+        end
+        if self.reload_fonts then
+            self:reload_fonts(self.SETTINGS.LANGUAGE)
+        end
         self:apply_unlocks(self.SETTINGS.UNLOCKS)
         self:apply_discovered(self.SETTINGS.DISCOVERED)
         self:apply_joker_wins(self.SETTINGS.JOKER_WINS)
@@ -2396,6 +2421,18 @@ function Game:set_game_speed(speed)
     if not s or not allowed_speeds[s] then return end
     self.SETTINGS.GAMESPEED = s
     self:save_settings()
+end
+
+function Game:set_language(language)
+    if not self.SETTINGS or not I18N or not I18N.set_language then return false end
+    local changed = I18N.get_language() ~= language
+    local supported = I18N.set_language(language)
+    self.SETTINGS.LANGUAGE = I18N.get_language()
+    if changed and self.reload_fonts then
+        self:reload_fonts(self.SETTINGS.LANGUAGE)
+    end
+    self:save_settings()
+    return supported
 end
 
 function Game:get_music_volume()
@@ -5243,7 +5280,8 @@ function Game:draw_bottom_pause()
             panel_y = 4
             panel_h = BOTTOM_H - panel_y - 4
         else
-            panel_h = 200
+            panel_y = 8
+            panel_h = 224
         end
     end
     if _G.draw_rect_with_shadow then
@@ -5408,11 +5446,11 @@ function Game:draw_bottom_pause()
             draw_btn(self._pause_back_rect, "Back", self.C.MULT, is_controls_footer_focused("back"))
         else
             -- ===== SETTINGS GENERAL TAB =====
-            love.graphics.printf("Settings", panel_x, panel_y + 10, panel_w, "center")
+            love.graphics.printf("Settings", panel_x, panel_y + 8, panel_w, "center")
 
             love.graphics.setColor(self.C.GREY)
             love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-            love.graphics.printf("Game Speed", panel_x, panel_y + 34, panel_w, "center")
+            love.graphics.printf("Game Speed", panel_x, panel_y + 32, panel_w, "center")
 
             local speeds = { 0.5, 1, 1.5, 2, 2.5, 3, 4}
             local speed_labels = { "x0.5", "x1", "x1.5", "x2", "x2.5", "x3", "x4"}
@@ -5422,7 +5460,7 @@ function Game:draw_bottom_pause()
             local sb_gap = 4
             local total_sb = #speeds * sb_w + (#speeds - 1) * sb_gap
             local sb_start_x = panel_x + math.floor((panel_w - total_sb) * 0.5 + 0.5)
-            local sb_y = panel_y + 50
+            local sb_y = panel_y + 47
             self._pause_speed_rects = {}
             for i, spd in ipairs(speeds) do
                 local rx = sb_start_x + (i - 1) * (sb_w + sb_gap)
@@ -5450,14 +5488,14 @@ function Game:draw_bottom_pause()
             love.graphics.setColor(self.C.WHITE)
             love.graphics.setFont(self.FONTS.PIXEL.SMALL)
             local speed_str = string.format("Current: x%.4g", cur_speed)
-            love.graphics.printf(speed_str, panel_x, panel_y + 82, panel_w, "center")
+            love.graphics.printf(speed_str, panel_x, panel_y + 76, panel_w, "center")
 
             love.graphics.setColor(self.C.GREY)
-            love.graphics.printf("Music Volume", panel_x, panel_y + 98, panel_w, "center")
+            love.graphics.printf("Music Volume", panel_x, panel_y + 91, panel_w, "center")
 
             local track_x = panel_x + 36
             local track_w = panel_w - 72
-            local track_y = panel_y + 116
+            local track_y = panel_y + 108
             local knob_r = 7
             local vol = self:get_music_volume()
             local knob_x = track_x + (vol / 100) * track_w
@@ -5478,14 +5516,36 @@ function Game:draw_bottom_pause()
                 track_y = track_y,
             }
 
+            love.graphics.setColor(self.C.GREY)
+            love.graphics.setFont(self.FONTS.PIXEL.SMALL)
+            love.graphics.printf("Language", panel_x, panel_y + 124, panel_w, "center")
+
+            local languages = I18N and I18N.available_languages and I18N.available_languages() or { "en" }
+            local lang_gap = 6
+            local lang_w = 100
+            local lang_h = 22
+            local lang_total_w = #languages * lang_w + math.max(0, #languages - 1) * lang_gap
+            local lang_x = panel_x + math.floor((panel_w - lang_total_w) * 0.5 + 0.5)
+            local lang_y = panel_y + 138
+            local current_language = I18N and I18N.get_language and I18N.get_language() or "en"
+            self._pause_language_rects = {}
+            for i, language in ipairs(languages) do
+                local r = { x = lang_x + (i - 1) * (lang_w + lang_gap), y = lang_y, w = lang_w, h = lang_h, language = language }
+                self._pause_language_rects[i] = r
+                local active = language == current_language
+                local color = active and self.C.ORANGE or self.C.PANEL
+                local label = I18N and I18N.t and I18N.t("language." .. language, nil, language) or language
+                draw_btn(r, label, color, is_pause_focused("language", i))
+            end
+
             local open_w, open_h = 140, 24
             local open_x = panel_x + math.floor((panel_w - open_w) * 0.5 + 0.5)
-            self._pause_controls_open_rect = { x = open_x, y = panel_y + 136, w = open_w, h = open_h }
+            self._pause_controls_open_rect = { x = open_x, y = panel_y + 166, w = open_w, h = open_h }
             draw_btn(self._pause_controls_open_rect, "Controls", self.C.BOOSTER, is_pause_focused("controls_open"))
 
             local back_w, back_h = 120, 24
             local back_x = panel_x + math.floor((panel_w - back_w) * 0.5 + 0.5)
-            self._pause_back_rect = { x = back_x, y = panel_y + 166, w = back_w, h = back_h }
+            self._pause_back_rect = { x = back_x, y = panel_y + 196, w = back_w, h = back_h }
             draw_btn(self._pause_back_rect, "Back", self.C.MULT, is_pause_focused("back"))
         end
     else
@@ -9786,6 +9846,12 @@ function Game:touchpressed(id, x, y)
                     elseif self.SETTINGS then
                         self.SETTINGS.GAMESPEED = r.speed
                     end
+                    return
+                end
+            end
+            for _, r in ipairs(self._pause_language_rects or {}) do
+                if self:_point_in_rect_simple(x, y, r) then
+                    self:set_language(r.language)
                     return
                 end
             end
