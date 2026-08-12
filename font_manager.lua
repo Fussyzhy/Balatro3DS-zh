@@ -14,9 +14,9 @@ local FONT_PROFILES = {
             "chinese",
             "resources/fonts/NotoSansSC-Bold.ttf",
         },
-        sizes = { small = 11, medium = 21, large = 31 },
+        sizes = { small = 10, medium = 18, large = 26 },
         filter = "linear",
-        shared_system_font_size = 14,
+        shared_system_font_size = 12,
     },
 }
 

@@ -222,7 +222,8 @@ function TopUI:draw(screen)
     local handSelected = ""
     local handHidden = (G.selectedHandHidden == true)
     if G.selectedHand and G.selectedHand ~= -1 then
-        handSelected = G.handlist[G.selectedHand]
+        local internal_name = G.handlist[G.selectedHand]
+        handSelected = I18N.hand_name(internal_name)
     end
     if handHidden then
         handSelected = "???"
