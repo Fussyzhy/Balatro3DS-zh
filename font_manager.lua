@@ -16,6 +16,7 @@ local FONT_PROFILES = {
         },
         sizes = { small = 11, medium = 21, large = 31 },
         filter = "linear",
+        shared_system_font_size = 14,
     },
 }
 
@@ -29,9 +30,13 @@ local function release_font_set(fonts)
     if type(fonts) ~= "table" then return end
     local pixel = fonts.PIXEL
     if type(pixel) ~= "table" then return end
-    release_font(pixel.SMALL)
-    release_font(pixel.MEDIUM)
-    release_font(pixel.LARGE)
+    local released = {}
+    for _, font in ipairs({ pixel.SMALL, pixel.MEDIUM, pixel.LARGE }) do
+        if font and not released[font] then
+            released[font] = true
+            release_font(font)
+        end
+    end
 end
 
 local function create_font(path, size, filter)
@@ -57,9 +62,23 @@ end
 
 function FontManager.build(language)
     local profile, resolved_language = resolve_profile(language)
-    local small, active_path = create_font_from_profile(profile, profile.sizes.small)
-    local medium = active_path and create_font(active_path, profile.sizes.medium, profile.filter)
-    local large = active_path and create_font(active_path, profile.sizes.large, profile.filter)
+    local small, active_path
+    local medium
+    local large
+
+    if profile.shared_system_font_size then
+        small, active_path = create_font(profile.paths[1], profile.shared_system_font_size, profile.filter)
+        if small then
+            medium = small
+            large = small
+        end
+    end
+
+    if not small then
+        small, active_path = create_font_from_profile(profile, profile.sizes.small)
+        medium = active_path and create_font(active_path, profile.sizes.medium, profile.filter)
+        large = active_path and create_font(active_path, profile.sizes.large, profile.filter)
+    end
 
     if not small or not medium or not large then
         release_font(small)
