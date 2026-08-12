@@ -5060,27 +5060,29 @@ function Game:draw_bottom_blind_select()
 
         love.graphics.setColor(self.C.WHITE)
         ty = y + scorePosY + 3
-        love.graphics.printf("Score at Least", tx, ty, scoreWidth, "center")
+        love.graphics.printf(I18N.t("blind.score_at_least"), tx, ty, scoreWidth, "center")
         love.graphics.setColor(self.C.RED)
         local req = tostring(target)
         local rx = x + math.floor(card_w / 2) - math.floor(scoreWidth / 2)
         love.graphics.printf(req, rx, ty + 12, scoreWidth, "center")
         
         love.graphics.setColor(self.C.WHITE)
-        req = "Reward: "..string.rep("$", reward).."+"
+        local reward_label = I18N.t("blind.reward")
+        req = reward_label..string.rep("$", reward).."+"
         rx = x + math.floor(card_w / 2) - math.floor(love.graphics.getFont():getWidth(req) / 2)
 
-        love.graphics.print("Reward: ", rx, ty + 24)
+        love.graphics.print(reward_label, rx, ty + 24)
         love.graphics.setColor(self.C.MONEY)
-        love.graphics.print("$"..string.rep("$", reward).."+", rx + love.graphics.getFont():getWidth("Reward: "), ty + 24)
+        love.graphics.print("$"..string.rep("$", reward).."+", rx + love.graphics.getFont():getWidth(reward_label), ty + 24)
 
         -- Skip UI
         if def and def.id ~= "boss" then
             love.graphics.push()
             love.graphics.setFont(self.FONTS.PIXEL.SMALL)
             love.graphics.setColor(self.C.WHITE)
-            local w = love.graphics.getFont():getWidth("or")
-            love.graphics.print("or", tx + math.floor(blindWidth/2) - math.floor(w/2) + 4, ty + 44)
+            local or_label = I18N.t("common.or")
+            local w = love.graphics.getFont():getWidth(or_label)
+            love.graphics.print(or_label, tx + math.floor(blindWidth/2) - math.floor(w/2) + 4, ty + 44)
 
             -- Skip Box
             local p = 4
@@ -5153,7 +5155,7 @@ function Game:draw_bottom_blind_select()
         self._boss_reroll_btn_rect = { x = bx, y = by, w = bw, h = bh }
         love.graphics.setColor(self.C.WHITE)
         love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-        love.graphics.printf("Reroll $10", bx, by + 5, bw, "center")
+        love.graphics.printf(I18N.t("blind.reroll"), bx, by + 5, bw, "center")
     end
 end
 
@@ -5360,20 +5362,19 @@ function Game:draw_bottom_pause()
         love.graphics.setColor(self.C.WHITE)
         love.graphics.setFont(self.FONTS.PIXEL.MEDIUM)
         if self._pause_settings_tab == "controls" then
-            love.graphics.printf("Controls", panel_x, panel_y + 4, panel_w, "center")
+            love.graphics.printf(I18N.t("settings.controls"), panel_x, panel_y + 4, panel_w, "center")
             if self._controls_listen_role then
                 love.graphics.setColor(self.C.ORANGE)
                 love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-                local listen_label = string.format(
-                    "Press button for %s (slot %d)",
-                    InputBindings.role_label(self._controls_listen_role),
-                    math.floor(tonumber(self._controls_listen_slot) or 1)
-                )
+                local listen_label = I18N.t("settings.listen", {
+                    role = InputBindings.role_label(self._controls_listen_role),
+                    slot = math.floor(tonumber(self._controls_listen_slot) or 1),
+                })
                 love.graphics.printf(listen_label, panel_x, panel_y + 24, panel_w , "center")
             else
                 love.graphics.setColor(self.C.GREY)
                 love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-                love.graphics.printf("D-pad: move  A: rebind  B: back", panel_x, panel_y + 24, panel_w, "center")
+                love.graphics.printf(I18N.t("settings.controls_nav"), panel_x, panel_y + 24, panel_w, "center")
             end
 
             local bindings = self:control_bindings()
@@ -5442,15 +5443,15 @@ function Game:draw_bottom_pause()
                 w = footer_w,
                 h = footer_h,
             }
-            draw_btn(self._pause_controls_reset_rect, "Reset", self.C.RED, is_controls_footer_focused("reset"))
-            draw_btn(self._pause_back_rect, "Back", self.C.MULT, is_controls_footer_focused("back"))
+            draw_btn(self._pause_controls_reset_rect, I18N.t("common.reset"), self.C.RED, is_controls_footer_focused("reset"))
+            draw_btn(self._pause_back_rect, I18N.t("common.back"), self.C.MULT, is_controls_footer_focused("back"))
         else
             -- ===== SETTINGS GENERAL TAB =====
-            love.graphics.printf("Settings", panel_x, panel_y + 8, panel_w, "center")
+            love.graphics.printf(I18N.t("settings.title"), panel_x, panel_y + 8, panel_w, "center")
 
             love.graphics.setColor(self.C.GREY)
             love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-            love.graphics.printf("Game Speed", panel_x, panel_y + 32, panel_w, "center")
+            love.graphics.printf(I18N.t("settings.game_speed"), panel_x, panel_y + 32, panel_w, "center")
 
             local speeds = { 0.5, 1, 1.5, 2, 2.5, 3, 4}
             local speed_labels = { "x0.5", "x1", "x1.5", "x2", "x2.5", "x3", "x4"}
@@ -5487,11 +5488,11 @@ function Game:draw_bottom_pause()
 
             love.graphics.setColor(self.C.WHITE)
             love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-            local speed_str = string.format("Current: x%.4g", cur_speed)
+            local speed_str = I18N.t("settings.current_speed", { speed = string.format("%.4g", cur_speed) })
             love.graphics.printf(speed_str, panel_x, panel_y + 76, panel_w, "center")
 
             love.graphics.setColor(self.C.GREY)
-            love.graphics.printf("Music Volume", panel_x, panel_y + 91, panel_w, "center")
+            love.graphics.printf(I18N.t("settings.music_volume"), panel_x, panel_y + 91, panel_w, "center")
 
             local track_x = panel_x + 36
             local track_w = panel_w - 72
@@ -5518,7 +5519,7 @@ function Game:draw_bottom_pause()
 
             love.graphics.setColor(self.C.GREY)
             love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-            love.graphics.printf("Language", panel_x, panel_y + 124, panel_w, "center")
+            love.graphics.printf(I18N.t("settings.language"), panel_x, panel_y + 124, panel_w, "center")
 
             local languages = I18N and I18N.available_languages and I18N.available_languages() or { "en" }
             local lang_gap = 6
@@ -5541,18 +5542,18 @@ function Game:draw_bottom_pause()
             local open_w, open_h = 140, 24
             local open_x = panel_x + math.floor((panel_w - open_w) * 0.5 + 0.5)
             self._pause_controls_open_rect = { x = open_x, y = panel_y + 166, w = open_w, h = open_h }
-            draw_btn(self._pause_controls_open_rect, "Controls", self.C.BOOSTER, is_pause_focused("controls_open"))
+            draw_btn(self._pause_controls_open_rect, I18N.t("settings.controls"), self.C.BOOSTER, is_pause_focused("controls_open"))
 
             local back_w, back_h = 120, 24
             local back_x = panel_x + math.floor((panel_w - back_w) * 0.5 + 0.5)
             self._pause_back_rect = { x = back_x, y = panel_y + 196, w = back_w, h = back_h }
-            draw_btn(self._pause_back_rect, "Back", self.C.MULT, is_pause_focused("back"))
+            draw_btn(self._pause_back_rect, I18N.t("common.back"), self.C.MULT, is_pause_focused("back"))
         end
     else
         -- ===== MAIN PAUSE PAGE =====
         love.graphics.setColor(self.C.WHITE)
         love.graphics.setFont(self.FONTS.PIXEL.MEDIUM)
-        love.graphics.printf("Paused", panel_x, panel_y + 10, panel_w, "center")
+        love.graphics.printf(I18N.t("pause.title"), panel_x, panel_y + 10, panel_w, "center")
 
         local btn_w, btn_h = 176, 28
         local btn_x = panel_x + math.floor((panel_w - btn_w) * 0.5 + 0.5)
@@ -5562,15 +5563,15 @@ function Game:draw_bottom_pause()
         self._pause_save_quit_rect = { x = btn_x, y = panel_y + 150, w = btn_w, h = btn_h }
 
         local can_save = not self:is_hand_scoring_active()
-        draw_btn(self._pause_continue_rect,  "Continue",      self.C.GREEN, is_pause_focused("continue"))
-        draw_btn(self._pause_settings_rect,  "Settings",      self.C.BOOSTER, is_pause_focused("settings"))
-        draw_btn(self._pause_new_run_rect,   "New Run",        self.C.RED, is_pause_focused("new_run"))
-        draw_btn(self._pause_save_quit_rect, "Save and Quit",  can_save and self.C.BLUE or self.C.GREY, is_pause_focused("save_quit"))
+        draw_btn(self._pause_continue_rect, I18N.t("common.continue"), self.C.GREEN, is_pause_focused("continue"))
+        draw_btn(self._pause_settings_rect, I18N.t("settings.title"), self.C.BOOSTER, is_pause_focused("settings"))
+        draw_btn(self._pause_new_run_rect, I18N.t("menu.new_run"), self.C.RED, is_pause_focused("new_run"))
+        draw_btn(self._pause_save_quit_rect, I18N.t("pause.save_quit"), can_save and self.C.BLUE or self.C.GREY, is_pause_focused("save_quit"))
 
         if not can_save then
             love.graphics.setColor(self.C.GREY)
             love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-            love.graphics.printf("Finish scoring before saving.", panel_x, panel_y + 182, panel_w, "center")
+            love.graphics.printf(I18N.t("pause.finish_scoring"), panel_x, panel_y + 182, panel_w, "center")
         elseif self._pause_save_error then
             love.graphics.setColor(self.C.RED)
             love.graphics.setFont(self.FONTS.PIXEL.SMALL)

@@ -126,6 +126,14 @@ MainMenuUI.HOW_TO_PLAY_PAGES = {
     },
 }
 
+local function how_to_play_pages()
+    if I18N and I18N.t then
+        local pages = I18N.t("tutorial.pages")
+        if type(pages) == "table" and #pages > 0 then return pages end
+    end
+    return MainMenuUI.HOW_TO_PLAY_PAGES
+end
+
 function MainMenuUI.open_how_to_play(game)
     game._menu_sub_state = "how_to_play"
     game._how_to_play_page = game._how_to_play_page or 1
@@ -307,20 +315,20 @@ function MainMenuUI.draw_main(game)
             return r.y + math.floor((r.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
         end
 
-        love.graphics.printf("Continue Run",
+        love.graphics.printf(I18N.t("menu.continue_run"),
             game._main_menu_continue_rect.x, btn_label_y(game._main_menu_continue_rect),
             game._main_menu_continue_rect.w, "center")
 
-        love.graphics.printf("New Run",
+        love.graphics.printf(I18N.t("menu.new_run"),
             game._main_menu_start_rect.x, btn_label_y(game._main_menu_start_rect),
             game._main_menu_start_rect.w, "center")
 
         love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
-        love.graphics.printf("How to Play",
+        love.graphics.printf(I18N.t("menu.how_to_play"),
             game._main_menu_how_to_play_rect.x, btn_label_y(game._main_menu_how_to_play_rect),
             game._main_menu_how_to_play_rect.w, "center")
 
-        love.graphics.printf("Collection",
+        love.graphics.printf(I18N.t("menu.collection"),
             game._main_menu_collection_rect.x, btn_label_y(game._main_menu_collection_rect),
             game._main_menu_collection_rect.w, "center")
     else
@@ -350,16 +358,16 @@ function MainMenuUI.draw_main(game)
         local function btn_label_y(r)
             return r.y + math.floor((r.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
         end
-        love.graphics.printf("Start Run",
+        love.graphics.printf(I18N.t("menu.start_run"),
             game._main_menu_start_rect.x, btn_label_y(game._main_menu_start_rect),
             game._main_menu_start_rect.w, "center")
 
         love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
-        love.graphics.printf("How to Play",
+        love.graphics.printf(I18N.t("menu.how_to_play"),
             game._main_menu_how_to_play_rect.x, btn_label_y(game._main_menu_how_to_play_rect),
             game._main_menu_how_to_play_rect.w, "center")
 
-        love.graphics.printf("Collection",
+        love.graphics.printf(I18N.t("menu.collection"),
             game._main_menu_collection_rect.x, btn_label_y(game._main_menu_collection_rect),
             game._main_menu_collection_rect.w, "center")
 
@@ -367,7 +375,7 @@ function MainMenuUI.draw_main(game)
             love.graphics.setFont(game.FONTS.PIXEL.SMALL)
             love.graphics.setColor(game.C.DARK_WHITE or game.C.GREY)
             love.graphics.printf(
-                "Seed " .. tostring(math.floor(tonumber(game.SEED) or 0)),
+                I18N.t("menu.seed", { seed = math.floor(tonumber(game.SEED) or 0) }),
                 panel_x, 240 - 50, panel_w, "center"
             )
         end
@@ -400,7 +408,7 @@ function MainMenuUI.draw_main(game)
     draw_rect_with_shadow(profile_btn_x, profile_btn_y, profile_btn_w, profile_btn_h, 4, 4, delete_color, game.C.BLOCK.SHADOW, 2)
     love.graphics.setColor(game.C.WHITE)
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
-    local delete_label = delete_confirm and "Confirm?" or "Delete Save"
+    local delete_label = delete_confirm and I18N.t("menu.confirm_delete") or I18N.t("menu.delete_save")
     love.graphics.printf(delete_label, profile_btn_x, profile_btn_y + math.floor((profile_btn_h - love.graphics.getFont():getHeight()) * 0.5 + 0.5), profile_btn_w, "center")
     game._main_menu_delete_save_rect = { x = profile_btn_x, y = profile_btn_y, w = profile_btn_w, h = profile_btn_h }
 
@@ -494,7 +502,7 @@ function MainMenuUI.draw_how_to_play(game)
     local font_s = game.FONTS.PIXEL.SMALL
     local font_m = game.FONTS.PIXEL.MEDIUM
     local C = game.C
-    local pages = MainMenuUI.HOW_TO_PLAY_PAGES
+    local pages = how_to_play_pages()
     local page_count = #pages
     local page_idx = tonumber(game._how_to_play_page) or 1
     page_idx = math.max(1, math.min(page_count, page_idx))
@@ -514,7 +522,7 @@ function MainMenuUI.draw_how_to_play(game)
 
     love.graphics.setFont(font_m)
     love.graphics.setColor(C.WHITE)
-    love.graphics.printf("How to Play", 0, margin, W, "center")
+    love.graphics.printf(I18N.t("tutorial.title"), 0, margin, W, "center")
 
     love.graphics.setColor(C.BLOCK.BACK)
     love.graphics.rectangle("fill", content_x, content_y, content_w, content_h, 6, 6)
@@ -578,11 +586,11 @@ function MainMenuUI.draw_how_to_play(game)
     draw_rect_with_shadow(back_x, back_y, back_w, back_h, 4, 4, C.MULT, C.BLOCK.SHADOW, 2)
     love.graphics.setColor(C.WHITE)
     love.graphics.setFont(font_s)
-    love.graphics.printf("Back", back_x, back_y + 5, back_w, "center")
+    love.graphics.printf(I18N.t("common.back"), back_x, back_y + 5, back_w, "center")
 
     love.graphics.setFont(font_s)
     love.graphics.setColor(C.GREY)
-    love.graphics.printf("B/X: Back   LEFT/RIGHT: Pages", 0, H - 14, W, "center")
+    love.graphics.printf(I18N.t("tutorial.footer"), 0, H - 14, W, "center")
 end
 
 function MainMenuUI.draw_deck_carousel_sprite(game, def, x, y, w, h, p)
@@ -620,7 +628,7 @@ function MainMenuUI.draw_deck_carousel_sprite(game, def, x, y, w, h, p)
     love.graphics.setColor(0.25, 0.25, 0.25, 1)
     love.graphics.rectangle("fill", x, y, w, h, 8, 8)
     love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.printf("Sprite unavailable", x, y + math.floor(h * 0.5) - 6, w, "center")
+        love.graphics.printf(I18N.t("menu.sprite_unavailable"), x, y + math.floor(h * 0.5) - 6, w, "center")
     return false
 end
 
@@ -661,7 +669,7 @@ function MainMenuUI.draw_stake_carousel_sprite(game, def, x, y, w, h, p)
     love.graphics.setColor(0.25, 0.25, 0.25, 1)
     love.graphics.rectangle("fill", x, y, w, h, 8, 8)
     love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.printf("Sprite unavailable", x, y + math.floor(h * 0.5) - 6, w, "center")
+        love.graphics.printf(I18N.t("menu.sprite_unavailable"), x, y + math.floor(h * 0.5) - 6, w, "center")
     return false
 end
 
@@ -728,7 +736,7 @@ function MainMenuUI.draw_deck_select(game)
     draw_rect_with_shadow(selectX, selectY, selectW, selectH, 4, 4, G.C.CHIPS, G.C.BLOCK.SHADOW, 2)
     love.graphics.setFont(font_m)
     love.graphics.setColor(C.WHITE)
-    love.graphics.printf("PLAY", selectX, selectY, selectW, "center")
+    love.graphics.printf(I18N.t("menu.play"), selectX, selectY, selectW, "center")
 
     game._deck_select_rects = {
         prev = { x = prev_x, y = prev_y, w = prev_w, h = prev_h, action = "prev" },
@@ -768,7 +776,7 @@ function MainMenuUI.draw_deck_select(game)
     love.graphics.setFont(font_s)
     love.graphics.setColor(C.PANEL)
     love.graphics.printf(
-        def.unlocked and (def.description or "") or def.unlock_condition and def.unlock_condition.text or "Complete the unlock condition to play this deck.",
+        def.unlocked and (def.description or "") or def.unlock_condition and def.unlock_condition.text or I18N.t("menu.complete_unlock"),
         infoX + 2*padding, infoY + 2*padding + offset, infoW - 4*padding, "center"
     )
 
@@ -860,7 +868,7 @@ function MainMenuUI.draw_deck_select(game)
     love.graphics.setFont(font_s)
     love.graphics.setColor(C.PANEL)
     love.graphics.printf(
-        stake_unlocked and (stake_def.description or "") or "Clear the previous stake first.",
+        stake_unlocked and (stake_def.description or "") or I18N.t("menu.clear_previous_stake"),
         stake_info_x + 2 * padding, stake_info_y + padding + stake_name_h, stake_info_w - 4 * padding, "center"
     )
 
@@ -878,7 +886,7 @@ function MainMenuUI.draw_deck_select(game)
 
     love.graphics.setFont(font_s)
     love.graphics.setColor(C.GREY)
-    love.graphics.printf("A/Y: Play  LEFT/RIGHT: Deck  UP/DOWN: Stake  B/X: Back", 0, H - 14, W, "center")
+    love.graphics.printf(I18N.t("menu.deck_controls"), 0, H - 14, W, "center")
 end
 
 function MainMenuUI.handle_touch(game, x, y)

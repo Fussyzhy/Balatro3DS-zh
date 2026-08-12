@@ -112,19 +112,19 @@ function TopUI:draw(screen)
     
     
     if is_blind_select then
-        TopUI.center_text("Choose blind", ix - sysDepth * textHeight, iy -2, iw, ih)
+        TopUI.center_text(I18N.t("blind.choose"), ix - sysDepth * textHeight, iy -2, iw, ih)
 
     elseif G.STATE == G.STATES.ROUND_EVAL then
         love.graphics.setColor(G.C.WHITE)
         love.graphics.setFont(G.FONTS.PIXEL.MEDIUM)
-        TopUI.center_text("Round won!", ix - sysDepth * textHeight, iy - 6, iw, math.floor(ih * 0.55))
+        TopUI.center_text(I18N.t("round.won"), ix - sysDepth * textHeight, iy - 6, iw, math.floor(ih * 0.55))
         local bi = G.current_blind_index or 1
         G:draw_blind_chip_anim(bi, ix + math.floor(iw / 2) - sysDepth * signHeight, iy + math.floor(ih * 0.72), 1.05)
 
     elseif G.STATE == G.STATES.GAME_OVER then
         love.graphics.setColor(G.C.MULT or G.C.WHITE)
         love.graphics.setFont(G.FONTS.PIXEL.MEDIUM)
-        TopUI.center_text("Game Over", ix, iy - 6, iw, math.floor(ih * 0.55))
+        TopUI.center_text(I18N.t("game_over.title"), ix, iy - 6, iw, math.floor(ih * 0.55))
         local bi = G.current_blind_index or 1
         G:draw_blind_chip_anim(bi, ix + math.floor(iw / 2) - sysDepth * signHeight, iy + math.floor(ih * 0.72), 0.9)
 
@@ -144,11 +144,11 @@ function TopUI:draw(screen)
         love.graphics.setColor(G.C.WHITE)
         love.graphics.setFont(G.FONTS.PIXEL.MEDIUM)
         local sess = G.booster_session
-        local t1 = (sess and sess.title) or "Booster Pack"
+        local t1 = (sess and sess.title) or I18N.t("booster.title")
         TopUI.center_text(t1, ix, iy - 4, iw, math.floor(ih * 0.45))
         love.graphics.setFont(G.FONTS.PIXEL.MEDIUM)
         local pr = sess and tonumber(sess.picks_remaining) or 0
-        TopUI.center_text("Picks left: " .. tostring(pr), ix - sysDepth * textHeight, iy + math.floor(ih * 0.6), iw, math.floor(ih * 0.35))
+        TopUI.center_text(I18N.t("booster.picks_left", { count = pr }), ix - sysDepth * textHeight, iy + math.floor(ih * 0.6), iw, math.floor(ih * 0.35))
 
     else
         -- Score Requirements Box
@@ -172,7 +172,7 @@ function TopUI:draw(screen)
         
         love.graphics.setColor(G.C.WHITE)
         love.graphics.setFont(G.FONTS.PIXEL.SMALL)
-        love.graphics.print("Score at least", ix - sysDepth * textHeight, iy - 2)
+        love.graphics.print(I18N.t("hud.score_at_least"), ix - sysDepth * textHeight, iy - 2)
 
         love.graphics.setColor(G.C.RED)
         love.graphics.setFont(G.FONTS.PIXEL.MEDIUM)
@@ -182,7 +182,7 @@ function TopUI:draw(screen)
 
         love.graphics.setColor(G.C.WHITE)
         love.graphics.setFont(G.FONTS.PIXEL.SMALL)
-        local rewardText = "Reward: "
+        local rewardText = I18N.t("hud.reward")
         local rewardY = iy + math.floor(G.FONTS.PIXEL.SMALL_HEIGHT/2) + 6 + G.FONTS.PIXEL.MEDIUM_HEIGHT
         love.graphics.print(rewardText, ix - sysDepth * textHeight, rewardY)
         love.graphics.setColor(G.C.MONEY)
@@ -198,8 +198,7 @@ function TopUI:draw(screen)
     
     love.graphics.setFont(G.FONTS.PIXEL.SMALL)
     love.graphics.setColor(G.C.WHITE)
-    love.graphics.print("Round", ix, iy - 3)
-    love.graphics.print("Score", ix, iy + 7)
+    love.graphics.printf(I18N.t("hud.round_score"), ix, iy - 3, 30, "left")
 
     love.graphics.setColor(G.C.PANEL)
     local paneOffset = 30
@@ -236,9 +235,9 @@ function TopUI:draw(screen)
     love.graphics.setFont(G.FONTS.PIXEL.SMALL)
     local handLevel = G.selectedHandLevel or 1
     if(handSelected ~= "" and not handHidden) then
-        love.graphics.printf("lvl." .. handLevel, ix - sysDepth * textHeight, posY, iw, "right")
+        love.graphics.printf(I18N.t("hud.level", { level = handLevel }), ix - sysDepth * textHeight, posY, iw, "right")
     elseif handSelected ~= "" then
-        love.graphics.printf("lvl.?", ix - sysDepth * textHeight, posY, iw, "right")
+        love.graphics.printf(I18N.t("hud.level", { level = "?" }), ix - sysDepth * textHeight, posY, iw, "right")
     end
 
     -- X
@@ -277,10 +276,10 @@ function TopUI:draw(screen)
     local fieldWidth = 46
     local fieldHeight = 43
     local padding = 4
-    TopUI.LabeledField("Hands", G.hands, fieldsPositionX, fieldsPositionY, fieldWidth, fieldHeight, G.C.BLUE)
-    TopUI.LabeledField("Discards", G.discards, fieldsPositionX + fieldWidth + padding, fieldsPositionY, fieldWidth, fieldHeight, G.C.RED)
-    TopUI.LabeledField("Ante", G.ante, fieldsPositionX + (fieldWidth + padding) * 2, fieldsPositionY, fieldWidth, fieldHeight, G.C.ORANGE)
-    TopUI.LabeledField("Round", G.round, fieldsPositionX + (fieldWidth + padding) * 2, fieldsPositionY + fieldHeight + padding, fieldWidth, fieldHeight, G.C.RED)
+    TopUI.LabeledField(I18N.t("hud.hands"), G.hands, fieldsPositionX, fieldsPositionY, fieldWidth, fieldHeight, G.C.BLUE)
+    TopUI.LabeledField(I18N.t("hud.discards"), G.discards, fieldsPositionX + fieldWidth + padding, fieldsPositionY, fieldWidth, fieldHeight, G.C.RED)
+    TopUI.LabeledField(I18N.t("hud.ante"), G.ante, fieldsPositionX + (fieldWidth + padding) * 2, fieldsPositionY, fieldWidth, fieldHeight, G.C.ORANGE)
+    TopUI.LabeledField(I18N.t("hud.round"), G.round, fieldsPositionX + (fieldWidth + padding) * 2, fieldsPositionY + fieldHeight + padding, fieldWidth, fieldHeight, G.C.RED)
     TopUI.LabeledField("", "$"..tostring(G.money), fieldsPositionX, fieldsPositionY + fieldHeight + padding, fieldWidth * 2 + padding, fieldHeight, G.C.MONEY)
 
     -- Joker panel (left 2/3 of top screen).

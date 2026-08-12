@@ -21,18 +21,18 @@ function GameOverUI.draw_bottom(game)
 
     love.graphics.setColor(game.C.MULT or game.C.ORANGE)
     love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
-    love.graphics.print("Game Over", panel_x + 8, panel_y + 6)
+    love.graphics.print(I18N.t("game_over.title"), panel_x + 8, panel_y + 6)
 
     love.graphics.setColor(game.C.WHITE)
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
     love.graphics.print(blind_label, panel_x + 8, panel_y + 30)
 
     love.graphics.setColor(game.C.GREY)
-    love.graphics.print(string.format("Score %d / %d", final_score, target), panel_x + 8, panel_y + 44)
-    love.graphics.print(string.format("Ante %d  ·  Round %d", ante, round_n), panel_x + 8, panel_y + 58)
+    love.graphics.print(I18N.t("round.score", { score = final_score, target = target }), panel_x + 8, panel_y + 44)
+    love.graphics.print(I18N.t("round.ante_round", { ante = ante, round = round_n }), panel_x + 8, panel_y + 58)
 
     love.graphics.setColor(game.C.WHITE)
-    love.graphics.printf("You ran out of hands before beating this blind.", panel_x + 8, panel_y + 78, panel_w - 16, "left")
+    love.graphics.printf(I18N.t("game_over.reason"), panel_x + 8, panel_y + 78, panel_w - 16, "left")
 
     game._game_over_continue_rect = { x = panel_x + panel_w - 84, y = panel_y + panel_h - 26, w = 74, h = 18 }
     love.graphics.setColor(game.C.ORANGE)
@@ -40,7 +40,7 @@ function GameOverUI.draw_bottom(game)
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
     love.graphics.setColor(game.C.WHITE)
     local cty = game._game_over_continue_rect.y + math.floor((game._game_over_continue_rect.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
-    love.graphics.printf("Continue", game._game_over_continue_rect.x, cty, game._game_over_continue_rect.w, "center")
+    love.graphics.printf(I18N.t("common.continue"), game._game_over_continue_rect.x, cty, game._game_over_continue_rect.w, "center")
 end
 
 function GameOverUI.handle_touch(game, x, y)

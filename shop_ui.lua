@@ -301,7 +301,7 @@ function ShopUI.draw_bottom_shop(game)
     love.graphics.rectangle("line", panel_x, panel_y, panel_w, panel_h, 4, 4)
 
     local padding = 4
-    local shop_continue_rect = { x = panel_x + padding, y = panel_y + padding, w = 74, h = 45, color = game.C.RED, text = "Next\nRound", lines = 2 }
+    local shop_continue_rect = { x = panel_x + padding, y = panel_y + padding, w = 74, h = 45, color = game.C.RED, text = I18N.t("shop.next_round"), lines = 2 }
     local reroll_cost = game:shop_current_reroll_cost()
     local can_reroll = game:can_afford_price(reroll_cost)
     local reroll_color = can_reroll and game.C.GREEN or game.C.GREY
@@ -311,7 +311,7 @@ function ShopUI.draw_bottom_shop(game)
         w = shop_continue_rect.w,
         h = shop_continue_rect.h,
         color = reroll_color,
-        text = "Reroll\n$" .. tostring(reroll_cost),
+        text = I18N.t("shop.reroll", { cost = reroll_cost }),
         lines = 2
     }
     game._shop_continue_rect = { x = shop_continue_rect.x, y = shop_continue_rect.y, w = shop_continue_rect.w, h = shop_continue_rect.h }
@@ -352,7 +352,7 @@ function ShopUI.draw_bottom_shop(game)
 
     love.graphics.setColor(game.C.BLOCK.BACK)
     love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
-    local text = "VOUCHER"
+    local text = I18N.t("shop.voucher")
     love.graphics.print(text, panel_x -1 , voucherPanel.y + love.graphics.getFont():getWidth(text) / 2 + voucherPanel.h / 2 ,math.rad(-90))
 end
 

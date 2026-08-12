@@ -459,7 +459,7 @@ function Game:draw_deck_select_ui()
 
     love.graphics.setFont(font_m)
     love.graphics.setColor(self.C.WHITE)
-    love.graphics.printf("Choose Deck", 0, 8, W, "center")
+    love.graphics.printf(I18N.t("menu.choose_deck"), 0, 8, W, "center")
 
     local deck_list = DECK_DEFS or {}
     local sel_idx   = tonumber(self._deck_select_idx) or 1
@@ -513,14 +513,14 @@ function Game:draw_deck_select_ui()
         love.graphics.setFont(font_s)
         love.graphics.setColor(sel_def.unlocked and self.C.WHITE or self.C.GREY)
         love.graphics.printf(
-            sel_def.unlocked and sel_def.description or "Not yet unlocked.",
+            sel_def.unlocked and sel_def.description or I18N.t("menu.not_unlocked"),
             list_x, desc_y, list_w, "left"
         )
     end
 
     love.graphics.setFont(font_s)
     love.graphics.setColor(self.C.GREY)
-    love.graphics.printf("A/Y: Confirm  B/X: Back", 0, H - 18, W, "center")
+    love.graphics.printf(I18N.t("menu.confirm_back"), 0, H - 18, W, "center")
 end
 
 function Game:draw_stake_select_ui()
@@ -533,7 +533,7 @@ function Game:draw_stake_select_ui()
 
     love.graphics.setFont(font_m)
     love.graphics.setColor(self.C.WHITE)
-    love.graphics.printf("Choose Stake", 0, 8, W, "center")
+    love.graphics.printf(I18N.t("menu.choose_stake"), 0, 8, W, "center")
 
     local stake_list = STAKE_DEFS or {}
     local sel_idx    = tonumber(self._stake_select_idx) or 1
@@ -581,14 +581,14 @@ function Game:draw_stake_select_ui()
         love.graphics.setFont(font_s)
         love.graphics.setColor(sel_def.unlocked and self.C.WHITE or self.C.GREY)
         love.graphics.printf(
-            sel_def.unlocked and sel_def.description or "Not yet unlocked.",
+            sel_def.unlocked and sel_def.description or I18N.t("menu.not_unlocked"),
             list_x, desc_y, list_w, "left"
         )
     end
 
     love.graphics.setFont(font_s)
     love.graphics.setColor(self.C.GREY)
-    love.graphics.printf("A/Y: Confirm  B/X: Back", 0, H - 18, W, "center")
+    love.graphics.printf(I18N.t("menu.confirm_back"), 0, H - 18, W, "center")
 end
 
 function Game:deck_select_touch(x, y)

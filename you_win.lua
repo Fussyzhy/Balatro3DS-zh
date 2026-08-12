@@ -6,7 +6,7 @@ end
 
 YouWinUI.information = {
     {
-        title = "Best Hand",
+        title_key = "win.best_hand",
         color = function(G)
             return G.C.MULT
         end,
@@ -15,16 +15,16 @@ YouWinUI.information = {
         end,
     },
     {
-        title = "Most Played Hand",
+        title_key = "win.most_played_hand",
         content = function(G)
             if G.get_most_played_hand_name then
                 return G:get_most_played_hand_name()
             end
-            return "None"
+            return I18N.t("common.none")
         end,
     },
     {
-        title = "Cards Played",
+        title_key = "win.cards_played",
         color = function(G)
             return G.C.CHIPS
         end,
@@ -33,7 +33,7 @@ YouWinUI.information = {
         end,
     },
     {
-        title = "Cards Discarded",
+        title_key = "win.cards_discarded",
         color = function(G)
             return G.C.MULT
         end,
@@ -42,7 +42,7 @@ YouWinUI.information = {
         end,
     },
     {
-        title = "Cards Purchased",
+        title_key = "win.cards_purchased",
         color = function(G)
             return G.C.MONEY
         end,
@@ -51,7 +51,7 @@ YouWinUI.information = {
         end,
     },
     {
-        title = "Times Rerolled",
+        title_key = "win.times_rerolled",
         color = function(G)
             return G.C.GREEN
         end,
@@ -60,9 +60,9 @@ YouWinUI.information = {
         end,
     },
     {
-        title = "Seed",
+        title_key = "win.seed",
         content = function(G)
-            if G.SEED == nil then return "Unknown" end
+            if G.SEED == nil then return I18N.t("common.unknown") end
             return tostring(G.SEED)
         end,
     },
@@ -70,7 +70,7 @@ YouWinUI.information = {
 
 YouWinUI.buttons = {
     {
-        text = "New Run",
+        text_key = "menu.new_run",
         callback = function(game)
             if game.continue_from_you_win_new_run then
                 game:continue_from_you_win_new_run()
@@ -81,7 +81,7 @@ YouWinUI.buttons = {
         end,
     },
     {
-        text = "Main Menu",
+        text_key = "win.main_menu",
         callback = function(game)
             if game.continue_from_you_win_main_menu then
                 game:continue_from_you_win_main_menu()
@@ -92,7 +92,7 @@ YouWinUI.buttons = {
         end,
     },
     {
-        text = "Endless Mode",
+        text_key = "win.endless_mode",
         callback = function(game)
             if game.continue_from_you_win_endless then
                 game:continue_from_you_win_endless()
@@ -117,7 +117,7 @@ function YouWinUI.drawTop(game)
 
     local padding = 4
 
-    local winText = "You Win!"
+    local winText = I18N.t("win.title")
     local font_l = G.FONTS.PIXEL.LARGE
     local font_s = G.FONTS.PIXEL.SMALL
     local text_h = font_l:getHeight()
@@ -136,8 +136,8 @@ function YouWinUI.drawTop(game)
     local tabW = 64
 
     for _, info in ipairs(YouWinUI.information) do
-        local title = info.title or "Unknown"
-        local content = info.content and info.content(game) or "N/A"
+        local title = I18N.t(info.title_key or "common.unknown")
+        local content = info.content and info.content(game) or I18N.t("common.not_available")
         local color = info.color and info.color(game) or C.WHITE
 
         love.graphics.setColor(C.LIGHT_GREY)
@@ -176,7 +176,7 @@ function YouWinUI.drawBottom(game)
     game._you_win_button_rects = {}
 
     for i, button in ipairs(YouWinUI.buttons) do
-        local text = button.text
+        local text = I18N.t(button.text_key or "common.unknown")
         local color = button.color and button.color(game) or C.MULT
         local bx = panel_x + padding
         local by = button_y

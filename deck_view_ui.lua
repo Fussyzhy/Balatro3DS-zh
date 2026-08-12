@@ -378,7 +378,7 @@ function DeckViewUI.draw_hand_level_row(game, x, y, w, hand_name, level, chips, 
 
     love.graphics.setFont(G.FONTS.PIXEL.SMALL)
     love.graphics.setColor(G.C.PANEL)
-    center_text_in_rect("lvl." .. tostring(level), inner_x - textDepth, inner_y, HAND_LEVEL_W, inner_h)
+    center_text_in_rect(I18N.t("hud.level", { level = level }), inner_x - textDepth, inner_y, HAND_LEVEL_W, inner_h)
     love.graphics.setColor(G.C.WHITE)
     center_text_in_rect(hand_name or "", name_x - textDepth, inner_y, name_w, inner_h)
     center_text_in_rect(tostring(chips), chips_x - textDepth, inner_y, HAND_CHIP_W, inner_h)
@@ -410,7 +410,7 @@ function DeckViewUI.draw_hand_level_panel(screen, game, textDepth, buttonDepth)
 
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
     love.graphics.setColor(game.C.WHITE)
-    love.graphics.printf("Poker Hands", content_x - textDepth, row_y, content_w, "center")
+    love.graphics.printf(I18N.t("deck_view.poker_hands"), content_x - textDepth, row_y, content_w, "center")
     row_y = row_y + HAND_PANEL_HEADER_H
 
     local handlist = game.handlist or {}
@@ -443,7 +443,7 @@ function DeckViewUI.draw_bottom(game)
     local count = game.deck and game.deck:size() or #(game._deck_view_nodes or {})
     love.graphics.setColor(game.C.WHITE)
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
-    love.graphics.printf("Draw pile (" .. tostring(count) .. ")", 0, 4, SCREEN_W, "center")
+    love.graphics.printf(I18N.t("deck_view.draw_pile", { count = count }), 0, 4, SCREEN_W, "center")
 
     local SUIT_COLORS = {
         Hearts = G.C.Hearts or { 0.92, 0.25, 0.28 },
@@ -477,9 +477,9 @@ function DeckViewUI.draw_bottom(game)
 
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
     love.graphics.setColor(game.C.WHITE or { 0.65, 0.65, 0.65, 1 })
-    local footer = "SELECT / B to close"
+    local footer = I18N.t("deck_view.close")
     if not game._deck_view_hand_panel_open and (tonumber(game._deck_view_hand_panel_t) or 0) <= 0.01 then
-        footer = footer .. "  Right: Hand Levels"
+        footer = footer .. "  " .. I18N.t("deck_view.hand_levels")
     end
     love.graphics.printf(footer, 0, SCREEN_H - m.footer_h, SCREEN_W, "center")
     love.graphics.setColor(1, 1, 1, 1)
@@ -692,7 +692,7 @@ function DeckViewUI.draw_top(screen, game)
 
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
     love.graphics.setColor(game.C.WHITE or game.C.GREY)
-    love.graphics.print("Vouchers", margin_x - textDepth, panel_y + 2)
+    love.graphics.print(I18N.t("deck_view.vouchers"), margin_x - textDepth, panel_y + 2)
 
     if n_vouchers > 0 then
         local step, _, rel_start = compute_fanned_step(n_vouchers, inner_w, VOUCHER_CELL_W, VOUCHER_GAP)
@@ -703,7 +703,7 @@ function DeckViewUI.draw_top(screen, game)
         end
     else
         love.graphics.setColor(game.C.WHITE)
-        love.graphics.printf("None", margin_x - textDepth, voucher_row_y + math.floor(VOUCHER_ROW_H * 0.35), inner_w, "center")
+        love.graphics.printf(I18N.t("common.none"), margin_x - textDepth, voucher_row_y + math.floor(VOUCHER_ROW_H * 0.35), inner_w, "center")
     end
 
     local rank_section_y = voucher_row_y + VOUCHER_ROW_H + 8
