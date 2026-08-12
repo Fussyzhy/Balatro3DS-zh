@@ -1,5 +1,7 @@
 ## Balatro3DS
 
+**English** | [简体中文](README.zh-CN.md)
+
 Balatro3DS is a fan-made port/implementation of the game Balatro targeting the Nintendo 3DS, built with Lua and LÖVE.
 
 ### Requirements
