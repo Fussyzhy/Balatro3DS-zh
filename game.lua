@@ -5309,7 +5309,7 @@ function Game:draw_bottom_pause()
         local btn_font = (r.h and r.h <= 20) and self.FONTS.PIXEL.SMALL or self.FONTS.PIXEL.MEDIUM
         love.graphics.setFont(btn_font)
         local ty = r.y + math.floor((r.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
-        love.graphics.printf(label, r.x, ty - 1, r.w, "center")
+        love.graphics.printf(TooltipDraw.fit_text(btn_font, label, r.w - 8), r.x + 4, ty - 1, r.w - 8, "center")
     end
 
     local function draw_cell(r, label, value, hint, focused, listening)

@@ -856,37 +856,12 @@ function Joker:get_tooltip_body_lines()
 end
 
 function Joker:resolve_tooltip_line_segments(line_def)
-    if type(line_def) == "string" then
-        return TooltipDraw.build_segments_from_text(line_def)
-    end
-    if type(line_def) ~= "table" then
-        return { { text = tostring(line_def or ""), color_key = nil } }
-    end
-    if type(line_def.segments) == "table" then
-        local out = {}
-        for _, seg in ipairs(line_def.segments) do
-            if type(seg) == "table" then
-                local text = tostring(seg.text or seg[1] or "")
-                local color_key = seg.color_key or seg[2]
-                TooltipDraw.append_segment(out, text, color_key)
-            end
+    return TooltipDraw.resolve_line(line_def, function(def, text)
+        if def.kind == "current" then
+            return self:get_live_current_tooltip_text(text, def.runtime)
         end
-        if #out > 0 then return out end
-    end
-
-    if line_def.kind == "rarity_badge" then
-        local r = tonumber(line_def.rarity) or 1
-        if r < 1 then r = 1 end
-        if r > 4 then r = 4 end
-        local text = tostring(line_def.text or "")
-        return { { text = text, rarity_badge = true, rarity_index = r } }
-    end
-
-    local text = tostring(line_def.text or "")
-    if line_def.kind == "current" then
-        text = self:get_live_current_tooltip_text(text, line_def.runtime)
-    end
-    return TooltipDraw.build_segments_from_text(text)
+        return text
+    end)
 end
 
 function Joker:draw_tooltip(draw_x, draw_y)

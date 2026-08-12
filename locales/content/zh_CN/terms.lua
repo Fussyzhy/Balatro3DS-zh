@@ -54,6 +54,10 @@ return {
     ["term.incompatible"] = "不兼容",
     ["term.planet_upgrade"] = "提升“{hand}”的基础筹码和倍率",
     ["term.fool_current"] = "当前：{name}",
+    ["tooltip.chips"] = "{value} 筹码",
+    ["tooltip.mult"] = "{value} 倍率",
+    ["tooltip.xmult"] = "X{value} 倍率",
+    ["tooltip.money"] = "${value}",
 
     ["edition.foil.name"] = "闪箔",
     ["edition.foil.description"] = "闪箔：计分时 +50 筹码",
@@ -65,9 +69,9 @@ return {
     ["edition.negative.description"] = "负片：+1 小丑牌栏位",
 
     ["enhancement.bonus.name"] = "奖励牌",
-    ["enhancement.bonus.description"] = "+30 筹码",
+    ["enhancement.bonus.description"] = { { text = "+30 筹码", color_key = "CHIPS" } },
     ["enhancement.mult.name"] = "倍率牌",
-    ["enhancement.mult.description"] = "+4 倍率",
+    ["enhancement.mult.description"] = { { text = "+4 倍率", color_key = "MULT" } },
     ["enhancement.wild.name"] = "万能牌",
     ["enhancement.wild.description"] = "可视为任意花色",
     ["enhancement.glass.name"] = "玻璃牌",
@@ -82,7 +86,7 @@ return {
     ["enhancement.lucky.description"] = { "1/5 概率 +20 倍率", "1/15 概率获得 $20" },
 
     ["seal.gold.name"] = "金色蜡封",
-    ["seal.gold.description"] = "计分时获得 $3",
+    ["seal.gold.description"] = { { text = "计分时获得 $3", color_key = "MONEY" } },
     ["seal.red.name"] = "红色蜡封",
     ["seal.red.description"] = "额外触发此牌 1 次",
     ["seal.blue.name"] = "蓝色蜡封",

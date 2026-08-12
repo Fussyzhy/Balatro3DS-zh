@@ -154,7 +154,7 @@ local names = {
 }
 
 local descriptions = {
-    j_joker = "+4 倍率",
+    j_joker = { { text = "+4 倍率", color_key = "MULT" } },
     j_greedy_joker = { "打出的方片牌计分时", "+3 倍率" },
     j_lusty_joker = { "打出的红桃牌计分时", "+3 倍率" },
     j_wrathful_joker = { "打出的黑桃牌计分时", "+3 倍率" },
@@ -175,8 +175,8 @@ local descriptions = {
     j_mime = "再次触发所有留在手中的卡牌能力",
     j_credit_card = "可负债至 -$20",
     j_ceremonial = { "选择盲注时，摧毁右侧的小丑牌", "并将其出售价值的两倍永久加入倍率", { kind = "current", text = "" } },
-    j_banner = "每剩余 1 次弃牌 +30 筹码",
-    j_mystic_summit = "剩余 0 次弃牌时 +15 倍率",
+    j_banner = { { text = "每剩余 1 次弃牌 +30 筹码", color_key = "CHIPS" } },
+    j_mystic_summit = { { text = "剩余 0 次弃牌时 +15 倍率", color_key = "MULT" } },
     j_marble = "选择盲注时向牌组加入 1 张石头牌",
     j_loyalty_card = { "每打出 6 手牌获得 X4 倍率", { kind = "current", text = "" } },
     j_8_ball = { "每张计分的 8 有 1/4 概率生成 1 张塔罗牌", "必须有空间" },

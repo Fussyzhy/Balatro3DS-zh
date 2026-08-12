@@ -12,6 +12,9 @@ local TOOLTIP_OUTER_PAD_X = 3
 local TOOLTIP_OUTER_PAD_Y = 3
 local RARITY_BADGE_PAD_X = 10
 local RARITY_BADGE_PAD_Y = 3
+local TOOLTIP_SCREEN_MARGIN = 2
+local TOOLTIP_MAX_W = 312
+local TOOLTIP_MAX_H = 236
 
 local HAND_NAME_PHRASES = {
     "flush five",
@@ -39,6 +42,181 @@ function M.append_segment(segments, text, color_key)
         return
     end
     table.insert(segments, { text = text, color_key = color_key })
+end
+
+local function utf8_chars(text)
+    local chars = {}
+    text = tostring(text or "")
+    local index = 1
+    while index <= #text do
+        local byte = text:byte(index)
+        local length = 1
+        if byte and byte >= 0xF0 then
+            length = 4
+        elseif byte and byte >= 0xE0 then
+            length = 3
+        elseif byte and byte >= 0xC0 then
+            length = 2
+        end
+        chars[#chars + 1] = text:sub(index, math.min(#text, index + length - 1))
+        index = index + length
+    end
+    return chars
+end
+
+local function clone_segment(seg, text)
+    local out = {}
+    for key, value in pairs(seg or {}) do out[key] = value end
+    out.text = text
+    return out
+end
+
+local function append_wrapped_segment(line, segment, text)
+    if text == "" then return end
+    local last = line[#line]
+    if last and last.color_key == segment.color_key
+        and last.rarity_badge == segment.rarity_badge
+        and last.rarity_index == segment.rarity_index then
+        last.text = (last.text or "") .. text
+    else
+        line[#line + 1] = clone_segment(segment, text)
+    end
+end
+
+function M.wrap_segments(font, segments, max_width)
+    if not font then return { segments or {} } end
+    max_width = math.max(1, tonumber(max_width) or 1)
+    if #segments == 1 and segments[1].rarity_badge then return { segments } end
+
+    local lines = {}
+    local line = {}
+    local line_width = 0
+
+    local function current_width()
+        local width = 0
+        for _, item in ipairs(line) do
+            width = width + font:getWidth(item.text or "")
+        end
+        return width
+    end
+
+    local function push_line()
+        if #line > 0 then lines[#lines + 1] = line end
+        line = {}
+        line_width = 0
+    end
+
+    for _, segment in ipairs(segments or {}) do
+        local buffer = ""
+        for _, char in ipairs(utf8_chars(segment.text or "")) do
+            if char == "\n" then
+                append_wrapped_segment(line, segment, buffer)
+                buffer = ""
+                push_line()
+            else
+                local candidate = buffer .. char
+                local candidate_width = font:getWidth(candidate)
+                if line_width + candidate_width <= max_width or (line_width == 0 and buffer == "") then
+                    buffer = candidate
+                else
+                    append_wrapped_segment(line, segment, buffer)
+                    line_width = current_width()
+                    buffer = ""
+
+                    if char:match("%s") then
+                        push_line()
+                    else
+                        push_line()
+                        buffer = char
+                    end
+                end
+            end
+        end
+        append_wrapped_segment(line, segment, buffer)
+        line_width = line_width + font:getWidth(buffer)
+    end
+    push_line()
+    if #lines == 0 then lines[1] = { { text = "", color_key = nil } } end
+    return lines
+end
+
+local function truncate_resolved_lines(lines, max_lines, font, max_width)
+    if #lines <= max_lines then return lines end
+    local out = {}
+    for i = 1, math.max(1, max_lines) do out[i] = lines[i] end
+    local last = out[#out]
+    if last and not (#last == 1 and last[1].rarity_badge) then
+        local tail = last[#last]
+        if tail then
+            local before_tail_w = 0
+            for i = 1, #last - 1 do
+                before_tail_w = before_tail_w + font:getWidth(last[i].text or "")
+            end
+            tail.text = M.fit_text(font, tostring(tail.text or "") .. "...",
+                math.max(1, max_width - before_tail_w))
+        end
+    end
+    return out
+end
+
+function M.fit_text(font, text, max_width)
+    text = tostring(text or "")
+    max_width = math.max(1, tonumber(max_width) or 1)
+    if not font or font:getWidth(text) <= max_width then return text end
+
+    local suffix = "..."
+    if font and font:getWidth(suffix) > max_width then
+        suffix = "."
+    end
+    local out = ""
+    for _, char in ipairs(utf8_chars(text)) do
+        if font:getWidth(out .. char .. suffix) > max_width then break end
+        out = out .. char
+    end
+    if out == "" then return font and font:getWidth(suffix) <= max_width and suffix or "" end
+    return out .. suffix
+end
+
+function M.segments_from_parts(parts)
+    local segments = {}
+    for _, part in ipairs(parts or {}) do
+        if type(part) == "string" then
+            M.append_segment(segments, part, nil)
+        elseif type(part) == "table" then
+            M.append_segment(segments, tostring(part.text or part[1] or ""), part.color_key or part[2])
+        end
+    end
+    return segments
+end
+
+function M.resolve_line(line_def, text_resolver)
+    if type(line_def) == "string" then
+        return M.build_segments_from_text(line_def)
+    end
+    if type(line_def) ~= "table" then
+        return M.build_segments_from_text(tostring(line_def or ""))
+    end
+    if type(line_def.segments) == "table" then
+        local segments = M.segments_from_parts(line_def.segments)
+        if #segments > 0 then return segments end
+    end
+    if line_def.kind == "rarity_badge" then
+        local rarity = math.max(1, math.min(4, tonumber(line_def.rarity) or 1))
+        return { {
+            text = tostring(line_def.text or ""),
+            rarity_badge = true,
+            rarity_index = rarity,
+        } }
+    end
+
+    local text = tostring(line_def.text or "")
+    if type(text_resolver) == "function" then
+        text = tostring(text_resolver(line_def, text) or "")
+    end
+    if type(line_def.color_key) == "string" and line_def.color_key ~= "" then
+        return { { text = text, color_key = line_def.color_key } }
+    end
+    return M.build_segments_from_text(text)
 end
 
 local function apply_range(paints, priorities, s, e, color_key, prio)
@@ -92,6 +270,20 @@ function M.build_segments_from_text(raw_text)
 
     local paints = {}
     local priorities = {}
+    local language = I18N and I18N.get_language and I18N.get_language() or "en"
+
+    if language == "zh_CN" then
+        paint_phrase_ranges(text, paints, priorities, "小丑牌", "MULT", 50)
+        paint_phrase_ranges(text, paints, priorities, "塔罗牌", "PURPLE", 50)
+        paint_phrase_ranges(text, paints, priorities, "星球牌", "CHIPS", 50)
+        paint_phrase_ranges(text, paints, priorities, "幻灵牌", "PURPLE", 49)
+        paint_phrase_ranges(text, paints, priorities, "弃牌", "RED", 56)
+        paint_phrase_ranges(text, paints, priorities, "概率", "CHANCE", 70)
+        paint_pattern_ranges(text, paints, priorities, "%$%d+", "MONEY", 80)
+        paint_pattern_ranges(text, paints, priorities, "[Xx]%d+[%d%.]*%s*倍率", "MULT", 80)
+        paint_pattern_ranges(text, paints, priorities, "[%+%-]?%d+[%d%.]*%s*倍率", "MULT", 80)
+        paint_pattern_ranges(text, paints, priorities, "[%+%-]?%d+[%d%.]*%s*筹码", "CHIPS", 80)
+    end
 
     paint_phrase_ranges(text, paints, priorities, "tarot", "PURPLE", 50)
     paint_phrase_ranges(text, paints, priorities, "planet", "CHIPS", 50)
@@ -184,8 +376,38 @@ function M.draw_tooltip_layout(font, title, resolved_lines, draw_x, draw_y, anch
     local prev_r, prev_g, prev_b, prev_a = love.graphics.getColor()
     love.graphics.setFont(font)
 
-    local header_w = font:getWidth(title)
+    local sw, sh = 320, 240
+    if love.graphics.getWidth then
+        sw = love.graphics.getWidth("bottom")
+        if not sw or sw <= 0 then sw = love.graphics.getWidth() end
+        if not sw or sw <= 0 then sw = 320 end
+    end
+    if love.graphics.getHeight then
+        sh = love.graphics.getHeight("bottom")
+        if not sh or sh <= 0 then sh = love.graphics.getHeight() end
+        if not sh or sh <= 0 then sh = 240 end
+    end
+
+    local max_box_w = math.min(TOOLTIP_MAX_W, sw - TOOLTIP_SCREEN_MARGIN * 2)
+    local max_inner_w = math.max(1, max_box_w - TOOLTIP_OUTER_PAD_X * 2)
+    local max_text_w = math.max(1, max_inner_w - TOOLTIP_PAD_X * 2)
+    local wrapped_lines = {}
+    for _, segments in ipairs(resolved_lines) do
+        for _, wrapped in ipairs(M.wrap_segments(font, segments, max_text_w)) do
+            wrapped_lines[#wrapped_lines + 1] = wrapped
+        end
+    end
+    resolved_lines = wrapped_lines
+
+    local max_box_h = math.min(TOOLTIP_MAX_H, sh - TOOLTIP_SCREEN_MARGIN * 2)
     local line_h = font:getHeight()
+    local fixed_height = TOOLTIP_OUTER_PAD_Y * 2 + line_h + TOOLTIP_HEADER_PAD_Y * 2
+        + TOOLTIP_SECTION_GAP + TOOLTIP_BODY_PAD_Y * 2
+    local max_row_h = line_h + RARITY_BADGE_PAD_Y * 2
+    local max_lines = math.max(1, math.floor((max_box_h - fixed_height + TOOLTIP_SPACING) / (max_row_h + TOOLTIP_SPACING)))
+    resolved_lines = truncate_resolved_lines(resolved_lines, max_lines, font, max_text_w)
+
+    local header_w = font:getWidth(title)
     local body_line_heights = {}
     local body_max_w = 0
     for _, segments in ipairs(resolved_lines) do
@@ -217,7 +439,7 @@ function M.draw_tooltip_layout(font, title, resolved_lines, draw_x, draw_y, anch
     local header_h_total = line_h + (TOOLTIP_HEADER_PAD_Y * 2)
     local body_w_total = body_max_w + (TOOLTIP_PAD_X * 2)
     local body_h_total = body_lines_total_h + body_pad_top + TOOLTIP_BODY_PAD_Y
-    local inner_w = math.max(header_w_total, body_w_total)
+    local inner_w = math.min(max_inner_w, math.max(header_w_total, body_w_total))
     local inner_h = header_h_total + TOOLTIP_SECTION_GAP + body_h_total
     local box_w = inner_w + (TOOLTIP_OUTER_PAD_X * 2)
     local box_h = inner_h + (TOOLTIP_OUTER_PAD_Y * 2)
@@ -226,22 +448,8 @@ function M.draw_tooltip_layout(font, title, resolved_lines, draw_x, draw_y, anch
     local card_h = tonumber(anchor_h) or 0
     local tx = draw_x + (card_w - box_w) * 0.5
     local ty = draw_y + card_h + 3
-    local margin = 2
-    local sw = 320
-    if love.graphics.getWidth then
-        sw = love.graphics.getWidth("bottom")
-        if not sw or sw <= 0 then sw = love.graphics.getWidth() end
-        if not sw or sw <= 0 then sw = 320 end
-    end
+    local margin = TOOLTIP_SCREEN_MARGIN
     tx = math.max(margin, math.min(tx, sw - box_w - margin))
-    local sh = nil
-    if love.graphics.getHeight then
-        sh = love.graphics.getHeight("bottom")
-        if not sh or sh <= 0 then
-            sh = love.graphics.getHeight()
-        end
-    end
-    if not sh or sh <= 0 then sh = 240 end
     if ty + box_h > sh - 2 then
         ty = draw_y - box_h - 3
     end
@@ -288,9 +496,11 @@ function M.draw_tooltip_layout(font, title, resolved_lines, draw_x, draw_y, anch
     end
 
     local header_text_y = header_y + math.floor((header_h_total - line_h) * 0.5 + 0.5)
-    local header_text_x = header_x + math.floor((inner_w - header_w) * 0.5 + 0.5)
+    local header_text_x = header_x + TOOLTIP_PAD_X
+    local header_text_w = math.max(1, inner_w - TOOLTIP_PAD_X * 2)
+    local fitted_title = M.fit_text(font, title, header_text_w)
     love.graphics.setColor(panel_c[1], panel_c[2], panel_c[3], panel_c[4] or 1)
-    love.graphics.print(title, header_text_x, header_text_y)
+    love.graphics.printf(fitted_title, header_text_x, header_text_y, header_text_w, "center")
 
     local text_y = body_y + body_pad_top
     local function draw_segments_centered(segments, line_y0)

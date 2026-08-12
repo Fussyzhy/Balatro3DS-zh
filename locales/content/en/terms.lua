@@ -61,4 +61,8 @@ return {
     ["joker.dynamic.ancient"] = "Each played card with {suit} gives X1.5 Mult when scored",
     ["joker.dynamic.castle"] = "This Joker gains +3 Chips per discarded {suit}",
     ["joker.dynamic.todo"] = "Earn $4 if poker hand is a {hand}",
+    ["tooltip.chips"] = "{value} Chips",
+    ["tooltip.mult"] = "{value} Mult",
+    ["tooltip.xmult"] = "X{value} Mult",
+    ["tooltip.money"] = "${value}",
 }

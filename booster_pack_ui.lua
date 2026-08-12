@@ -3,6 +3,7 @@
 --- Tarot/Spectral: hand drawn at the top, cards below; select hand first, then tap tarot, then Use.
 
 local BoosterPackUI = {}
+local TooltipDraw = require("tooltip_draw")
 
 function BoosterPackUI.card_count_for_size(size)
     if size == "jumbo" or size == "mega" then
@@ -201,7 +202,7 @@ function BoosterPackUI._draw_small_button(game, param)
         local textHeight = love.graphics.getFont():getHeight()
         local lines = param.lines or 1
         local textY = iy + math.floor(ih / 2) - math.floor((textHeight / 2) * lines)
-        love.graphics.printf(param.text, ix, textY, iw, "center")
+        love.graphics.printf(TooltipDraw.fit_text(love.graphics.getFont(), param.text, iw), ix, textY, iw, "center")
     else
         love.graphics.setColor(param.color)
         love.graphics.rectangle("fill", param.x, param.y, param.w, param.h, 4, 4)

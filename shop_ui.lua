@@ -1,6 +1,7 @@
 --- Bottom-screen shop panel, offer overlays, and shop-related touch targets.
 
 local ShopUI = {}
+local TooltipDraw = require("tooltip_draw")
 
 function ShopUI.layout_shop_offer_nodes(game, param)
     local nodes = game.shop_offer_nodes or {}
@@ -281,7 +282,7 @@ function ShopUI.draw_shop_button(game, param)
         love.graphics.setFont(game.FONTS.PIXEL.SMALL)
         local textHeight = love.graphics.getFont():getHeight()
         local textY = iy + math.floor(ih / 2) - math.floor((textHeight / 2) * lines)
-        love.graphics.printf(text, ix, textY, iw, "center")
+        love.graphics.printf(TooltipDraw.fit_text(love.graphics.getFont(), text, iw), ix, textY, iw, "center")
     else
         love.graphics.setColor(color)
         love.graphics.rectangle("fill", x, y, w, h, 4, 4)

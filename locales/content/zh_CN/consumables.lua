@@ -2,7 +2,7 @@ return {
     ["consumable.tarot_fool.name"] = "愚者",
     ["consumable.tarot_fool.description"] = { "生成本局上一次使用的塔罗牌或星球牌。", "愚者除外" },
     ["consumable.tarot_magician.name"] = "魔术师",
-    ["consumable.tarot_magician.description"] = "将至多 2 张所选卡牌增强为幸运牌",
+    ["consumable.tarot_magician.description"] = { { text = "将至多 2 张所选卡牌增强为幸运牌", color_key = "IMPORTANT" } },
     ["consumable.tarot_high_priestess.name"] = "女祭司",
     ["consumable.tarot_high_priestess.description"] = { "随机生成最多 2 张星球牌。", "必须有空间" },
     ["consumable.tarot_empress.name"] = "皇后",
@@ -58,7 +58,7 @@ return {
     ["consumable.planet_eris.name"] = "阋神星",
 
     ["consumable.spectral_black_hole.name"] = "黑洞",
-    ["consumable.spectral_black_hole.description"] = "所有牌型提升 1 级",
+    ["consumable.spectral_black_hole.description"] = { { text = "所有牌型提升 1 级", color_key = "IMPORTANT" } },
     ["consumable.spectral_familiar.name"] = "使魔",
     ["consumable.spectral_familiar.description"] = "随机摧毁手中的 1 张牌，并将 3 张随机增强人头牌加入手牌",
     ["consumable.spectral_grim.name"] = "严峻",
