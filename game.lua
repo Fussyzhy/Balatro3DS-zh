@@ -1065,36 +1065,36 @@ function Game:get_drag_zones_for_context(ctx)
     if ctx.kind == "shop_offer" then
         local offer = self.shop_offers and self.shop_offers[ctx.slot_index]
         local can_buy = self:can_buy_shop_offer(ctx.slot_index)
-        zones.top = DragZonesUI.make_zone("BUY", can_buy, can_buy and C.MONEY or C.GREY, "buy", true)
+        zones.top = DragZonesUI.make_zone(I18N.t("action.buy"), can_buy, can_buy and C.MONEY or C.GREY, "buy", true)
         if offer and (offer.kind == "tarot" or offer.kind == "planet" or offer.kind == "spectral") then
             -- Instant-use does not need an inventory slot (planets, Hermit, Temperance, etc.).
             local can_afford = self:can_afford_price(self:get_shop_offer_price(offer))
             local can_buy_use = can_afford and self:shop_offer_consumable_use_enabled(offer)
-            zones.top_right = DragZonesUI.make_zone("BUY and USE", can_buy_use, can_buy_use and C.GREEN or C.GREY, "buy_use", true)
+            zones.top_right = DragZonesUI.make_zone(I18N.t("action.buy_use"), can_buy_use, can_buy_use and C.GREEN or C.GREY, "buy_use", true)
         end
     elseif ctx.kind == "shop_booster" then
         local offer = self.shop_booster_offers and self.shop_booster_offers[ctx.slot_index]
         local can_buy = offer and self:can_afford_price(self:get_shop_booster_price(offer))
-        zones.top = DragZonesUI.make_zone("BUY", can_buy, can_buy and C.MONEY or C.GREY, "buy", true)
+        zones.top = DragZonesUI.make_zone(I18N.t("action.buy"), can_buy, can_buy and C.MONEY or C.GREY, "buy", true)
     elseif ctx.kind == "shop_voucher" then
         local offer = self.shop_voucher_offers and self.shop_voucher_offers[ctx.slot_index]
         local can_buy = offer and self:can_afford_price(self:get_shop_voucher_price(offer))
             and not self:_voucher_already_owned(offer.id)
-        zones.top = DragZonesUI.make_zone("BUY", can_buy, can_buy and C.MONEY or C.GREY, "buy", true)
+        zones.top = DragZonesUI.make_zone(I18N.t("action.buy"), can_buy, can_buy and C.MONEY or C.GREY, "buy", true)
     elseif ctx.kind == "owned_joker" then
         local joker = self.jokers and self.jokers[ctx.index]
         local eternal = joker and joker.eternal == true
         local sell_value = math.floor(tonumber(joker and joker.sell_cost) or 0)
         zones.bottom = DragZonesUI.make_zone(
-            string.format("Sell $%d", sell_value),
+            I18N.t("action.sell_price", { price = sell_value }),
             not eternal, eternal and C.GREY or C.MULT, "sell", true)
     elseif ctx.kind == "owned_consumable" then
         local can_use = self:consumable_use_enabled(ctx.index)
-        zones.top = DragZonesUI.make_zone("USE", can_use, can_use and C.GREEN or C.GREY, "use", true)
+        zones.top = DragZonesUI.make_zone(I18N.t("action.use"), can_use, can_use and C.GREEN or C.GREY, "use", true)
         local c = self.consumables and self.consumables[ctx.index]
         local sell_value = math.floor(self:consumable_sell_value(c))
         zones.bottom = DragZonesUI.make_zone(
-            string.format("Sell $%d", sell_value),
+            I18N.t("action.sell_price", { price = sell_value }),
             true, C.MULT, "sell", true)
     elseif ctx.kind == "booster_choice" then
         -- Single full-width strip: USE for hand-targeting cards, PICK otherwise.
@@ -1106,7 +1106,7 @@ function Game:get_drag_zones_for_context(ctx)
         if needs_use then
             local can_use = ch and not ch.taken and (tonumber(sess.picks_remaining) or 0) > 0
                 and c and self:pack_consumable_can_apply(c)
-            zones.full = DragZonesUI.make_zone("USE", can_use, can_use and C.GREEN or C.GREY, "use", true)
+            zones.full = DragZonesUI.make_zone(I18N.t("action.use"), can_use, can_use and C.GREEN or C.GREY, "use", true)
         else
             local can_pick = ch and not ch.taken and (tonumber(sess.picks_remaining) or 0) > 0
             if can_pick and ch.kind == "joker" then
@@ -1114,7 +1114,7 @@ function Game:get_drag_zones_for_context(ctx)
             elseif can_pick and (ch.kind == "planet" or ch.kind == "tarot" or ch.kind == "spectral") then
                 can_pick = c and self:pack_consumable_can_apply(c)
             end
-            zones.full = DragZonesUI.make_zone("PICK", can_pick, can_pick and C.GREEN or C.GREY, "pick", true)
+            zones.full = DragZonesUI.make_zone(I18N.t("action.pick"), can_pick, can_pick and C.GREEN or C.GREY, "pick", true)
         end
     end
 
@@ -2199,6 +2199,7 @@ end
 
 function Game:default_settings()
     return {
+        LANGUAGE = "en",
         GAMESPEED = 1,
         SOUND = { music_volume = 100 },
         GRAPHICS = { texture_scaling = 1 },
@@ -2212,6 +2213,10 @@ end
 function Game:normalize_settings(data)
     local out = copy_table(self:default_settings())
     if type(data) ~= "table" then return out end
+
+    if I18N and I18N.is_supported and I18N.is_supported(data.LANGUAGE) then
+        out.LANGUAGE = data.LANGUAGE
+    end
 
     local allowed_speeds = { [0.5] = true, [1] = true, [1.5] = true, [2] = true, [2.5] = true, [3] = true , [4] = true}
     local speed = tonumber(data.GAMESPEED)
@@ -2243,6 +2248,9 @@ end
 
 function Game:snapshot_settings()
     return {
+        LANGUAGE = (I18N and I18N.get_language and I18N.get_language())
+            or (self.SETTINGS and self.SETTINGS.LANGUAGE)
+            or "en",
         GAMESPEED = tonumber(self.SETTINGS and self.SETTINGS.GAMESPEED) or 1,
         SOUND = { music_volume = self:get_music_volume() },
         GRAPHICS = {
@@ -2258,6 +2266,14 @@ end
 function Game:load_settings()
     self.SETTINGS = copy_table(self:default_settings())
     local function finish_load()
+        local language = self.SETTINGS.LANGUAGE or "en"
+        if I18N and I18N.set_language then
+            I18N.set_language(language)
+            self.SETTINGS.LANGUAGE = I18N.get_language()
+        end
+        if self.reload_fonts then
+            self:reload_fonts(self.SETTINGS.LANGUAGE)
+        end
         self:apply_unlocks(self.SETTINGS.UNLOCKS)
         self:apply_discovered(self.SETTINGS.DISCOVERED)
         self:apply_joker_wins(self.SETTINGS.JOKER_WINS)
@@ -2396,6 +2412,18 @@ function Game:set_game_speed(speed)
     if not s or not allowed_speeds[s] then return end
     self.SETTINGS.GAMESPEED = s
     self:save_settings()
+end
+
+function Game:set_language(language)
+    if not self.SETTINGS or not I18N or not I18N.set_language then return false end
+    local changed = I18N.get_language() ~= language
+    local supported = I18N.set_language(language)
+    self.SETTINGS.LANGUAGE = I18N.get_language()
+    if changed and self.reload_fonts then
+        self:reload_fonts(self.SETTINGS.LANGUAGE)
+    end
+    self:save_settings()
+    return supported
 end
 
 function Game:get_music_volume()
@@ -2939,13 +2967,13 @@ end
 
 function Game:enter_main_menu_deck_select()
     if self:is_hand_scoring_active() then
-        self._pause_save_error = "Cannot save while scoring."
+        self._pause_save_error = I18N.t("save.scoring_blocked")
         return false
     end
     local snapshot = self:build_run_snapshot()
     local ok, err = self:write_run_snapshot(snapshot)
     if not ok then
-        self._pause_save_error = "Save failed: " .. tostring(err or "unknown")
+        self._pause_save_error = I18N.t("save.failed", { error = tostring(err or I18N.t("save.unknown_error")) })
         return false
     end
     self._pause_prev_state = nil
@@ -2957,13 +2985,13 @@ end
 
 function Game:pause_save_and_quit()
     if self:is_hand_scoring_active() then
-        self._pause_save_error = "Cannot save while scoring."
+        self._pause_save_error = I18N.t("save.scoring_blocked")
         return false
     end
     local snapshot = self:build_run_snapshot()
     local ok, err = self:write_run_snapshot(snapshot)
     if not ok then
-        self._pause_save_error = "Save failed: " .. tostring(err or "unknown")
+        self._pause_save_error = I18N.t("save.failed", { error = tostring(err or I18N.t("save.unknown_error")) })
         return false
     end
     self._pause_prev_state = nil
@@ -3124,12 +3152,15 @@ end
 
 function Game:get_blind_display_name(index)
     local def = self:get_blind_def(index)
-    if not def then return "Blind" end
+    if not def then return I18N.t("term.blind") end
     if def.id == "boss" then
         local proto = self:get_boss_blind_prototype()
-        if proto and proto.name then return proto.name end
+        if proto and proto.name then
+            return I18N.content_name("blind", self.current_boss_blind_id, proto.name)
+        end
     end
-    return def.name or "Blind"
+    return I18N.content_name("blind", "bl_" .. tostring(def.id),
+        def.name or I18N.t("term.blind"))
 end
 
 local BLIND_EFFECT_DESCRIPTIONS = {
@@ -3165,13 +3196,13 @@ local BLIND_EFFECT_DESCRIPTIONS = {
 
 function Game:get_blind_effect_text_for_key(blind_key)
     if type(blind_key) ~= "string" then return "" end
-    return BLIND_EFFECT_DESCRIPTIONS[blind_key] or ""
+    return I18N.content_description("blind", blind_key, BLIND_EFFECT_DESCRIPTIONS[blind_key] or "")
 end
 
 function Game:get_blind_prototype_description(blind_key)
     if type(blind_key) ~= "string" then return "" end
     if blind_key == "bl_small" or blind_key == "bl_big" then
-        return "No special effect."
+        return I18N.t("term.no_special_effect")
     end
     return self:get_blind_effect_text_for_key(blind_key)
 end
@@ -3191,7 +3222,7 @@ function Game:get_blind_description(index)
     if not def then return "" end
     if def.id == "boss" then
         if self.boss_runtime and self.boss_runtime.disable_current_boss_ability == true then
-            return "Boss ability disabled this round."
+            return I18N.t("term.boss_disabled")
         end
         local text = self:get_boss_effect_text()
         if text ~= "" then return text end
@@ -3199,13 +3230,13 @@ function Game:get_blind_description(index)
         if proto and proto.debuff_text and proto.debuff_text ~= "" then
             return proto.debuff_text
         end
-        return "Boss blind effect."
+        return I18N.t("term.boss_effect")
     end
     local target = self:get_blind_target(index, self.ante)
     if target and target > 0 then
-        return string.format("Score at least %d chips.", math.floor(target))
+        return I18N.t("term.score_chips", { score = math.floor(target) })
     end
-    return def.name or "Blind"
+    return self:get_blind_display_name(index)
 end
 
 function Game:get_blind_color(index)
@@ -3580,8 +3611,8 @@ function Game:_draw_shop_voucher_tooltip()
     local offer = slot and self.shop_voucher_offers and self.shop_voucher_offers[slot]
     local rect = slot and self._shop_voucher_rects and self._shop_voucher_rects[slot]
     if type(offer) ~= "table" or type(rect) ~= "table" then return end
-    local title = tostring(offer.name or "Voucher")
-    local desc = tostring(offer.description or "")
+    local title = I18N.content_name("voucher", offer.id, offer.name or I18N.t("term.voucher"))
+    local desc = I18N.content_description("voucher", offer.id, offer.description or "")
     local font = (self.FONTS and self.FONTS.PIXEL and self.FONTS.PIXEL.SMALL) or love.graphics.getFont()
     local resolved = TooltipDraw.resolved_lines_from_multiline(desc)
     TooltipDraw.draw_tooltip_layout(font, title, resolved, rect.x, rect.y, rect.w, rect.h)
@@ -4526,7 +4557,7 @@ function Game:apply_consumable_effect(c)
             end
         else 
             local p = Popup()
-            p:spawn("Nope!", "Nope", 160, 120)
+            p:spawn(I18N.t("popup.nope"), "Nope", 160, 120)
             G:addPopup(p)
         end
     elseif id == "tarot_hanged_man" then
@@ -4854,7 +4885,8 @@ function Game:get_skip_tag_tooltip(skip_id, blind_index)
     if not type_name then return nil end
     local key = self:tag_key_for_id(skip_id)
     local def = key and self.P_TAGS and self.P_TAGS[key]
-    local name = (def and def.name) or (type_name:sub(1, 1):upper() .. type_name:sub(2) .. " Tag")
+    local name = I18N.content_name("tag", key,
+        (def and def.name) or (type_name:sub(1, 1):upper() .. type_name:sub(2) .. " Tag"))
     local description = Tag and Tag.get_description and Tag.get_description(type_name) or ""
     if type_name == "orbital" and blind_index then
         self:ensure_skip_orbital_hand(blind_index)
@@ -4970,9 +5002,9 @@ function Game:draw_bottom_blind_select()
         love.graphics.setLineWidth(1)
 
 
-        local selectText = "Upcoming"
+        local selectText = I18N.t("blind.upcoming")
         if selectable then
-            selectText = "Select"
+            selectText = I18N.t("blind.select")
         end
         local selectWidth = 60
         local selectHeight = 16
@@ -5023,27 +5055,29 @@ function Game:draw_bottom_blind_select()
 
         love.graphics.setColor(self.C.WHITE)
         ty = y + scorePosY + 3
-        love.graphics.printf("Score at Least", tx, ty, scoreWidth, "center")
+        love.graphics.printf(I18N.t("blind.score_at_least"), tx, ty, scoreWidth, "center")
         love.graphics.setColor(self.C.RED)
         local req = tostring(target)
         local rx = x + math.floor(card_w / 2) - math.floor(scoreWidth / 2)
         love.graphics.printf(req, rx, ty + 12, scoreWidth, "center")
         
         love.graphics.setColor(self.C.WHITE)
-        req = "Reward: "..string.rep("$", reward).."+"
+        local reward_label = I18N.t("blind.reward")
+        req = reward_label..string.rep("$", reward).."+"
         rx = x + math.floor(card_w / 2) - math.floor(love.graphics.getFont():getWidth(req) / 2)
 
-        love.graphics.print("Reward: ", rx, ty + 24)
+        love.graphics.print(reward_label, rx, ty + 24)
         love.graphics.setColor(self.C.MONEY)
-        love.graphics.print("$"..string.rep("$", reward).."+", rx + love.graphics.getFont():getWidth("Reward: "), ty + 24)
+        love.graphics.print("$"..string.rep("$", reward).."+", rx + love.graphics.getFont():getWidth(reward_label), ty + 24)
 
         -- Skip UI
         if def and def.id ~= "boss" then
             love.graphics.push()
             love.graphics.setFont(self.FONTS.PIXEL.SMALL)
             love.graphics.setColor(self.C.WHITE)
-            local w = love.graphics.getFont():getWidth("or")
-            love.graphics.print("or", tx + math.floor(blindWidth/2) - math.floor(w/2) + 4, ty + 44)
+            local or_label = I18N.t("common.or")
+            local w = love.graphics.getFont():getWidth(or_label)
+            love.graphics.print(or_label, tx + math.floor(blindWidth/2) - math.floor(w/2) + 4, ty + 44)
 
             -- Skip Box
             local p = 4
@@ -5088,7 +5122,7 @@ function Game:draw_bottom_blind_select()
             self._blind_skip_tap_rects = self._blind_skip_tap_rects or {}
             self._blind_skip_tap_rects[i] = { x = buttonX, y = buttonY, w = buttonW, h = buttonH, blind_index = i }
             love.graphics.setColor(self.C.WHITE)
-            local buttonText = "Skip Blind (B)"
+            local buttonText = I18N.t("blind.skip_button")
             love.graphics.print(buttonText, buttonX + math.floor(buttonW/2) - math.floor(love.graphics.getFont():getWidth(buttonText)/2), buttonY + math.floor(buttonH/2) - math.floor(love.graphics.getFont():getHeight(buttonText)/2))
 
             love.graphics.pop()
@@ -5116,7 +5150,7 @@ function Game:draw_bottom_blind_select()
         self._boss_reroll_btn_rect = { x = bx, y = by, w = bw, h = bh }
         love.graphics.setColor(self.C.WHITE)
         love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-        love.graphics.printf("Reroll $10", bx, by + 5, bw, "center")
+        love.graphics.printf(I18N.t("blind.reroll"), bx, by + 5, bw, "center")
     end
 end
 
@@ -5243,7 +5277,8 @@ function Game:draw_bottom_pause()
             panel_y = 4
             panel_h = BOTTOM_H - panel_y - 4
         else
-            panel_h = 200
+            panel_y = 8
+            panel_h = 224
         end
     end
     if _G.draw_rect_with_shadow then
@@ -5265,7 +5300,7 @@ function Game:draw_bottom_pause()
         local btn_font = (r.h and r.h <= 20) and self.FONTS.PIXEL.SMALL or self.FONTS.PIXEL.MEDIUM
         love.graphics.setFont(btn_font)
         local ty = r.y + math.floor((r.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
-        love.graphics.printf(label, r.x, ty - 1, r.w, "center")
+        love.graphics.printf(TooltipDraw.fit_text(btn_font, label, r.w - 8), r.x + 4, ty - 1, r.w - 8, "center")
     end
 
     local function draw_cell(r, label, value, hint, focused, listening)
@@ -5322,20 +5357,19 @@ function Game:draw_bottom_pause()
         love.graphics.setColor(self.C.WHITE)
         love.graphics.setFont(self.FONTS.PIXEL.MEDIUM)
         if self._pause_settings_tab == "controls" then
-            love.graphics.printf("Controls", panel_x, panel_y + 4, panel_w, "center")
+            love.graphics.printf(I18N.t("settings.controls"), panel_x, panel_y + 4, panel_w, "center")
             if self._controls_listen_role then
                 love.graphics.setColor(self.C.ORANGE)
                 love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-                local listen_label = string.format(
-                    "Press button for %s (slot %d)",
-                    InputBindings.role_label(self._controls_listen_role),
-                    math.floor(tonumber(self._controls_listen_slot) or 1)
-                )
+                local listen_label = I18N.t("settings.listen", {
+                    role = InputBindings.role_label(self._controls_listen_role),
+                    slot = math.floor(tonumber(self._controls_listen_slot) or 1),
+                })
                 love.graphics.printf(listen_label, panel_x, panel_y + 24, panel_w , "center")
             else
                 love.graphics.setColor(self.C.GREY)
                 love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-                love.graphics.printf("D-pad: move  A: rebind  B: back", panel_x, panel_y + 24, panel_w, "center")
+                love.graphics.printf(I18N.t("settings.controls_nav"), panel_x, panel_y + 24, panel_w, "center")
             end
 
             local bindings = self:control_bindings()
@@ -5404,15 +5438,15 @@ function Game:draw_bottom_pause()
                 w = footer_w,
                 h = footer_h,
             }
-            draw_btn(self._pause_controls_reset_rect, "Reset", self.C.RED, is_controls_footer_focused("reset"))
-            draw_btn(self._pause_back_rect, "Back", self.C.MULT, is_controls_footer_focused("back"))
+            draw_btn(self._pause_controls_reset_rect, I18N.t("common.reset"), self.C.RED, is_controls_footer_focused("reset"))
+            draw_btn(self._pause_back_rect, I18N.t("common.back"), self.C.MULT, is_controls_footer_focused("back"))
         else
             -- ===== SETTINGS GENERAL TAB =====
-            love.graphics.printf("Settings", panel_x, panel_y + 10, panel_w, "center")
+            love.graphics.printf(I18N.t("settings.title"), panel_x, panel_y + 8, panel_w, "center")
 
             love.graphics.setColor(self.C.GREY)
             love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-            love.graphics.printf("Game Speed", panel_x, panel_y + 34, panel_w, "center")
+            love.graphics.printf(I18N.t("settings.game_speed"), panel_x, panel_y + 32, panel_w, "center")
 
             local speeds = { 0.5, 1, 1.5, 2, 2.5, 3, 4}
             local speed_labels = { "x0.5", "x1", "x1.5", "x2", "x2.5", "x3", "x4"}
@@ -5422,7 +5456,7 @@ function Game:draw_bottom_pause()
             local sb_gap = 4
             local total_sb = #speeds * sb_w + (#speeds - 1) * sb_gap
             local sb_start_x = panel_x + math.floor((panel_w - total_sb) * 0.5 + 0.5)
-            local sb_y = panel_y + 50
+            local sb_y = panel_y + 47
             self._pause_speed_rects = {}
             for i, spd in ipairs(speeds) do
                 local rx = sb_start_x + (i - 1) * (sb_w + sb_gap)
@@ -5449,15 +5483,15 @@ function Game:draw_bottom_pause()
 
             love.graphics.setColor(self.C.WHITE)
             love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-            local speed_str = string.format("Current: x%.4g", cur_speed)
-            love.graphics.printf(speed_str, panel_x, panel_y + 82, panel_w, "center")
+            local speed_str = I18N.t("settings.current_speed", { speed = string.format("%.4g", cur_speed) })
+            love.graphics.printf(speed_str, panel_x, panel_y + 76, panel_w, "center")
 
             love.graphics.setColor(self.C.GREY)
-            love.graphics.printf("Music Volume", panel_x, panel_y + 98, panel_w, "center")
+            love.graphics.printf(I18N.t("settings.music_volume"), panel_x, panel_y + 91, panel_w, "center")
 
             local track_x = panel_x + 36
             local track_w = panel_w - 72
-            local track_y = panel_y + 116
+            local track_y = panel_y + 108
             local knob_r = 7
             local vol = self:get_music_volume()
             local knob_x = track_x + (vol / 100) * track_w
@@ -5480,19 +5514,19 @@ function Game:draw_bottom_pause()
 
             local open_w, open_h = 140, 24
             local open_x = panel_x + math.floor((panel_w - open_w) * 0.5 + 0.5)
-            self._pause_controls_open_rect = { x = open_x, y = panel_y + 136, w = open_w, h = open_h }
-            draw_btn(self._pause_controls_open_rect, "Controls", self.C.BOOSTER, is_pause_focused("controls_open"))
+            self._pause_controls_open_rect = { x = open_x, y = panel_y + 132, w = open_w, h = open_h }
+            draw_btn(self._pause_controls_open_rect, I18N.t("settings.controls"), self.C.BOOSTER, is_pause_focused("controls_open"))
 
             local back_w, back_h = 120, 24
             local back_x = panel_x + math.floor((panel_w - back_w) * 0.5 + 0.5)
             self._pause_back_rect = { x = back_x, y = panel_y + 166, w = back_w, h = back_h }
-            draw_btn(self._pause_back_rect, "Back", self.C.MULT, is_pause_focused("back"))
+            draw_btn(self._pause_back_rect, I18N.t("common.back"), self.C.MULT, is_pause_focused("back"))
         end
     else
         -- ===== MAIN PAUSE PAGE =====
         love.graphics.setColor(self.C.WHITE)
         love.graphics.setFont(self.FONTS.PIXEL.MEDIUM)
-        love.graphics.printf("Paused", panel_x, panel_y + 10, panel_w, "center")
+        love.graphics.printf(I18N.t("pause.title"), panel_x, panel_y + 10, panel_w, "center")
 
         local btn_w, btn_h = 176, 28
         local btn_x = panel_x + math.floor((panel_w - btn_w) * 0.5 + 0.5)
@@ -5502,15 +5536,15 @@ function Game:draw_bottom_pause()
         self._pause_save_quit_rect = { x = btn_x, y = panel_y + 150, w = btn_w, h = btn_h }
 
         local can_save = not self:is_hand_scoring_active()
-        draw_btn(self._pause_continue_rect,  "Continue",      self.C.GREEN, is_pause_focused("continue"))
-        draw_btn(self._pause_settings_rect,  "Settings",      self.C.BOOSTER, is_pause_focused("settings"))
-        draw_btn(self._pause_new_run_rect,   "New Run",        self.C.RED, is_pause_focused("new_run"))
-        draw_btn(self._pause_save_quit_rect, "Save and Quit",  can_save and self.C.BLUE or self.C.GREY, is_pause_focused("save_quit"))
+        draw_btn(self._pause_continue_rect, I18N.t("common.continue"), self.C.GREEN, is_pause_focused("continue"))
+        draw_btn(self._pause_settings_rect, I18N.t("settings.title"), self.C.BOOSTER, is_pause_focused("settings"))
+        draw_btn(self._pause_new_run_rect, I18N.t("menu.new_run"), self.C.RED, is_pause_focused("new_run"))
+        draw_btn(self._pause_save_quit_rect, I18N.t("pause.save_quit"), can_save and self.C.BLUE or self.C.GREY, is_pause_focused("save_quit"))
 
         if not can_save then
             love.graphics.setColor(self.C.GREY)
             love.graphics.setFont(self.FONTS.PIXEL.SMALL)
-            love.graphics.printf("Finish scoring before saving.", panel_x, panel_y + 182, panel_w, "center")
+            love.graphics.printf(I18N.t("pause.finish_scoring"), panel_x, panel_y + 182, panel_w, "center")
         elseif self._pause_save_error then
             love.graphics.setColor(self.C.RED)
             love.graphics.setFont(self.FONTS.PIXEL.SMALL)
@@ -5637,6 +5671,10 @@ function Game:enter_main_menu()
     self._main_menu_start_rect = nil
     self._main_menu_continue_rect = nil
     self._main_menu_how_to_play_rect = nil
+    self._main_menu_language_rect = nil
+    self._main_menu_language_rects = nil
+    self._main_menu_language_open = false
+    self._main_menu_language_focus = 1
     self._how_to_play_back_rect = nil
     self._how_to_play_rects = nil
     self._delete_save_confirm = false
@@ -8938,7 +8976,7 @@ function Game:enter_round_win_after_blind()
     if tonumber(self.current_blind_index) == 3 then
         for _, tag in ipairs(self.tags or {}) do
             if tag and tag.type == "investment" then
-                ctx.add_round_win_payout("Investment Tag", 25)
+                ctx.add_round_win_payout(I18N.t("round.reward.investment_tag"), 25)
             end
         end
         for i = #self.tags, 1, -1 do
@@ -8962,19 +9000,19 @@ function Game:enter_round_win_after_blind()
     if self._deck_no_interest then interest = 0 end
 
     if self.extra_hand_bonus or 0 ~= 0 then
-        ctx.add_round_win_payout("Hand Bonus", self.extra_hand_bonus * self.hands)
+        ctx.add_round_win_payout(I18N.t("round.reward.hand_bonus"), self.extra_hand_bonus * self.hands)
     end
 
     if self.extra_discard_bonus or 0 ~= 0 then
-        ctx.add_round_win_payout("Discard Bonus", self.extra_discard_bonus * self.discards)
+        ctx.add_round_win_payout(I18N.t("round.reward.discard_bonus"), self.extra_discard_bonus * self.discards)
     end
 
     local blind_pay = math.max(0, math.floor(tonumber(self.current_blind_reward) or 0))
 
     self._round_win_display_lines = {
-        { "Blind reward", blind_pay, "pending" },
-        { string.format("Hands left (%d)", hands_left), hands_left, "pending" },
-        { string.format("Interest ($1 / $5 held, max $%d)", cap_dollars), interest, "pending" },
+        { I18N.t("round.reward.blind"), blind_pay, "pending" },
+        { I18N.t("round.reward.hands_left", { count = hands_left }), hands_left, "pending" },
+        { I18N.t("round.reward.interest", { max = cap_dollars }), interest, "pending" },
     }
     for _, row in ipairs(self._round_win_joker_payout_lines) do
         self._round_win_display_lines[#self._round_win_display_lines + 1] = row

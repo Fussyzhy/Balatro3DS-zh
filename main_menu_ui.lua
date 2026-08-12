@@ -126,6 +126,14 @@ MainMenuUI.HOW_TO_PLAY_PAGES = {
     },
 }
 
+local function how_to_play_pages()
+    if I18N and I18N.t then
+        local pages = I18N.t("tutorial.pages")
+        if type(pages) == "table" and #pages > 0 then return pages end
+    end
+    return MainMenuUI.HOW_TO_PLAY_PAGES
+end
+
 function MainMenuUI.open_how_to_play(game)
     game._menu_sub_state = "how_to_play"
     game._how_to_play_page = game._how_to_play_page or 1
@@ -307,20 +315,20 @@ function MainMenuUI.draw_main(game)
             return r.y + math.floor((r.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
         end
 
-        love.graphics.printf("Continue Run",
+        love.graphics.printf(I18N.t("menu.continue_run"),
             game._main_menu_continue_rect.x, btn_label_y(game._main_menu_continue_rect),
             game._main_menu_continue_rect.w, "center")
 
-        love.graphics.printf("New Run",
+        love.graphics.printf(I18N.t("menu.new_run"),
             game._main_menu_start_rect.x, btn_label_y(game._main_menu_start_rect),
             game._main_menu_start_rect.w, "center")
 
         love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
-        love.graphics.printf("How to Play",
+        love.graphics.printf(I18N.t("menu.how_to_play"),
             game._main_menu_how_to_play_rect.x, btn_label_y(game._main_menu_how_to_play_rect),
             game._main_menu_how_to_play_rect.w, "center")
 
-        love.graphics.printf("Collection",
+        love.graphics.printf(I18N.t("menu.collection"),
             game._main_menu_collection_rect.x, btn_label_y(game._main_menu_collection_rect),
             game._main_menu_collection_rect.w, "center")
     else
@@ -350,16 +358,16 @@ function MainMenuUI.draw_main(game)
         local function btn_label_y(r)
             return r.y + math.floor((r.h - love.graphics.getFont():getHeight()) * 0.5 + 0.5)
         end
-        love.graphics.printf("Start Run",
+        love.graphics.printf(I18N.t("menu.start_run"),
             game._main_menu_start_rect.x, btn_label_y(game._main_menu_start_rect),
             game._main_menu_start_rect.w, "center")
 
         love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
-        love.graphics.printf("How to Play",
+        love.graphics.printf(I18N.t("menu.how_to_play"),
             game._main_menu_how_to_play_rect.x, btn_label_y(game._main_menu_how_to_play_rect),
             game._main_menu_how_to_play_rect.w, "center")
 
-        love.graphics.printf("Collection",
+        love.graphics.printf(I18N.t("menu.collection"),
             game._main_menu_collection_rect.x, btn_label_y(game._main_menu_collection_rect),
             game._main_menu_collection_rect.w, "center")
 
@@ -367,7 +375,7 @@ function MainMenuUI.draw_main(game)
             love.graphics.setFont(game.FONTS.PIXEL.SMALL)
             love.graphics.setColor(game.C.DARK_WHITE or game.C.GREY)
             love.graphics.printf(
-                "Seed " .. tostring(math.floor(tonumber(game.SEED) or 0)),
+                I18N.t("menu.seed", { seed = math.floor(tonumber(game.SEED) or 0) }),
                 panel_x, 240 - 50, panel_w, "center"
             )
         end
@@ -400,7 +408,7 @@ function MainMenuUI.draw_main(game)
     draw_rect_with_shadow(profile_btn_x, profile_btn_y, profile_btn_w, profile_btn_h, 4, 4, delete_color, game.C.BLOCK.SHADOW, 2)
     love.graphics.setColor(game.C.WHITE)
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
-    local delete_label = delete_confirm and "Confirm?" or "Delete Save"
+    local delete_label = delete_confirm and I18N.t("menu.confirm_delete") or I18N.t("menu.delete_save")
     love.graphics.printf(delete_label, profile_btn_x, profile_btn_y + math.floor((profile_btn_h - love.graphics.getFont():getHeight()) * 0.5 + 0.5), profile_btn_w, "center")
     game._main_menu_delete_save_rect = { x = profile_btn_x, y = profile_btn_y, w = profile_btn_w, h = profile_btn_h }
 
@@ -414,6 +422,54 @@ function MainMenuUI.draw_main(game)
         love.graphics.setColor(1, 1, 1, 1)
         love.graphics.setLineWidth(2)
         love.graphics.rectangle("line", r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1)
+    end
+
+    -- Language entry stays on the bottom-screen home page.
+    local globe = { x = 286, y = 8, w = 26, h = 26 }
+    game._main_menu_language_rect = globe
+    love.graphics.setColor(game.C.PANEL)
+    love.graphics.rectangle("fill", globe.x, globe.y, globe.w, globe.h, 4, 4)
+    love.graphics.setColor(game.C.WHITE)
+    love.graphics.setLineWidth(2)
+    love.graphics.circle("line", globe.x + 13, globe.y + 13, 8)
+    love.graphics.line(globe.x + 5, globe.y + 13, globe.x + 21, globe.y + 13)
+    love.graphics.arc("line", "open", globe.x + 13, globe.y + 13, 5, -math.pi / 2, math.pi / 2)
+    love.graphics.arc("line", "open", globe.x + 13, globe.y + 13, 5, math.pi / 2, 3 * math.pi / 2)
+
+    if game._main_menu_language_open then
+        local modal = { x = 42, y = 45, w = 236, h = 150 }
+        game._main_menu_language_modal_rect = modal
+        draw_rect_with_shadow(modal.x, modal.y, modal.w, modal.h, 6, 6,
+            game.C.PANEL, game.C.BLOCK.SHADOW, 3)
+        love.graphics.setColor(game.C.WHITE)
+        love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
+        love.graphics.printf(I18N.t("settings.language"), modal.x, modal.y + 12, modal.w, "center")
+        game._main_menu_language_rects = {}
+        local languages = I18N.available_languages and I18N.available_languages() or { "en", "zh_CN" }
+        local bw, bh, gap = 190, 30, 8
+        local by = modal.y + 52
+        for i, language in ipairs(languages) do
+            local r = { x = modal.x + (modal.w - bw) / 2, y = by + (i - 1) * (bh + gap), w = bw, h = bh, language = language }
+            game._main_menu_language_rects[i] = r
+            local selected = I18N.get_language and I18N.get_language() == language
+            draw_rect_with_shadow(r.x, r.y, r.w, r.h, 4, 4,
+                selected and game.C.GREEN or game.C.MULT, game.C.BLOCK.SHADOW, 2)
+            love.graphics.setColor(game.C.WHITE)
+            love.graphics.setFont(game.FONTS.PIXEL.SMALL)
+            love.graphics.printf(I18N.t("language." .. language), r.x, r.y + 8, r.w, "center")
+        end
+        local language_index = math.max(1, math.min(#languages, tonumber(game._main_menu_language_focus) or 1))
+        game._main_menu_language_focus = language_index
+        local focused_language = game._main_menu_language_rects[language_index]
+        if focused_language then
+            love.graphics.setColor(game.C.WHITE)
+            love.graphics.setLineWidth(2)
+            love.graphics.rectangle("line", focused_language.x + 0.5, focused_language.y + 0.5,
+                focused_language.w - 1, focused_language.h - 1)
+        end
+    else
+        game._main_menu_language_rects = nil
+        game._main_menu_language_modal_rect = nil
     end
 end
 
@@ -430,6 +486,9 @@ function MainMenuUI.build_main_menu_focus_targets(game)
     end
     if game._main_menu_collection_rect then
         targets[#targets + 1] = { kind = "collection", rect = game._main_menu_collection_rect }
+    end
+    if game._main_menu_language_rect then
+        targets[#targets + 1] = { kind = "language", rect = game._main_menu_language_rect }
     end
     for i, pr in ipairs(game._main_menu_profile_rects or {}) do
         if pr then
@@ -473,6 +532,10 @@ function MainMenuUI.activate_main_menu_focus(game)
     elseif t.kind == "collection" then
         CollectionUI.open(game)
         return true
+    elseif t.kind == "language" then
+        game._main_menu_language_open = true
+        game._main_menu_language_focus = 1
+        return true
     elseif t.kind == "profile" and t.index and game.switch_profile then
         game:switch_profile(t.index)
         return true
@@ -494,7 +557,7 @@ function MainMenuUI.draw_how_to_play(game)
     local font_s = game.FONTS.PIXEL.SMALL
     local font_m = game.FONTS.PIXEL.MEDIUM
     local C = game.C
-    local pages = MainMenuUI.HOW_TO_PLAY_PAGES
+    local pages = how_to_play_pages()
     local page_count = #pages
     local page_idx = tonumber(game._how_to_play_page) or 1
     page_idx = math.max(1, math.min(page_count, page_idx))
@@ -514,7 +577,7 @@ function MainMenuUI.draw_how_to_play(game)
 
     love.graphics.setFont(font_m)
     love.graphics.setColor(C.WHITE)
-    love.graphics.printf("How to Play", 0, margin, W, "center")
+    love.graphics.printf(I18N.t("tutorial.title"), 0, margin, W, "center")
 
     love.graphics.setColor(C.BLOCK.BACK)
     love.graphics.rectangle("fill", content_x, content_y, content_w, content_h, 6, 6)
@@ -578,11 +641,11 @@ function MainMenuUI.draw_how_to_play(game)
     draw_rect_with_shadow(back_x, back_y, back_w, back_h, 4, 4, C.MULT, C.BLOCK.SHADOW, 2)
     love.graphics.setColor(C.WHITE)
     love.graphics.setFont(font_s)
-    love.graphics.printf("Back", back_x, back_y + 5, back_w, "center")
+    love.graphics.printf(I18N.t("common.back"), back_x, back_y + 5, back_w, "center")
 
     love.graphics.setFont(font_s)
     love.graphics.setColor(C.GREY)
-    love.graphics.printf("B/X: Back   LEFT/RIGHT: Pages", 0, H - 14, W, "center")
+    love.graphics.printf(I18N.t("tutorial.footer"), 0, H - 14, W, "center")
 end
 
 function MainMenuUI.draw_deck_carousel_sprite(game, def, x, y, w, h, p)
@@ -620,7 +683,7 @@ function MainMenuUI.draw_deck_carousel_sprite(game, def, x, y, w, h, p)
     love.graphics.setColor(0.25, 0.25, 0.25, 1)
     love.graphics.rectangle("fill", x, y, w, h, 8, 8)
     love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.printf("Sprite unavailable", x, y + math.floor(h * 0.5) - 6, w, "center")
+        love.graphics.printf(I18N.t("menu.sprite_unavailable"), x, y + math.floor(h * 0.5) - 6, w, "center")
     return false
 end
 
@@ -661,7 +724,7 @@ function MainMenuUI.draw_stake_carousel_sprite(game, def, x, y, w, h, p)
     love.graphics.setColor(0.25, 0.25, 0.25, 1)
     love.graphics.rectangle("fill", x, y, w, h, 8, 8)
     love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.printf("Sprite unavailable", x, y + math.floor(h * 0.5) - 6, w, "center")
+        love.graphics.printf(I18N.t("menu.sprite_unavailable"), x, y + math.floor(h * 0.5) - 6, w, "center")
     return false
 end
 
@@ -728,7 +791,7 @@ function MainMenuUI.draw_deck_select(game)
     draw_rect_with_shadow(selectX, selectY, selectW, selectH, 4, 4, G.C.CHIPS, G.C.BLOCK.SHADOW, 2)
     love.graphics.setFont(font_m)
     love.graphics.setColor(C.WHITE)
-    love.graphics.printf("PLAY", selectX, selectY, selectW, "center")
+    love.graphics.printf(I18N.t("menu.play"), selectX, selectY, selectW, "center")
 
     game._deck_select_rects = {
         prev = { x = prev_x, y = prev_y, w = prev_w, h = prev_h, action = "prev" },
@@ -755,20 +818,24 @@ function MainMenuUI.draw_deck_select(game)
 
     love.graphics.setFont(font_m)
     love.graphics.setColor(C.WHITE)
-    if love.graphics.getFont():getWidth(def.name) > infoW then
+    local deck_name = I18N.content_name("deck", def.id, def.name)
+    local deck_description = I18N.content_description("deck", def.id, def.description or "")
+    local deck_unlock = I18N.t("deck." .. tostring(def.id) .. ".unlock", nil,
+        def.unlock_condition and def.unlock_condition.text or I18N.t("menu.complete_unlock"))
+    if love.graphics.getFont():getWidth(deck_name) > infoW then
         love.graphics.setFont(font_s)
-        love.graphics.printf(def.name, infoX, infoY + 6, infoW, "center")
+        love.graphics.printf(deck_name, infoX, infoY + 6, infoW, "center")
     else
-        love.graphics.printf(def.name, infoX, infoY, infoW, "center")
+        love.graphics.printf(deck_name, infoX, infoY, infoW, "center")
     end
     love.graphics.setFont(font_m)
-    local offset = love.graphics.getFont():getHeight(def.name)
+    local offset = love.graphics.getFont():getHeight()
     love.graphics.rectangle("fill", infoX + padding, infoY + padding + offset, infoW - 2*padding, infoH - 2*padding - offset, 4, 4)
     
     love.graphics.setFont(font_s)
     love.graphics.setColor(C.PANEL)
     love.graphics.printf(
-        def.unlocked and (def.description or "") or def.unlock_condition and def.unlock_condition.text or "Complete the unlock condition to play this deck.",
+        def.unlocked and deck_description or deck_unlock,
         infoX + 2*padding, infoY + 2*padding + offset, infoW - 4*padding, "center"
     )
 
@@ -846,11 +913,13 @@ function MainMenuUI.draw_deck_select(game)
 
     love.graphics.setFont(font_m)
     love.graphics.setColor(stake_unlocked and C.WHITE or C.GREY)
-    if love.graphics.getFont():getWidth(stake_def.name) > stake_info_w then
+    local stake_name = I18N.content_name("stake", stake_def.id, stake_def.name)
+    local stake_description = I18N.content_description("stake", stake_def.id, stake_def.description or "")
+    if love.graphics.getFont():getWidth(stake_name) > stake_info_w then
         love.graphics.setFont(font_s)
-        love.graphics.printf(stake_def.name, stake_info_x, stake_info_y + 6, stake_info_w, "center")
+        love.graphics.printf(stake_name, stake_info_x, stake_info_y + 6, stake_info_w, "center")
     else
-        love.graphics.printf(stake_def.name, stake_info_x, stake_info_y, stake_info_w, "center")
+        love.graphics.printf(stake_name, stake_info_x, stake_info_y, stake_info_w, "center")
     end
     love.graphics.setFont(font_m)
     local stake_name_h = love.graphics.getFont():getHeight()
@@ -860,7 +929,7 @@ function MainMenuUI.draw_deck_select(game)
     love.graphics.setFont(font_s)
     love.graphics.setColor(C.PANEL)
     love.graphics.printf(
-        stake_unlocked and (stake_def.description or "") or "Clear the previous stake first.",
+        stake_unlocked and stake_description or I18N.t("menu.clear_previous_stake"),
         stake_info_x + 2 * padding, stake_info_y + padding + stake_name_h, stake_info_w - 4 * padding, "center"
     )
 
@@ -878,7 +947,7 @@ function MainMenuUI.draw_deck_select(game)
 
     love.graphics.setFont(font_s)
     love.graphics.setColor(C.GREY)
-    love.graphics.printf("A/Y: Play  LEFT/RIGHT: Deck  UP/DOWN: Stake  B/X: Back", 0, H - 14, W, "center")
+    love.graphics.printf(I18N.t("menu.deck_controls"), 0, H - 14, W, "center")
 end
 
 function MainMenuUI.handle_touch(game, x, y)
@@ -895,6 +964,23 @@ function MainMenuUI.handle_touch(game, x, y)
 end
 
 function MainMenuUI._touch_main(game, x, y)
+    if game._main_menu_language_open then
+        for _, r in ipairs(game._main_menu_language_rects or {}) do
+            if game:_point_in_rect_simple(x, y, r) then
+                if game.set_language then game:set_language(r.language) end
+                game._main_menu_language_open = false
+                return true
+            end
+        end
+        game._main_menu_language_open = false
+        return true
+    end
+
+    if game._main_menu_language_rect and game:_point_in_rect_simple(x, y, game._main_menu_language_rect) then
+        game._main_menu_language_open = true
+        return true
+    end
+
     local profile_rects = game._main_menu_profile_rects or {}
     for i, pr in ipairs(profile_rects) do
         if pr and game:_point_in_rect_simple(x, y, pr) then
@@ -1039,6 +1125,22 @@ function MainMenuUI._button_how_to_play(game, btn)
 end
 
 function MainMenuUI._button_main(game, btn)
+    if game._main_menu_language_open then
+        local languages = I18N.available_languages and I18N.available_languages() or { "en", "zh_CN" }
+        local idx = math.max(1, math.min(#languages, tonumber(game._main_menu_language_focus) or 1))
+        if btn == "dpup" or btn == "up" or btn == "dpleft" or btn == "left" then
+            game._main_menu_language_focus = math.max(1, idx - 1)
+        elseif btn == "dpdown" or btn == "down" or btn == "dpright" or btn == "right" then
+            game._main_menu_language_focus = math.min(#languages, idx + 1)
+        elseif game.is_menu_activate and game:is_menu_activate(btn) then
+            if game.set_language and languages[idx] then game:set_language(languages[idx]) end
+            game._main_menu_language_open = false
+        elseif game.is_menu_back and game:is_menu_back(btn) then
+            game._main_menu_language_open = false
+        end
+        return
+    end
+
     if btn == "dpup" or btn == "up" then
         MainMenuUI.main_menu_focus_move(game, -1)
         return

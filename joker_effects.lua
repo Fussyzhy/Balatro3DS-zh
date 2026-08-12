@@ -85,7 +85,8 @@ local function add_round_win_money(ctx, joker, n)
     n = math.floor(tonumber(n) or 0)
     if n <= 0 then return end
     if type(ctx) == "table" and type(ctx.add_round_win_payout) == "function" then
-        local label = (joker and joker.def and joker.def.name) or "Joker"
+        local def = joker and joker.def
+        local label = I18N.content_name("joker", def and def.id, (def and def.name) or I18N.t("term.joker"))
         ctx.add_round_win_payout(label, n)
     else
         add_money(ctx, n)
@@ -486,7 +487,7 @@ local SPECIAL = {
                 if jj == joker then
                     local src = G.jokers[i + 1]
                     if type(src) == "table" and not resolve_copy_target(src) then
-                        return { "Incompatible" }
+                        return { I18N.t("term.incompatible") }
                     end
                     break
                 end
@@ -510,7 +511,7 @@ local SPECIAL = {
             local src = G.jokers[1]
             if src == joker then return {} end
             if type(src) == "table" and not resolve_copy_target(src) then
-                return { "Incompatible" }
+                return { I18N.t("term.incompatible") }
             end
             return {}
         end,
@@ -606,7 +607,7 @@ local SPECIAL = {
                         for i, jj in ipairs(G.jokers) do
                             if jj == j then
                                 local p = Popup()
-                                p:spawn("Eaten!", "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
+                                p:spawn(I18N.t("popup.eaten"), "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
                                 Top:addPopup(p)
                                 Sfx.play("resources/sounds/slice1.ogg")
                                 G:remove_owned_joker_at(i)
@@ -950,7 +951,7 @@ local SPECIAL = {
                         for i, jj in ipairs(G.jokers) do
                             if jj == j then
                                 local p = Popup()
-                                p:spawn("Eaten!", "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
+                                p:spawn(I18N.t("popup.eaten"), "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
                                 Top:addPopup(p)
                                 Sfx.play("resources/sounds/slice1.ogg")
                                 G:remove_owned_joker_at(i)
@@ -986,7 +987,7 @@ local SPECIAL = {
                     for i, jj in ipairs(G.jokers) do
                         if jj == j then
                             local p = Popup()
-                            p:spawn("Drank!", "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
+                            p:spawn(I18N.t("popup.drank"), "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
                             Top:addPopup(p)
                             Sfx.play("resources/sounds/slice1.ogg")
                             G:remove_owned_joker_at(i)
@@ -1069,7 +1070,7 @@ local SPECIAL = {
                             if jj == j then
                                 Sfx.play("resources/sounds/slice1.ogg")
                                 local p = Popup()
-                                p:spawn("Extinct!", "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
+                                p:spawn(I18N.t("popup.extinct"), "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
                                 Top:addPopup(p)
                                 if G.activate_joker_pool_swap then
                                     G:activate_joker_pool_swap("j_gros_michel", "j_cavendish")
@@ -1128,7 +1129,7 @@ local SPECIAL = {
                     for i, jj in ipairs(G.jokers) do
                         if jj == j then
                             local p = Popup()
-                            p:spawn("Eaten!", "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
+                            p:spawn(I18N.t("popup.eaten"), "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
                             Top:addPopup(p)
                             Sfx.play("resources/sounds/slice1.ogg")
                             G:remove_owned_joker_at(i)
@@ -1265,7 +1266,7 @@ local SPECIAL = {
                             if jj == j then
                                 Sfx.play("resources/sounds/slice1.ogg")
                                 local p = Popup()
-                                p:spawn("Extinct!", "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
+                                p:spawn(I18N.t("popup.extinct"), "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
                                 Top:addPopup(p)
                                 G:remove_owned_joker_at(i)
                                 break
@@ -1319,7 +1320,7 @@ local SPECIAL = {
                     for i, jj in ipairs(G.jokers) do
                         if jj == j then
                             local p = Popup()
-                            p:spawn("Eaten!", "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
+                            p:spawn(I18N.t("popup.eaten"), "Nope", card_center_x(ctx.VT), card_center_y(ctx.VT))
                             Top:addPopup(p)
                             Sfx.play("resources/sounds/slice1.ogg")
                             G:remove_owned_joker_at(i)

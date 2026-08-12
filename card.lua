@@ -1,5 +1,6 @@
 ---@class Card : Moveable
 Card = Moveable:extend()
+local TooltipDraw = require("tooltip_draw")
 
 local SHAKE_MAGNITUDE = 6
 
@@ -717,6 +718,81 @@ function Card:should_draw_tooltip()
         return self.states.drag.is or G.active_tooltip_card == self
     end
     return self.states.drag.is or (G and G.active_tooltip_card == self)
+end
+
+local function append_localized_card_tooltip_lines(out, value)
+    if type(value) == "string" then
+        for line in string.gmatch(value .. "\n", "(.-)\n") do
+            if line ~= "" then out[#out + 1] = TooltipDraw.build_segments_from_text(line) end
+        end
+    elseif type(value) == "table" then
+        if value.text ~= nil then
+            out[#out + 1] = { value }
+        else
+            for _, line in ipairs(value) do
+                if type(line) == "string" then
+                    out[#out + 1] = TooltipDraw.build_segments_from_text(line)
+                elseif type(line) == "table" and line.text ~= nil then
+                    out[#out + 1] = { line }
+                end
+            end
+        end
+    end
+end
+
+function Card:draw_tooltip(draw_x, draw_y)
+    local data = self.card_data or {}
+    local rank = data.rank
+    local base_score = card_base_score(rank)
+    local bonus_chips = card_data_bonus_chips(data)
+    local chip_bonus, mult_bonus = get_card_modifier_bonus(data)
+    local enhancement = self.enhancement
+    if enhancement == "none" then enhancement = nil end
+
+    local title
+    if enhancement == "stone" then
+        title = I18N.t("enhancement.stone.name")
+    else
+        title = I18N.t("card.rank_of_suit", {
+            rank = I18N.rank_name(rank),
+            suit = I18N.suit_name(data.suit),
+        })
+    end
+
+    local resolved = {}
+    if enhancement == "stone" then
+        append_localized_card_tooltip_lines(resolved, I18N.t("enhancement.stone.description"))
+    else
+        resolved[#resolved + 1] = TooltipDraw.build_segments_from_text(
+            I18N.t("card.base_chips", { value = base_score }))
+        if enhancement then
+            append_localized_card_tooltip_lines(resolved, I18N.t("enhancement." .. enhancement .. ".description"))
+        end
+    end
+    if bonus_chips ~= 0 then
+        resolved[#resolved + 1] = TooltipDraw.build_segments_from_text(
+            I18N.t("card.bonus_chips", { value = string.format("%+d", bonus_chips) }))
+    end
+    if chip_bonus ~= 0 then
+        resolved[#resolved + 1] = TooltipDraw.build_segments_from_text(
+            I18N.t("tooltip.chips", { value = string.format("%+d", chip_bonus) }))
+    end
+    if mult_bonus ~= 0 then
+        resolved[#resolved + 1] = TooltipDraw.build_segments_from_text(
+            I18N.t("tooltip.mult", { value = string.format("%+d", mult_bonus) }))
+    end
+    if self.seal then
+        append_localized_card_tooltip_lines(resolved, I18N.t("seal." .. self.seal .. ".description"))
+    end
+    local edition = card_edition_for_display(self)
+    if edition and edition ~= "base" then
+        append_localized_card_tooltip_lines(resolved, I18N.t("edition." .. edition .. ".description"))
+    end
+
+    local font = G.FONTS.PIXEL.SMALL or love.graphics.getFont()
+    TooltipDraw.draw_tooltip_layout(
+        font, title, resolved, draw_x, draw_y,
+        self.VT.w * self.VT.scale, self.VT.h * self.VT.scale)
 end
 
 function Card:draw_tooltip_overlay()

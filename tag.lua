@@ -261,8 +261,10 @@ Tag.DESCRIPTIONS = {
 
 function Tag.get_description(type_name, hand_name)
     if type(type_name) ~= "string" then return "" end
+    local tag_key = type_name == "d6" and "tag_d_six" or "tag_" .. type_name
     if type_name == "orbital" and type(hand_name) == "string" and hand_name ~= "" then
-        return "Upgrade " .. hand_name .. " by 3 levels"
+        return I18N.t("tag.tag_orbital.hand_description", { hand = I18N.hand_name(hand_name) },
+            "Upgrade " .. hand_name .. " by 3 levels")
     end
-    return Tag.DESCRIPTIONS[type_name] or ""
+    return I18N.content_description("tag", tag_key, Tag.DESCRIPTIONS[type_name] or "")
 end

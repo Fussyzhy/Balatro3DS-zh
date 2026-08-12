@@ -254,7 +254,11 @@ function InputBindings.reset_bindings(bindings)
 end
 
 function InputBindings.role_label(role)
-    return ROLE_LABELS[role] or tostring(role or "?")
+    local fallback = ROLE_LABELS[role] or tostring(role or "?")
+    if I18N and I18N.t then
+        return I18N.t("controls.role." .. tostring(role), nil, fallback)
+    end
+    return fallback
 end
 
 function InputBindings.button_label(button)
@@ -269,7 +273,11 @@ function InputBindings.slot_label(role, slot, bindings)
 end
 
 function InputBindings.role_hint(role)
-    return ROLE_HINTS[role] or ""
+    local fallback = ROLE_HINTS[role] or ""
+    if I18N and I18N.t then
+        return I18N.t("controls.hint." .. tostring(role), nil, fallback)
+    end
+    return fallback
 end
 
 function InputBindings.apply_to_game(game)

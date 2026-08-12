@@ -1357,7 +1357,7 @@ function Hand:play_selected()
     if self.game and self.game.boss_should_void_current_play and self.game:boss_should_void_current_play() then
         if Popup and Top and Top.addPopup then
             local p = Popup()
-            p:spawn("Not Allowed", "Nope", 200, 120)
+            p:spawn(I18N.t("popup.not_allowed"), "Nope", 200, 120)
             Top:addPopup(p)
         end
         self:_discard_selected_impl("play", psychic_void and { skip_events = true } or nil)

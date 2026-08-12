@@ -1,6 +1,7 @@
 --- Bottom-screen shop panel, offer overlays, and shop-related touch targets.
 
 local ShopUI = {}
+local TooltipDraw = require("tooltip_draw")
 
 function ShopUI.layout_shop_offer_nodes(game, param)
     local nodes = game.shop_offer_nodes or {}
@@ -281,7 +282,7 @@ function ShopUI.draw_shop_button(game, param)
         love.graphics.setFont(game.FONTS.PIXEL.SMALL)
         local textHeight = love.graphics.getFont():getHeight()
         local textY = iy + math.floor(ih / 2) - math.floor((textHeight / 2) * lines)
-        love.graphics.printf(text, ix, textY, iw, "center")
+        love.graphics.printf(TooltipDraw.fit_text(love.graphics.getFont(), text, iw), ix, textY, iw, "center")
     else
         love.graphics.setColor(color)
         love.graphics.rectangle("fill", x, y, w, h, 4, 4)
@@ -301,7 +302,7 @@ function ShopUI.draw_bottom_shop(game)
     love.graphics.rectangle("line", panel_x, panel_y, panel_w, panel_h, 4, 4)
 
     local padding = 4
-    local shop_continue_rect = { x = panel_x + padding, y = panel_y + padding, w = 74, h = 45, color = game.C.RED, text = "Next\nRound", lines = 2 }
+    local shop_continue_rect = { x = panel_x + padding, y = panel_y + padding, w = 74, h = 45, color = game.C.RED, text = I18N.t("shop.next_round"), lines = 2 }
     local reroll_cost = game:shop_current_reroll_cost()
     local can_reroll = game:can_afford_price(reroll_cost)
     local reroll_color = can_reroll and game.C.GREEN or game.C.GREY
@@ -311,7 +312,7 @@ function ShopUI.draw_bottom_shop(game)
         w = shop_continue_rect.w,
         h = shop_continue_rect.h,
         color = reroll_color,
-        text = "Reroll\n$" .. tostring(reroll_cost),
+        text = I18N.t("shop.reroll", { cost = reroll_cost }),
         lines = 2
     }
     game._shop_continue_rect = { x = shop_continue_rect.x, y = shop_continue_rect.y, w = shop_continue_rect.w, h = shop_continue_rect.h }
@@ -352,7 +353,7 @@ function ShopUI.draw_bottom_shop(game)
 
     love.graphics.setColor(game.C.BLOCK.BACK)
     love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
-    local text = "VOUCHER"
+    local text = I18N.t("shop.voucher")
     love.graphics.print(text, panel_x -1 , voucherPanel.y + love.graphics.getFont():getWidth(text) / 2 + voucherPanel.h / 2 ,math.rad(-90))
 end
 

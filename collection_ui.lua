@@ -222,7 +222,7 @@ local function draw_hidden_collection_tooltip(node)
     local card_h = node.VT.h * node.VT.scale
     local font = G.FONTS.PIXEL.SMALL or love.graphics.getFont()
     local TooltipDraw = require("tooltip_draw")
-    TooltipDraw.draw_tooltip_layout(font, "Not Discovered", {}, draw_x, draw_y, card_w, card_h)
+    TooltipDraw.draw_tooltip_layout(font, I18N.t("term.not_discovered"), {}, draw_x, draw_y, card_w, card_h)
 end
 
 function CollectionUI.draw_entry_tooltip(game, node, draw_x, draw_y)
@@ -237,9 +237,13 @@ function CollectionUI.draw_entry_tooltip(game, node, draw_x, draw_y)
     local TooltipDraw = require("tooltip_draw")
     local resolved = {}
     for _, line in ipairs(raw_lines or {}) do
-        local split = TooltipDraw.resolved_lines_from_multiline(tostring(line))
-        for _, sl in ipairs(split) do
-            resolved[#resolved + 1] = sl
+        if type(line) == "table" then
+            resolved[#resolved + 1] = TooltipDraw.resolve_line(line)
+        else
+            local split = TooltipDraw.resolved_lines_from_multiline(tostring(line))
+            for _, sl in ipairs(split) do
+                resolved[#resolved + 1] = sl
+            end
         end
     end
     local font = game.FONTS.PIXEL.SMALL or love.graphics.getFont()
@@ -565,9 +569,9 @@ function CollectionUI.draw_category_menu(game)
     end
 
     -- Left column
-    y = add_btn("jokers", left_x, y, col_w, tall_h, "Jokers", "RED")
-    y = add_btn("decks", left_x, y, col_w, std_h, "Decks", "RED")
-    y = add_btn("vouchers", left_x, y, col_w, std_h, "Vouchers", "RED")
+    y = add_btn("jokers", left_x, y, col_w, tall_h, I18N.t("collection.category.jokers"), "RED")
+    y = add_btn("decks", left_x, y, col_w, std_h, I18N.t("collection.category.decks"), "RED")
+    y = add_btn("vouchers", left_x, y, col_w, std_h, I18N.t("collection.category.vouchers"), "RED")
 
     local cons_x = left_x
     local cons_y = y
@@ -584,28 +588,28 @@ function CollectionUI.draw_category_menu(game)
 
     love.graphics.setFont(font_s)
     love.graphics.setColor(C.GREY)
-    love.graphics.printf("CONSUMABLES", cons_x, cons_y + cons_pad, cons_w, "center")
+    love.graphics.printf(I18N.t("collection.consumables"), cons_x, cons_y + cons_pad, cons_w, "center")
 
     local cy = cons_y + cons_header_h + cons_pad
-    cy = add_btn("tarots", cons_x + cons_pad, cy, cons_inner_w, small_h, "Tarot Cards", "PURPLE")
-    cy = add_btn("planets", cons_x + cons_pad, cy, cons_inner_w, small_h, "Planet Cards", "PLANET")
-    add_btn("spectrals", cons_x + cons_pad, cy, cons_inner_w, small_h, "Spectral Cards", "SPECTRAL")
+    cy = add_btn("tarots", cons_x + cons_pad, cy, cons_inner_w, small_h, I18N.t("collection.category.tarots"), "PURPLE")
+    cy = add_btn("planets", cons_x + cons_pad, cy, cons_inner_w, small_h, I18N.t("collection.category.planets"), "PLANET")
+    add_btn("spectrals", cons_x + cons_pad, cy, cons_inner_w, small_h, I18N.t("collection.category.spectrals"), "SPECTRAL")
 
     -- Right column
     y = 2
-    y = add_btn("enhanced", right_x, y, col_w, std_h, "Enhanced Cards", "RED")
-    y = add_btn("seals", right_x, y, col_w, std_h, "Seals", "RED")
-    y = add_btn("editions", right_x, y, col_w, std_h, "Editions", "RED")
-    y = add_btn("boosters", right_x, y, col_w, std_h, "Booster Packs", "RED")
-    y = add_btn("tags", right_x, y, col_w, std_h, "Tags", "RED")
-    add_btn("blinds", right_x, y, col_w, tall_h, "Blinds", "RED")
+    y = add_btn("enhanced", right_x, y, col_w, std_h, I18N.t("collection.category.enhanced"), "RED")
+    y = add_btn("seals", right_x, y, col_w, std_h, I18N.t("collection.category.seals"), "RED")
+    y = add_btn("editions", right_x, y, col_w, std_h, I18N.t("collection.category.editions"), "RED")
+    y = add_btn("boosters", right_x, y, col_w, std_h, I18N.t("collection.category.boosters"), "RED")
+    y = add_btn("tags", right_x, y, col_w, std_h, I18N.t("collection.category.tags"), "RED")
+    add_btn("blinds", right_x, y, col_w, tall_h, I18N.t("collection.category.blinds"), "RED")
 
     game._collection_back_rect = { x = 8, y = H - 22, w = 64, h = 18 }
     draw_collection_button(
-        game._collection_back_rect, "Back", nil, C.MULT, C, font_s, font_s)
+        game._collection_back_rect, I18N.t("common.back"), nil, C.MULT, C, font_s, font_s)
 
     love.graphics.setColor(C.GREY)
-    love.graphics.printf("B/X: Back", 0, H - 12, W, "center")
+    love.graphics.printf(I18N.t("collection.back_hint"), 0, H - 12, W, "center")
 end
 
 function CollectionUI.draw_grid(game)
@@ -632,7 +636,7 @@ function CollectionUI.draw_grid(game)
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
     love.graphics.setColor(game.C.GREY)
     love.graphics.printf(
-        "LEFT/RIGHT: Pages   B/X: Back",
+        I18N.t("collection.grid_footer"),
         0, nav_y, W, "center")
 end
 
@@ -661,15 +665,15 @@ function CollectionUI.draw_top(screen, game)
 
     if game._menu_sub_state == "collection_grid" then
         local cat = CollectionCatalog.get_category_def(game._collection_category)
-        local label = cat and cat.label or "Collection"
+        local label = cat and I18N.t("collection.category." .. tostring(cat.id), nil, cat.label) or I18N.t("collection.title")
         local page = tonumber(game._collection_page) or 1
         local pages = CollectionUI.page_count(game)
         love.graphics.printf(label, 0 - textDepth, 12, W, "center")
         love.graphics.setFont(game.FONTS.PIXEL.SMALL)
         love.graphics.setColor(game.C.GREY)
-        love.graphics.printf(string.format("%d / %d", page, pages), 0 - textDepth, 32, W, "center")
+        love.graphics.printf(I18N.t("collection.page", { page = page, pages = pages }), 0 - textDepth, 32, W, "center")
     else
-        love.graphics.printf("Collection", 0 - textDepth, 20, W, "center")
+        love.graphics.printf(I18N.t("collection.title"), 0 - textDepth, 20, W, "center")
     end
 end
 

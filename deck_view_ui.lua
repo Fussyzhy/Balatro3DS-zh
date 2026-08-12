@@ -378,7 +378,7 @@ function DeckViewUI.draw_hand_level_row(game, x, y, w, hand_name, level, chips, 
 
     love.graphics.setFont(G.FONTS.PIXEL.SMALL)
     love.graphics.setColor(G.C.PANEL)
-    center_text_in_rect("lvl." .. tostring(level), inner_x - textDepth, inner_y, HAND_LEVEL_W, inner_h)
+    center_text_in_rect(I18N.t("hud.level", { level = level }), inner_x - textDepth, inner_y, HAND_LEVEL_W, inner_h)
     love.graphics.setColor(G.C.WHITE)
     center_text_in_rect(hand_name or "", name_x - textDepth, inner_y, name_w, inner_h)
     center_text_in_rect(tostring(chips), chips_x - textDepth, inner_y, HAND_CHIP_W, inner_h)
@@ -410,7 +410,7 @@ function DeckViewUI.draw_hand_level_panel(screen, game, textDepth, buttonDepth)
 
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
     love.graphics.setColor(game.C.WHITE)
-    love.graphics.printf("Poker Hands", content_x - textDepth, row_y, content_w, "center")
+    love.graphics.printf(I18N.t("deck_view.poker_hands"), content_x - textDepth, row_y, content_w, "center")
     row_y = row_y + HAND_PANEL_HEADER_H
 
     local handlist = game.handlist or {}
@@ -423,7 +423,7 @@ function DeckViewUI.draw_hand_level_panel(screen, game, textDepth, buttonDepth)
             local play_count = tonumber(game.hand_play_counts and game.hand_play_counts[i]) or 0
             DeckViewUI.draw_hand_level_row(
                 game, content_x, row_y, content_w,
-                hand_name, level, chips, mult, play_count,
+                I18N.hand_name(hand_name), level, chips, mult, play_count,
                 textDepth, buttonDepth
             )
             row_y = row_y + HAND_ROW_H + HAND_ROW_GAP
@@ -443,7 +443,7 @@ function DeckViewUI.draw_bottom(game)
     local count = game.deck and game.deck:size() or #(game._deck_view_nodes or {})
     love.graphics.setColor(game.C.WHITE)
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
-    love.graphics.printf("Draw pile (" .. tostring(count) .. ")", 0, 4, SCREEN_W, "center")
+    love.graphics.printf(I18N.t("deck_view.draw_pile", { count = count }), 0, 4, SCREEN_W, "center")
 
     local SUIT_COLORS = {
         Hearts = G.C.Hearts or { 0.92, 0.25, 0.28 },
@@ -477,9 +477,9 @@ function DeckViewUI.draw_bottom(game)
 
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
     love.graphics.setColor(game.C.WHITE or { 0.65, 0.65, 0.65, 1 })
-    local footer = "SELECT / B to close"
+    local footer = I18N.t("deck_view.close")
     if not game._deck_view_hand_panel_open and (tonumber(game._deck_view_hand_panel_t) or 0) <= 0.01 then
-        footer = footer .. "  Right: Hand Levels"
+        footer = footer .. "  " .. I18N.t("deck_view.hand_levels")
     end
     love.graphics.printf(footer, 0, SCREEN_H - m.footer_h, SCREEN_W, "center")
     love.graphics.setColor(1, 1, 1, 1)
@@ -586,7 +586,7 @@ local function draw_voucher_icon(game, voucher_id, x, y)
     end
     love.graphics.setColor(game.C.WHITE)
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
-    local label = (def and def.name) or "?"
+    local label = def and I18N.content_name("voucher", voucher_id, def.name) or "?"
     love.graphics.printf(label, x, y + math.floor(VOUCHER_CELL_H * 0.3), VOUCHER_CELL_W, "center")
     return false
 end
@@ -627,7 +627,9 @@ function DeckViewUI.draw_top(screen, game)
     currentY = currentY + padding
 
     love.graphics.setColor(game.C.WHITE)
-    love.graphics.print(deck_def and deck_def.name or "Deck", label_x + padding - textDepth, currentY)
+    local deck_name = deck_def and I18N.content_name("deck", deck_def.id, deck_def.name) or I18N.t("term.deck")
+    local deck_description = deck_def and I18N.content_description("deck", deck_def.id, deck_def.description or "") or ""
+    love.graphics.print(deck_name, label_x + padding - textDepth, currentY)
     currentY = currentY + love.graphics.getFont():getHeight() + padding
 
     if deck_def and deck_def.description then
@@ -635,7 +637,7 @@ function DeckViewUI.draw_top(screen, game)
         draw_rect_with_shadow(label_x, currentY, deck_width - 2 * padding, DECK_HEADER_H - currentY - 2 * padding, 4, 4, game.C.BLOCK.BACK, game.C.BLOCK.SHADOW, 2, buttonDepth)
         
         love.graphics.setColor(game.C.WHITE)
-        love.graphics.printf(deck_def.description, label_x + padding - textDepth, deck_sprite_y + 18, deck_width - padding * 2, "left")
+        love.graphics.printf(deck_description, label_x + padding - textDepth, deck_sprite_y + 18, deck_width - padding * 2, "left")
         currentY = currentY + love.graphics.getFont():getHeight() + padding
     end
 
@@ -651,13 +653,15 @@ function DeckViewUI.draw_top(screen, game)
     local stake_def = STAKE_DEFS_BY_ID and STAKE_DEFS_BY_ID[stake_id]
     if stake_def and stake_def.name then
         love.graphics.setColor(game.C.WHITE)
-        love.graphics.print(stake_def.name, stake_label_x + padding * 2 - textDepth, currentY)
+        local stake_name = I18N.content_name("stake", stake_def.id, stake_def.name)
+        local stake_description = I18N.content_description("stake", stake_def.id, stake_def.description or "")
+        love.graphics.print(stake_name, stake_label_x + padding * 2 - textDepth, currentY)
         currentY = currentY + love.graphics.getFont():getHeight() + padding
         draw_rect_with_shadow(stake_label_x + padding, currentY, stake_width - 2 * padding, DECK_HEADER_H - currentY - 2 * padding, 4, 4, game.C.BLOCK.BACK, game.C.BLOCK.SHADOW, 2, buttonDepth)
         currentY = currentY + padding
 
         love.graphics.setColor(game.C.WHITE)
-        love.graphics.printf(stake_def.description, stake_label_x + padding * 2 - textDepth, currentY, stake_width - 2 * padding, "left")
+        love.graphics.printf(stake_description, stake_label_x + padding * 2 - textDepth, currentY, stake_width - 2 * padding, "left")
         currentY = currentY + love.graphics.getFont():getHeight() + padding
     end
 
@@ -692,7 +696,7 @@ function DeckViewUI.draw_top(screen, game)
 
     love.graphics.setFont(game.FONTS.PIXEL.SMALL)
     love.graphics.setColor(game.C.WHITE or game.C.GREY)
-    love.graphics.print("Vouchers", margin_x - textDepth, panel_y + 2)
+    love.graphics.print(I18N.t("deck_view.vouchers"), margin_x - textDepth, panel_y + 2)
 
     if n_vouchers > 0 then
         local step, _, rel_start = compute_fanned_step(n_vouchers, inner_w, VOUCHER_CELL_W, VOUCHER_GAP)
@@ -703,7 +707,7 @@ function DeckViewUI.draw_top(screen, game)
         end
     else
         love.graphics.setColor(game.C.WHITE)
-        love.graphics.printf("None", margin_x - textDepth, voucher_row_y + math.floor(VOUCHER_ROW_H * 0.35), inner_w, "center")
+        love.graphics.printf(I18N.t("common.none"), margin_x - textDepth, voucher_row_y + math.floor(VOUCHER_ROW_H * 0.35), inner_w, "center")
     end
 
     local rank_section_y = voucher_row_y + VOUCHER_ROW_H + 8

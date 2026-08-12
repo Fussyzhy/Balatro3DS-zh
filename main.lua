@@ -5,6 +5,8 @@ function print(...)
     end
 end
 
+I18N = require "localization"
+
 local nest_ok, nest = pcall(function()
     return require("nest").init({ console = "3ds" })
 end)
@@ -128,7 +130,7 @@ function love.keypressed(key)
     if key == "p" and G and G.DEBUG then
         if G.popups then
             local p = Popup()
-            p:spawn("Nope!", "Nope", 160, 120)
+            p:spawn(I18N.t("popup.nope"), "Nope", 160, 120)
             G:addPopup(p)
             Top:addPopup(p)
         end
