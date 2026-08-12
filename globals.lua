@@ -2,6 +2,13 @@ VERSION = '1.0.1o'
 VERSION = VERSION..'-FULL'
 --check_version
 
+local FontManager = require "font_manager"
+
+function Game:reload_fonts(language)
+    self.FONTS = FontManager.replace(self.FONTS, language)
+    return self.FONTS.ACTIVE_LANGUAGE
+end
+
 -- basic helpers used by global config
 function HEX(hex)
     if #hex <= 6 then hex = hex.."FF" end
@@ -429,24 +436,7 @@ function Game:set_globals()
     G.C.UI_CHIPS = copy_table(G.C.BLUE)
     G.C.UI_MULT = copy_table(G.C.RED)
 
-    local function pixel_font(path, size)
-        local font = love.graphics.newFont(path, size)
-        if font and font.setFilter then
-            font:setFilter("nearest", "nearest")
-        end
-        return font
-    end
-
-    self.FONTS = {
-        PIXEL = {
-            SMALL_HEIGHT = 11,
-            MEDIUM_HEIGHT = 22,
-            LARGE_HEIGHT = 33,
-            SMALL = pixel_font("resources/fonts/m6x11plus.ttf", 11),
-            MEDIUM = pixel_font("resources/fonts/m6x11plus.ttf", 22),
-            LARGE = pixel_font("resources/fonts/m6x11plus.ttf", 33),
-        }
-    }
+    self:reload_fonts(I18N and I18N.get_language() or "en")
     --||||||||||||||||||||||||||||||
     --        ENUMS
     --||||||||||||||||||||||||||||||
