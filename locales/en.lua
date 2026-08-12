@@ -190,6 +190,12 @@ return {
     ["round.payout"] = "{label}: +${amount}",
     ["round.total"] = "Total: +${amount}",
     ["round.ante_round"] = "Ante {ante}  -  Round {round}",
+    ["round.reward.blind"] = "Blind reward",
+    ["round.reward.hands_left"] = "Hands left ({count})",
+    ["round.reward.interest"] = "Interest ($1 / $5 held, max ${max})",
+    ["round.reward.investment_tag"] = "Investment Tag",
+    ["round.reward.hand_bonus"] = "Hand Bonus",
+    ["round.reward.discard_bonus"] = "Discard Bonus",
     ["game_over.title"] = "Game Over",
     ["game_over.reason"] = "You ran out of hands before beating this blind.",
 

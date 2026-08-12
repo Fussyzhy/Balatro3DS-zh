@@ -8976,7 +8976,7 @@ function Game:enter_round_win_after_blind()
     if tonumber(self.current_blind_index) == 3 then
         for _, tag in ipairs(self.tags or {}) do
             if tag and tag.type == "investment" then
-                ctx.add_round_win_payout("Investment Tag", 25)
+                ctx.add_round_win_payout(I18N.t("round.reward.investment_tag"), 25)
             end
         end
         for i = #self.tags, 1, -1 do
@@ -9000,19 +9000,19 @@ function Game:enter_round_win_after_blind()
     if self._deck_no_interest then interest = 0 end
 
     if self.extra_hand_bonus or 0 ~= 0 then
-        ctx.add_round_win_payout("Hand Bonus", self.extra_hand_bonus * self.hands)
+        ctx.add_round_win_payout(I18N.t("round.reward.hand_bonus"), self.extra_hand_bonus * self.hands)
     end
 
     if self.extra_discard_bonus or 0 ~= 0 then
-        ctx.add_round_win_payout("Discard Bonus", self.extra_discard_bonus * self.discards)
+        ctx.add_round_win_payout(I18N.t("round.reward.discard_bonus"), self.extra_discard_bonus * self.discards)
     end
 
     local blind_pay = math.max(0, math.floor(tonumber(self.current_blind_reward) or 0))
 
     self._round_win_display_lines = {
-        { "Blind reward", blind_pay, "pending" },
-        { string.format("Hands left (%d)", hands_left), hands_left, "pending" },
-        { string.format("Interest ($1 / $5 held, max $%d)", cap_dollars), interest, "pending" },
+        { I18N.t("round.reward.blind"), blind_pay, "pending" },
+        { I18N.t("round.reward.hands_left", { count = hands_left }), hands_left, "pending" },
+        { I18N.t("round.reward.interest", { max = cap_dollars }), interest, "pending" },
     }
     for _, row in ipairs(self._round_win_joker_payout_lines) do
         self._round_win_display_lines[#self._round_win_display_lines + 1] = row

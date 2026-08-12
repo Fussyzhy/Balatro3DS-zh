@@ -190,6 +190,12 @@ return {
     ["round.payout"] = "{label}：+${amount}",
     ["round.total"] = "合计：+${amount}",
     ["round.ante_round"] = "底注 {ante}  -  回合 {round}",
+    ["round.reward.blind"] = "盲注奖励",
+    ["round.reward.hands_left"] = "剩余出牌次数（{count}）",
+    ["round.reward.interest"] = "利息（每持有 $5 获得 $1，最高 ${max}）",
+    ["round.reward.investment_tag"] = "投资标签",
+    ["round.reward.hand_bonus"] = "出牌次数奖励",
+    ["round.reward.discard_bonus"] = "弃牌次数奖励",
     ["game_over.title"] = "游戏结束",
     ["game_over.reason"] = "手牌次数耗尽，未能击败本次盲注。",
 
