@@ -197,6 +197,9 @@ function Game:init(seed)
     self._next_card_uid = 1
     self._collidables_buf = {}
     self._collision_drag_active = false
+    self._draw_cons_set = {}
+    self._draw_hand_set = {}
+    self._draw_joker_set = {}
     self._gc_timer = 0
     self._gc_discarded_nodes = 0
     self._settings_dirty = false
@@ -3494,9 +3497,12 @@ function Game:draw()
 
     -- Keep layering stable:
     -- 1) regular nodes, 2) hand cards, 3) shop tags, ) pulled-down jokers + consumables, 5) popups
-    local cons_set = {}
-    local hand_set = {}
-    local joker_set = {}
+    local cons_set = self._draw_cons_set
+    local hand_set = self._draw_hand_set
+    local joker_set = self._draw_joker_set
+    for node in pairs(cons_set) do cons_set[node] = nil end
+    for node in pairs(hand_set) do hand_set[node] = nil end
+    for node in pairs(joker_set) do joker_set[node] = nil end
     if self.consumable_nodes and self.consumables_on_bottom == true then
         for _, cn in ipairs(self.consumable_nodes) do
             cons_set[cn] = true
