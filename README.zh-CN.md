@@ -45,9 +45,10 @@ Balatro3DS 目前支持：
 3. 打开 Homebrew Launcher
 4. 开始游戏
 
-##### 手动构建
+##### 从源码构建
 
-手动构建文件的说明请参阅 [BUILD.md](BUILD.md)。
+Windows 自动打包脚本的用法以及 Linux/macOS 手动构建流程请参阅
+[BUILD.zh-CN.md](BUILD.zh-CN.md)。
 
 ### 本地化开发
 

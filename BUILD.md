@@ -1,10 +1,49 @@
 # Build Instructions
 
-These instructions are provided for users to create and package a Balatro3DS.3dsx file manually on their own machine. Alternative building methods can be found on the [Lovebrew wiki](https://lovebrew.org). You will need to have devkitPro and their `3ds-dev` package installed for this process. You can find the instructions for that on the [devkitPro wiki](https://devkitpro.org/wiki/Getting_Started).
+**English** | [简体中文](BUILD.zh-CN.md)
+
+These instructions are provided for users to create and package a Balatro3DS.3dsx file on their own machine. Alternative building methods can be found on the [Lovebrew wiki](https://lovebrew.org). You will need to have devkitPro and their `3ds-dev` package installed for this process. You can find the instructions for that on the [devkitPro wiki](https://devkitpro.org/wiki/Getting_Started).
 
 Shoutout to @natesquared in the lovebrew discord, these steps are based on a similar set of instructions they gave to a different user. 
-## Windows 
-TODO
+
+## Windows
+
+The repository includes `build-msys.sh` for building with the devkitPro MSYS2 environment. Install
+devkitPro with the Nintendo 3DS development components first, then open the devkitPro MSYS2 terminal.
+
+The script requires `git`, `curl`, `zip`, and `unzip` in addition to the tools installed by `3ds-dev`.
+Install any missing MSYS2 utilities with:
+
+```sh
+pacman -S --needed git curl zip unzip
+```
+
+From the devkitPro MSYS2 terminal, enter the repository and run the build:
+
+```sh
+cd /path/to/Balatro3DS
+bash build-msys.sh
+```
+
+On the first build, the script downloads LovePotion 3.0.2 and prepares its CTR romfs under
+`~/balatro3ds-build`. It then copies the current working tree, converts the required resources,
+packages the game, and writes the final file to:
+
+```text
+dist/Balatro3DS.3dsx
+```
+
+The available commands are:
+
+```sh
+bash build-msys.sh prepare  # Prepare LovePotion without building the game
+bash build-msys.sh build    # Run the complete build (default)
+bash build-msys.sh clean    # Remove the build cache and dist output
+```
+
+Run `bash build-msys.sh` or `bash build-msys.sh build` again after updating the game source. The
+script rebuilds its game copy from the current working tree, including uncommitted changes, without
+modifying the source files.
 
 ## Linux and macOS
 1. We will start off by making a folder to contain all our files.

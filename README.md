@@ -44,8 +44,10 @@ You can download a release.
 3. Open Homebrew launcher
 4. Play the game
 
-##### Manual Build
-Instructions on building the files manually can be found in [BUILD.md](BUILD.md)
+##### Build from Source
+
+Windows automated build instructions and the manual Linux/macOS process are documented in
+[BUILD.md](BUILD.md).
 
 ### Localization Development
 
