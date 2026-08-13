@@ -1325,12 +1325,8 @@ function Game:_dec_atlas_owner(name)
     self._atlas_owner_counts[name] = nil
 
     local entry = self.JOKER_SPRITES and self.JOKER_SPRITES[name]
-    if entry and entry.image then
-        if entry.image.release then
-            pcall(function() entry.image:release() end)
-        end
-        entry.image = nil
-        entry.load_error = nil
+    if entry then
+        self:unload_joker_sprite(name)
     end
 end
 
@@ -11955,6 +11951,7 @@ function Game:unload_animation_atlas(name)
     atlas.load_attempted = nil
     atlas.resolved_path = nil
     atlas.next_load_retry_at = nil
+    atlas._frame_quads = nil
     return true
 end
 
@@ -11970,6 +11967,9 @@ function Game:unload_asset_atlas(name)
     atlas.load_attempted = nil
     atlas.resolved_path = nil
     atlas.next_load_retry_at = nil
+    atlas._cell_quads = nil
+    atlas._pack_quads = nil
+    atlas._voucher_quads = nil
     return true
 end
 

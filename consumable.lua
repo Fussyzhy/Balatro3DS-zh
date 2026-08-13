@@ -113,8 +113,27 @@ function Consumable:get_collision_rect()
     }
 end
 
+function Consumable:refresh_texture()
+    self.atlas = consumable_resolve_atlas(self.atlas_name)
+    self.quad, self.w, self.h = consumable_compute_quad(self.atlas, self.index)
+    if self.w and self.h and self.w > 0 and self.h > 0 then
+        self.T.w, self.T.h = self.w, self.h
+        if self.VT then self.VT.w, self.VT.h = self.w, self.h end
+    end
+end
+
 function Consumable:draw()
     if not self.states.visible then return end
+
+    if not self.atlas or not self.atlas.image or not self.quad then
+        local now = love.timer and love.timer.getTime and love.timer.getTime() or 0
+        if now >= (tonumber(self._next_texture_retry_at) or 0) then
+            self._next_texture_retry_at = now + 1
+            self:refresh_texture()
+        end
+    else
+        self._next_texture_retry_at = nil
+    end
 
     local draw_x = self.VT.x + self.collision_offset.x
     local draw_y = self.VT.y + self.collision_offset.y
