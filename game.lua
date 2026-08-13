@@ -196,6 +196,7 @@ function Game:init(seed)
     self.boss_runtime = {}
     self._next_card_uid = 1
     self._collidables_buf = {}
+    self._collision_drag_active = false
     self._gc_timer = 0
     self._gc_discarded_nodes = 0
     self._settings_dirty = false
@@ -5924,13 +5925,23 @@ end
 
 function Game:check_collisions(dt)
     if not self.dragging then
-        for _, node in ipairs(self.nodes) do
+        if not self._collision_drag_active then return end
+        for _, node in ipairs(self._collidables_buf) do
             if node.states then
                 node.states.collide.is = false
             end
+            if node.collision_offset then
+                node.collision_offset.x = 0
+                node.collision_offset.y = 0
+            end
         end
+        for i = #self._collidables_buf, 1, -1 do
+            self._collidables_buf[i] = nil
+        end
+        self._collision_drag_active = false
         return
     end
+    self._collision_drag_active = true
     
     local collidables = self._collidables_buf
     for i = #collidables, 1, -1 do
