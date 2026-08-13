@@ -3477,7 +3477,15 @@ function Game:draw()
     local show_consumables = not (self.STATE == self.STATES.ROUND_EVAL
         or self.STATE == self.STATES.GAME_OVER or self.STATE == self.STATES.YOU_WIN)
     if not show_consumables then
-        self._consumable_rects = {}
+        local rects = self._consumable_rects
+        if type(rects) ~= "table" then
+            rects = {}
+            self._consumable_rects = rects
+        else
+            for i = #rects, 1, -1 do
+                rects[i] = nil
+            end
+        end
         self.active_tooltip_consumable_index = nil
         if self.consumable_nodes then
             for _, node in ipairs(self.consumable_nodes) do
@@ -4713,8 +4721,16 @@ end
 
 --- Layout owned consumable nodes (top or bottom screen depending on `consumables_on_bottom`).
 function Game:draw_consumables_row()
-    self._consumable_rects = {}
-    if not self.consumables or #self.consumables == 0 then return end
+    local rects = self._consumable_rects
+    if type(rects) ~= "table" then
+        rects = {}
+        self._consumable_rects = rects
+    end
+    local count = self.consumables and #self.consumables or 0
+    for i = #rects, count + 1, -1 do
+        rects[i] = nil
+    end
+    if count == 0 then return end
     self:_apply_consumable_layout()
 end
 
@@ -6585,6 +6601,7 @@ function Game:_apply_consumable_layout()
     local list = self.consumables or {}
     local nodes = self.consumable_nodes or {}
     if #list == 0 then return end
+    local rects = self._consumable_rects
 
     local top_dims = self:get_top_inventory_dims()
     local bot_dims = self:get_bottom_inventory_dims()
@@ -6626,7 +6643,15 @@ function Game:_apply_consumable_layout()
                 node.T.r = 0
                 node.T.scale = s
             end
-            self._consumable_rects[i] = { x = x, y = y_pos, w = eff_w, h = eff_h }
+            local rect = rects[i]
+            if not rect then
+                rect = {}
+                rects[i] = rect
+            end
+            rect.x = x
+            rect.y = y_pos
+            rect.w = eff_w
+            rect.h = eff_h
         end
     else
         local s = 1
@@ -6650,7 +6675,15 @@ function Game:_apply_consumable_layout()
                 node.T.y = y
                 node.T.scale = s
             end
-            self._consumable_rects[i] = { x = x, y = y, w = card_w, h = card_h }
+            local rect = rects[i]
+            if not rect then
+                rect = {}
+                rects[i] = rect
+            end
+            rect.x = x
+            rect.y = y
+            rect.w = card_w
+            rect.h = card_h
         end
     end
 end
