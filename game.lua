@@ -16,6 +16,7 @@ local InputBindings = require("input_bindings")
 
 --- Seconds between revealing each payout line on the round-win screen.
 local ROUND_WIN_LINE_DELAY = 0.38
+local SETTINGS_FLUSH_DELAY = 0.75
 local RUN_SAVE_DIR = "sdmc"
 local PROFILE_COUNT = 3
 local ACTIVE_PROFILE_PATH = "sdmc/Balatro3DS_active_profile.lua"
@@ -203,6 +204,7 @@ function Game:init(seed)
     self._gc_timer = 0
     self._gc_discarded_nodes = 0
     self._settings_dirty = false
+    self._settings_flush_at = nil
     --- Staggered joker resolution (left-to-right); see `begin_joker_emit` / `_update_joker_emit_queue`.
     self._joker_emit_queue = nil
     self._joker_emit_next = 1
@@ -1615,8 +1617,8 @@ function Game:discover_item(id)
     local defer_save = self.STATES and (self.STATE == self.STATES.SHOP
         or self.STATE == self.STATES.OPEN_BOOSTER)
     if defer_save then
-        -- Purchases can discover multiple items at once. Coalesce them into a
-        -- single SD write when the player leaves the shop.
+        -- Purchases can discover multiple items at once. Coalesce their writes
+        -- and schedule one after the shop transition completes.
         self._settings_dirty = true
     else
         self:save_settings()
@@ -2350,12 +2352,37 @@ function Game:save_settings()
         return false, tostring(err or "write_failed")
     end
     self._settings_dirty = false
+    self._settings_flush_at = nil
     return true
 end
 
 function Game:flush_settings_if_dirty()
     if self._settings_dirty ~= true then return true end
     return self:save_settings()
+end
+
+function Game:schedule_settings_flush(delay)
+    if self._settings_dirty ~= true then return false end
+    local now = love and love.timer and love.timer.getTime and love.timer.getTime() or 0
+    self._settings_flush_at = now + math.max(0, tonumber(delay) or SETTINGS_FLUSH_DELAY)
+    return true
+end
+
+function Game:update_deferred_settings_save()
+    if self._settings_dirty ~= true then
+        self._settings_flush_at = nil
+        return
+    end
+    local flush_at = tonumber(self._settings_flush_at)
+    if not flush_at then return end
+    if self.STATE == self.STATES.SHOP or self.STATE == self.STATES.OPEN_BOOSTER then return end
+    local now = love and love.timer and love.timer.getTime and love.timer.getTime() or flush_at
+    if now < flush_at then return end
+    self._settings_flush_at = nil
+    local ok = self:flush_settings_if_dirty()
+    if not ok and self._settings_dirty == true then
+        self._settings_flush_at = now + SETTINGS_FLUSH_DELAY
+    end
 end
 
 function Game:control_bindings()
@@ -5813,6 +5840,7 @@ function Game:update(dt)
     if self.STATE == self.STATES.PAUSED then
         return
     end
+    self:update_deferred_settings_save()
     if self.sync_shoulder_input then
         self:sync_shoulder_input(dt)
     end
@@ -7285,7 +7313,7 @@ function Game:advance_after_shop()
 end
 
 function Game:continue_from_shop()
-    self:flush_settings_if_dirty()
+    self:schedule_settings_flush()
     self._shop_reroll_base_cost_override = nil
     self.hand_size_delta_juggle = 0
     self:clear_shop_selection()

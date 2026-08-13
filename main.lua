@@ -100,6 +100,12 @@ function love.update(dt)
     Top:update(dt * speed)
 end
 
+function love.quit()
+    if G and G.flush_settings_if_dirty then
+        G:flush_settings_if_dirty()
+    end
+end
+
 function love.draw(screen)
     if G and G.STATE == G.STATES.MENU then
         MainMenuUI.draw_background(G, screen)
