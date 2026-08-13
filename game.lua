@@ -4852,7 +4852,12 @@ function Game:draw_blind_chip_sprite(sprite_row, center_x, center_y, scale)
     local row = math.floor(sprite_index / cols)
     local qx = col * cell_w
     local qy = row * cell_h
-    local quad = love.graphics.newQuad(qx, qy, cell_w, cell_h, iw, ih)
+    atlas._cell_quads = atlas._cell_quads or {}
+    local quad = atlas._cell_quads[sprite_index]
+    if not quad then
+        quad = love.graphics.newQuad(qx, qy, cell_w, cell_h, iw, ih)
+        atlas._cell_quads[sprite_index] = quad
+    end
     local s = scale or 1
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.draw(atlas.image, quad, center_x - (cell_w * s * 0.5), center_y - (cell_h * s * 0.5), 0, s, s)

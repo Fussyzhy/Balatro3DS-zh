@@ -179,7 +179,12 @@ local function compute_quad(atlas, index)
     local sx = col * cell_w
     local sy = row * cell_h
 
-    local quad = love.graphics.newQuad(sx, sy, cell_w, cell_h, iw, ih)
+    atlas._cell_quads = atlas._cell_quads or {}
+    local quad = atlas._cell_quads[index]
+    if not quad then
+        quad = love.graphics.newQuad(sx, sy, cell_w, cell_h, iw, ih)
+        atlas._cell_quads[index] = quad
+    end
     return quad, cell_w, cell_h
 end
 

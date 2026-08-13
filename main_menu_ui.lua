@@ -196,7 +196,12 @@ function MainMenuUI.draw_background(game, screen)
     local cols = math.max(1, math.floor(iw / cell_w))
     local col = frame % cols
     local row = math.floor(frame / cols)
-    local quad = love.graphics.newQuad(col * cell_w, row * cell_h, cell_w, cell_h, iw, ih)
+    atlas._cell_quads = atlas._cell_quads or {}
+    local quad = atlas._cell_quads[frame]
+    if not quad then
+        quad = love.graphics.newQuad(col * cell_w, row * cell_h, cell_w, cell_h, iw, ih)
+        atlas._cell_quads[frame] = quad
+    end
 
     local s = math.max(w / cell_w, h / cell_h)
     local draw_w = cell_w * s
@@ -665,7 +670,12 @@ function MainMenuUI.draw_deck_carousel_sprite(game, def, x, y, w, h, p)
         local cols = math.max(1, math.floor(iw / cell_w))
         local col = index % cols
         local row = math.floor(index / cols)
-        local quad = love.graphics.newQuad(col * cell_w, row * cell_h, cell_w, cell_h, iw, ih)
+        atlas._cell_quads = atlas._cell_quads or {}
+        local quad = atlas._cell_quads[index]
+        if not quad then
+            quad = love.graphics.newQuad(col * cell_w, row * cell_h, cell_w, cell_h, iw, ih)
+            atlas._cell_quads[index] = quad
+        end
 
         local scale = math.min((w - p) / cell_w, (h - p) / cell_h)
         if scale > 1 then scale = 1 end
@@ -702,7 +712,12 @@ function MainMenuUI.draw_stake_carousel_sprite(game, def, x, y, w, h, p)
         local cols = math.max(1, math.floor(iw / cell_w))
         local col = index % cols
         local row = math.floor(index / cols)
-        local quad = love.graphics.newQuad(col * cell_w, row * cell_h, cell_w, cell_h, iw, ih)
+        atlas._cell_quads = atlas._cell_quads or {}
+        local quad = atlas._cell_quads[index]
+        if not quad then
+            quad = love.graphics.newQuad(col * cell_w, row * cell_h, cell_w, cell_h, iw, ih)
+            atlas._cell_quads[index] = quad
+        end
 
         local scale = math.min((w - p) / cell_w, (h - p) / cell_h)
         if scale > 1 then scale = 1 end
