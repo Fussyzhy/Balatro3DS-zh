@@ -11857,11 +11857,18 @@ local function load_runtime_texture(path, options)
     return nil, tostring(last_error or "texture load failed"), nil
 end
 
+local function runtime_texture_retry_due(entry)
+    if not entry or not entry.load_attempted then return true end
+    if entry.image then return false end
+    local now = love.timer and love.timer.getTime and love.timer.getTime() or 0
+    return now >= (tonumber(entry.next_load_retry_at) or 0)
+end
+
 function Game:ensure_joker_sprite_loaded(key)
     if not key then return nil end
     if type(self.JOKER_SPRITES) ~= "table" then self.JOKER_SPRITES = {} end
     local entry = self.JOKER_SPRITES[key]
-    if entry and (entry.image or entry.load_attempted) then return entry end
+    if entry and not runtime_texture_retry_due(entry) then return entry end
     if not entry then
         entry = {
             name = key,
@@ -11881,6 +11888,7 @@ function Game:ensure_joker_sprite_loaded(key)
     entry.load_error = err
     entry.resolved_path = resolved_path
     entry.load_attempted = true
+    entry.next_load_retry_at = img and nil or ((love.timer and love.timer.getTime and love.timer.getTime() or 0) + 1)
     return entry
 end
 
@@ -11895,6 +11903,7 @@ function Game:unload_joker_sprite(key)
     entry.load_error = nil
     entry.load_attempted = nil
     entry.resolved_path = nil
+    entry.next_load_retry_at = nil
     return true
 end
 
@@ -11902,7 +11911,7 @@ function Game:ensure_asset_atlas_loaded(name)
     if not name or not self.ASSET_ATLAS then return nil end
     local atlas = self.ASSET_ATLAS[name]
     if not atlas then return nil end
-    if atlas.image or atlas.load_attempted then return atlas end
+    if not runtime_texture_retry_due(atlas) then return atlas end
     if not atlas.path then return atlas end
 
     local img, err, resolved_path = load_runtime_texture(atlas.path, {
@@ -11912,6 +11921,7 @@ function Game:ensure_asset_atlas_loaded(name)
     atlas.load_error = err
     atlas.resolved_path = resolved_path
     atlas.load_attempted = true
+    atlas.next_load_retry_at = img and nil or ((love.timer and love.timer.getTime and love.timer.getTime() or 0) + 1)
     return atlas
 end
 
@@ -11919,7 +11929,7 @@ function Game:ensure_animation_atlas_loaded(name)
     if not name or not self.ANIMATION_ATLAS then return nil end
     local atlas = self.ANIMATION_ATLAS[name]
     if not atlas then return nil end
-    if atlas.image or atlas.load_attempted then return atlas end
+    if not runtime_texture_retry_due(atlas) then return atlas end
     if not atlas.path then return atlas end
 
     local img, err, resolved_path = load_runtime_texture(atlas.path, {
@@ -11929,6 +11939,7 @@ function Game:ensure_animation_atlas_loaded(name)
     atlas.load_error = err
     atlas.resolved_path = resolved_path
     atlas.load_attempted = true
+    atlas.next_load_retry_at = img and nil or ((love.timer and love.timer.getTime and love.timer.getTime() or 0) + 1)
     return atlas
 end
 
@@ -11943,6 +11954,7 @@ function Game:unload_animation_atlas(name)
     atlas.load_error = nil
     atlas.load_attempted = nil
     atlas.resolved_path = nil
+    atlas.next_load_retry_at = nil
     return true
 end
 
@@ -11957,6 +11969,7 @@ function Game:unload_asset_atlas(name)
     atlas.load_error = nil
     atlas.load_attempted = nil
     atlas.resolved_path = nil
+    atlas.next_load_retry_at = nil
     return true
 end
 

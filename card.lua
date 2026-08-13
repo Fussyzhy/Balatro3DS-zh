@@ -804,6 +804,19 @@ end
 function Card:draw()
     if not self.states.visible then return end
 
+    -- A transient texture load failure used to leave cards with nil quads until
+    -- the run was reloaded. Retry slowly so a dealt hand can recover in place.
+    local base_quad = self.face_up and self.face_quad or self.back_quad
+    if not base_quad then
+        local now = love.timer and love.timer.getTime and love.timer.getTime() or 0
+        if now >= (tonumber(self._next_quad_retry_at) or 0) then
+            self._next_quad_retry_at = now + 1
+            self:refresh_quads()
+        end
+    else
+        self._next_quad_retry_at = nil
+    end
+
     local prev_r, prev_g, prev_b, prev_a = love.graphics.getColor()
     local ed = card_edition_for_display(self)
     local tr, tg, tb, ta = edition_tint_rgba(ed)
