@@ -9199,6 +9199,7 @@ end
 
 function Game:enter_shop_after_blind()
     self:set_state(self.STATES.SHOP)
+    self._shop_draw_cache = nil
     self:init_shop_gamepad_nav()
     self.shop_reroll_count = 0
     for i = #self.tags, 1, -1 do
@@ -9388,8 +9389,7 @@ function Game:buy_shop_joker(slot_index)
     for i, node in ipairs(self.shop_offer_nodes or {}) do
         if node then node.shop_offer_slot = i end
     end
-    self:refresh_shop_prices()
-    self:layout_shop_panels()
+    self._shop_layout_dirty = true
     return true
 end
 
@@ -9432,8 +9432,7 @@ function Game:buy_and_use_shop_consumable(slot_index)
     for i, node in ipairs(self.shop_offer_nodes or {}) do
         if node then node.shop_offer_slot = i end
     end
-    self:refresh_shop_prices()
-    self:layout_shop_panels()
+    self._shop_layout_dirty = true
     return true
 end
 
