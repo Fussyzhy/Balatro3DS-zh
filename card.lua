@@ -79,11 +79,6 @@ function Card:init(X, Y, W, H, card, center, params)
     self.enhancement = self.params.enhancement or (self.card_data and self.card_data.enhancement) or nil
     self.seal = self.params.seal or (self.card_data and self.card_data.seal) or nil
 
-    -- register in global instance table if available
-    if G and G.I and G.I.CARD then
-        table.insert(G.I.CARD, self)
-    end
-
     -- which atlases to use for each visual layer
     -- back: `centers` cell from selected deck (`DECK_DEFS.pos`) or enhancement
     -- face: standard playing-card front in `centers` (rank/suit overlay from `cards_2`)

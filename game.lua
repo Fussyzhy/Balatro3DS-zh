@@ -164,6 +164,7 @@ function Game:init(seed)
     self._blind_resolution_pending = false
     self.shop_offers = {}
     self.shop_offer_nodes = {}
+    self._shop_layout_dirty = true
     self.shop_booster_offers = {}
     self.shop_booster_slots = 2
     self.active_shop_booster_slot = nil
@@ -195,6 +196,7 @@ function Game:init(seed)
     self._collidables_buf = {}
     self._gc_timer = 0
     self._gc_discarded_nodes = 0
+    self._settings_dirty = false
     --- Staggered joker resolution (left-to-right); see `begin_joker_emit` / `_update_joker_emit_queue`.
     self._joker_emit_queue = nil
     self._joker_emit_next = 1
@@ -785,6 +787,7 @@ function Game:clear_shop_offer_nodes()
         end
     end
     self.shop_offer_nodes = {}
+    self._shop_layout_dirty = true
 end
 
 function Game:sync_shop_offer_nodes()
@@ -887,6 +890,7 @@ function Game:sync_shop_offer_nodes()
             node.states.collide.can = false
         end
     end
+    self._shop_layout_dirty = true
 end
 
 function Game:layout_shop_offer_nodes(param)
@@ -909,8 +913,20 @@ function Game:sync_shop_offer_interactivity()
     if not active and tooltip_is_shop_offer then
         self.active_tooltip_joker = nil
     end
-    if self.sync_shop_booster_nodes then self:sync_shop_booster_nodes() end
-    if self.sync_shop_voucher_nodes then self:sync_shop_voucher_nodes() end
+    for _, node in ipairs(self.shop_booster_nodes or {}) do
+        if node and node.states then
+            node.states.visible = active
+            node.states.click.can = active
+            node.states.drag.can = active
+        end
+    end
+    for _, node in ipairs(self.shop_voucher_nodes or {}) do
+        if node and node.states then
+            node.states.visible = active
+            node.states.click.can = active
+            node.states.drag.can = active
+        end
+    end
 end
 
 function Game:clear_shop_booster_nodes()
@@ -922,6 +938,7 @@ function Game:clear_shop_booster_nodes()
         if node then self:remove(node) end
     end
     self.shop_booster_nodes = {}
+    self._shop_layout_dirty = true
 end
 
 function Game:sync_shop_booster_nodes()
@@ -952,6 +969,7 @@ function Game:sync_shop_booster_nodes()
             node.states.drag.can = active
         end
     end
+    self._shop_layout_dirty = true
 end
 
 function Game:clear_shop_voucher_nodes()
@@ -963,6 +981,7 @@ function Game:clear_shop_voucher_nodes()
         if node then self:remove(node) end
     end
     self.shop_voucher_nodes = {}
+    self._shop_layout_dirty = true
 end
 
 function Game:sync_shop_voucher_nodes()
@@ -993,6 +1012,7 @@ function Game:sync_shop_voucher_nodes()
             node.states.drag.can = active
         end
     end
+    self._shop_layout_dirty = true
 end
 
 function Game:can_buy_shop_offer(slot_index)
@@ -1586,7 +1606,15 @@ function Game:discover_item(id)
         self.SETTINGS.DISCOVERED = self.Discovered
     end
     self:refresh_discovery_deck_unlocks()
-    self:save_settings()
+    local defer_save = self.STATES and (self.STATE == self.STATES.SHOP
+        or self.STATE == self.STATES.OPEN_BOOSTER)
+    if defer_save then
+        -- Purchases can discover multiple items at once. Coalesce them into a
+        -- single SD write when the player leaves the shop.
+        self._settings_dirty = true
+    else
+        self:save_settings()
+    end
     return true
 end
 
@@ -2315,7 +2343,13 @@ function Game:save_settings()
     if not ok then
         return false, tostring(err or "write_failed")
     end
+    self._settings_dirty = false
     return true
+end
+
+function Game:flush_settings_if_dirty()
+    if self._settings_dirty ~= true then return true end
+    return self:save_settings()
 end
 
 function Game:control_bindings()
@@ -5666,6 +5700,7 @@ function Game:clear_run_assets_for_main_menu()
 end
 
 function Game:enter_main_menu()
+    self:flush_settings_if_dirty()
     self.STAGE = self.STAGES.MAIN_MENU
     self._menu_sub_state = "main"
     self._main_menu_start_rect = nil
@@ -7193,6 +7228,7 @@ function Game:advance_after_shop()
 end
 
 function Game:continue_from_shop()
+    self:flush_settings_if_dirty()
     self._shop_reroll_base_cost_override = nil
     self.hand_size_delta_juggle = 0
     self:clear_shop_selection()
@@ -7965,6 +8001,7 @@ function Game:layout_shop_panels()
     if self._shop_voucher_panel and ShopUI then
         ShopUI.layout_shop_voucher_nodes(self, self._shop_voucher_panel)
     end
+    self._shop_layout_dirty = false
 end
 
 function Game:extend_shop_offers_to_slot_count()

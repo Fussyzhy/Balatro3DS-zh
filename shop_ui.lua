@@ -180,7 +180,12 @@ function ShopUI.draw_shop_sign_anim(game, center_x, center_y, scale)
     local row = math.floor(frame / cols)
     local qx = col * cell_w
     local qy = row * cell_h
-    local quad = love.graphics.newQuad(qx, qy, cell_w, cell_h, iw, ih)
+    atlas._frame_quads = atlas._frame_quads or {}
+    local quad = atlas._frame_quads[frame]
+    if not quad then
+        quad = love.graphics.newQuad(qx, qy, cell_w, cell_h, iw, ih)
+        atlas._frame_quads[frame] = quad
+    end
     local s = scale or 1
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.draw(atlas.image, quad, center_x - (cell_w * s * 0.5), center_y - (cell_h * s * 0.5), 0, s, s)
@@ -324,8 +329,6 @@ function ShopUI.draw_bottom_shop(game)
     local jokerPanel = { x = shop_continue_rect.x + shop_continue_rect.w + padding, y = shop_continue_rect.y, w = panel_w - 3 * padding - shop_continue_rect.w, h = (shop_reroll_rect.y + shop_reroll_rect.h) - shop_continue_rect.y }
     love.graphics.rectangle("fill", jokerPanel.x, jokerPanel.y, jokerPanel.w, jokerPanel.h, 4, 4)
 
-    ShopUI.layout_shop_offer_nodes(game, jokerPanel)
-
     game._shop_joker_panel = jokerPanel
 
     local bp_w, bp_h = 123, 90
@@ -338,7 +341,6 @@ function ShopUI.draw_bottom_shop(game)
     love.graphics.setColor(game.C.PANEL)
     love.graphics.rectangle("fill", boosterPanel.x, boosterPanel.y, boosterPanel.w, boosterPanel.h, 4, 4)
     game._shop_booster_panel = boosterPanel
-    ShopUI.layout_shop_booster_nodes(game, boosterPanel)
 
     local voucherPanel = {
         x = panel_x + padding,
@@ -349,7 +351,9 @@ function ShopUI.draw_bottom_shop(game)
     love.graphics.setColor(game.C.PANEL)
     love.graphics.rectangle("fill", voucherPanel.x, voucherPanel.y, voucherPanel.w, voucherPanel.h, 4, 4)
     game._shop_voucher_panel = voucherPanel
-    ShopUI.layout_shop_voucher_nodes(game, voucherPanel)
+    if game._shop_layout_dirty ~= false then
+        game:layout_shop_panels()
+    end
 
     love.graphics.setColor(game.C.BLOCK.BACK)
     love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)
