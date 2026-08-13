@@ -11839,11 +11839,29 @@ function Game:move_selected_hand_cards_to_front()
     self.nodes = ordered
 end
 
+local function load_runtime_texture(path, options)
+    if type(path) ~= "string" or path == "" then return nil, "missing texture path", nil end
+    local candidates = { path }
+    if path:sub(-4):lower() == ".png" then
+        candidates[#candidates + 1] = path:sub(1, -5) .. ".t3x"
+    end
+    local last_error = nil
+    for _, candidate in ipairs(candidates) do
+        local ok, image = pcall(love.graphics.newImage, candidate, options or {})
+        if not ok and options and options.dpiscale then
+            ok, image = pcall(love.graphics.newImage, candidate, {})
+        end
+        if ok and image then return image, nil, candidate end
+        last_error = image
+    end
+    return nil, tostring(last_error or "texture load failed"), nil
+end
+
 function Game:ensure_joker_sprite_loaded(key)
     if not key then return nil end
     if type(self.JOKER_SPRITES) ~= "table" then self.JOKER_SPRITES = {} end
     local entry = self.JOKER_SPRITES[key]
-    if entry and entry.image then return entry end
+    if entry and (entry.image or entry.load_attempted) then return entry end
     if not entry then
         entry = {
             name = key,
@@ -11856,26 +11874,27 @@ function Game:ensure_joker_sprite_loaded(key)
     end
     if not entry.path then return entry end
 
-    local ok, img = pcall(love.graphics.newImage, entry.path, { dpiscale = self.SETTINGS.GRAPHICS.texture_scaling, mipmaps = false })
-    local err = ok and nil or img
-    if not ok then
-        ok, img = pcall(love.graphics.newImage, entry.path, {})
-        if not ok then err = img end
-    end
-    entry.image = ok and img or nil
-    entry.load_error = ok and nil or tostring(err)
+    local img, err, resolved_path = load_runtime_texture(entry.path, {
+        dpiscale = self.SETTINGS.GRAPHICS.texture_scaling, mipmaps = false
+    })
+    entry.image = img
+    entry.load_error = err
+    entry.resolved_path = resolved_path
+    entry.load_attempted = true
     return entry
 end
 
 function Game:unload_joker_sprite(key)
     if not key or type(self.JOKER_SPRITES) ~= "table" then return false end
     local entry = self.JOKER_SPRITES[key]
-    if not entry or not entry.image then return false end
-    if entry.image.release then
+    if not entry then return false end
+    if entry.image and entry.image.release then
         pcall(function() entry.image:release() end)
     end
     entry.image = nil
     entry.load_error = nil
+    entry.load_attempted = nil
+    entry.resolved_path = nil
     return true
 end
 
@@ -11883,17 +11902,16 @@ function Game:ensure_asset_atlas_loaded(name)
     if not name or not self.ASSET_ATLAS then return nil end
     local atlas = self.ASSET_ATLAS[name]
     if not atlas then return nil end
-    if atlas.image then return atlas end
+    if atlas.image or atlas.load_attempted then return atlas end
     if not atlas.path then return atlas end
 
-    local ok, img = pcall(love.graphics.newImage, atlas.path, { dpiscale = atlas.dpiscale or self.SETTINGS.GRAPHICS.texture_scaling, mipmaps = false })
-    local err = ok and nil or img
-    if not ok then
-        ok, img = pcall(love.graphics.newImage, atlas.path, {})
-        if not ok then err = img end
-    end
-    atlas.image = ok and img or nil
-    atlas.load_error = ok and nil or tostring(err)
+    local img, err, resolved_path = load_runtime_texture(atlas.path, {
+        dpiscale = atlas.dpiscale or self.SETTINGS.GRAPHICS.texture_scaling, mipmaps = false
+    })
+    atlas.image = img
+    atlas.load_error = err
+    atlas.resolved_path = resolved_path
+    atlas.load_attempted = true
     return atlas
 end
 
@@ -11901,41 +11919,44 @@ function Game:ensure_animation_atlas_loaded(name)
     if not name or not self.ANIMATION_ATLAS then return nil end
     local atlas = self.ANIMATION_ATLAS[name]
     if not atlas then return nil end
-    if atlas.image then return atlas end
+    if atlas.image or atlas.load_attempted then return atlas end
     if not atlas.path then return atlas end
 
-    local ok, img = pcall(love.graphics.newImage, atlas.path, { dpiscale = atlas.dpiscale or self.SETTINGS.GRAPHICS.texture_scaling, mipmaps = false })
-    local err = ok and nil or img
-    if not ok then
-        ok, img = pcall(love.graphics.newImage, atlas.path, {})
-        if not ok then err = img end
-    end
-    atlas.image = ok and img or nil
-    atlas.load_error = ok and nil or tostring(err)
+    local img, err, resolved_path = load_runtime_texture(atlas.path, {
+        dpiscale = atlas.dpiscale or self.SETTINGS.GRAPHICS.texture_scaling, mipmaps = false
+    })
+    atlas.image = img
+    atlas.load_error = err
+    atlas.resolved_path = resolved_path
+    atlas.load_attempted = true
     return atlas
 end
 
 function Game:unload_animation_atlas(name)
     if not name or not self.ANIMATION_ATLAS then return false end
     local atlas = self.ANIMATION_ATLAS[name]
-    if not atlas or not atlas.image then return false end
-    if atlas.image.release then
+    if not atlas then return false end
+    if atlas.image and atlas.image.release then
         pcall(function() atlas.image:release() end)
     end
     atlas.image = nil
     atlas.load_error = nil
+    atlas.load_attempted = nil
+    atlas.resolved_path = nil
     return true
 end
 
 function Game:unload_asset_atlas(name)
     if not name or not self.ASSET_ATLAS then return false end
     local atlas = self.ASSET_ATLAS[name]
-    if not atlas or not atlas.image then return false end
-    if atlas.image.release then
+    if not atlas then return false end
+    if atlas.image and atlas.image.release then
         pcall(function() atlas.image:release() end)
     end
     atlas.image = nil
     atlas.load_error = nil
+    atlas.load_attempted = nil
+    atlas.resolved_path = nil
     return true
 end
 
