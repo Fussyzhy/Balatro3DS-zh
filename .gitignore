@@ -1,6 +1,8 @@
 # LovePotion / 3DS build output
 *.3dsx
 *.zip
+build/
+dist/
 
 # Editor
 .vscode/
