@@ -125,6 +125,8 @@ function Game:init(seed)
     self._consumable_focus_index = nil
     self._role_held = {}
     self._role_press_time = {}
+    self._input_resync_timer = 0
+    self._input_resync_down = {}
     self._hand_sort_by_rank = true
     self._y_sweep_seeded = false
     self._pause_settings_tab = "general"
@@ -5784,7 +5786,7 @@ function Game:update(dt)
         return
     end
     if self.sync_shoulder_input then
-        self:sync_shoulder_input()
+        self:sync_shoulder_input(dt)
     end
     if self.update_sweep_seed then
         self:update_sweep_seed()
@@ -11685,19 +11687,31 @@ function Game:enter_card_select_mode()
 end
 
 --- Keep hold roles aligned with hardware (release events can be dropped mid-play).
-function Game:sync_shoulder_input()
+local INPUT_RESYNC_INTERVAL = 0.1
+local INPUT_RESYNC_KEYS = {
+    z = "a", x = "b", c = "x", v = "y", y = "y",
+    q = "leftshoulder", e = "rightshoulder",
+}
+
+function Game:sync_shoulder_input(dt)
+    if not self._role_held or next(self._role_held) == nil then
+        self._input_resync_timer = 0
+        return
+    end
+    self._input_resync_timer = (self._input_resync_timer or 0) + (tonumber(dt) or 0)
+    if self._input_resync_timer < INPUT_RESYNC_INTERVAL then return end
+    self._input_resync_timer = self._input_resync_timer % INPUT_RESYNC_INTERVAL
+
     local bindings = self:control_bindings()
-    local down = {}
+    local down = self._input_resync_down or {}
+    self._input_resync_down = down
+    for button in pairs(down) do down[button] = nil end
     local joysticks = love.joystick.getJoysticks()
     local joy = joysticks and joysticks[1]
     if joy and joy.isGamepad and joy:isGamepad() then
-        down = InputBindings.build_gamepad_down_map(joy, InputBindings.REBINDABLE_BUTTONS)
+        InputBindings.build_gamepad_down_map(joy, InputBindings.REBINDABLE_BUTTONS, down)
     elseif love.keyboard.isDown then
-        local KEY_TO_GAMEPAD = {
-            z = "a", x = "b", c = "x", v = "y", y = "y",
-            q = "leftshoulder", e = "rightshoulder",
-        }
-        for key, btn in pairs(KEY_TO_GAMEPAD) do
+        for key, btn in pairs(INPUT_RESYNC_KEYS) do
             if love.keyboard.isDown(key) then
                 down[btn] = true
             end
@@ -11708,20 +11722,19 @@ function Game:sync_shoulder_input()
     end
 
     for role in pairs(InputBindings.HOLD_ROLES) do
-        local buttons = InputBindings.get_role_buttons(role, bindings)
-        if #buttons > 0 then
-            local any_down = false
-            for _, btn in ipairs(buttons) do
-                if down[btn] then
-                    any_down = true
-                    break
-                end
+        local any_bound = false
+        local any_down = false
+        for slot = 1, InputBindings.SLOTS_PER_ROLE do
+            local btn = InputBindings.get_role_slot_button(role, slot, bindings)
+            if btn then
+                any_bound = true
+                if down[btn] then any_down = true break end
             end
-            if not any_down then
-                self:set_role_held(role, false)
-                if role == "sort" then
-                    self._y_sweep_seeded = false
-                end
+        end
+        if any_bound and not any_down then
+            self:set_role_held(role, false)
+            if role == "sort" then
+                self._y_sweep_seeded = false
             end
         end
     end
