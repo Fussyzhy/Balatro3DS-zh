@@ -180,7 +180,12 @@ function ShopUI.draw_shop_sign_anim(game, center_x, center_y, scale)
     local row = math.floor(frame / cols)
     local qx = col * cell_w
     local qy = row * cell_h
-    local quad = love.graphics.newQuad(qx, qy, cell_w, cell_h, iw, ih)
+    atlas._frame_quads = atlas._frame_quads or {}
+    local quad = atlas._frame_quads[frame]
+    if not quad then
+        quad = love.graphics.newQuad(qx, qy, cell_w, cell_h, iw, ih)
+        atlas._frame_quads[frame] = quad
+    end
     local s = scale or 1
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.draw(atlas.image, quad, center_x - (cell_w * s * 0.5), center_y - (cell_h * s * 0.5), 0, s, s)
@@ -302,54 +307,74 @@ function ShopUI.draw_bottom_shop(game)
     love.graphics.rectangle("line", panel_x, panel_y, panel_w, panel_h, 4, 4)
 
     local padding = 4
-    local shop_continue_rect = { x = panel_x + padding, y = panel_y + padding, w = 74, h = 45, color = game.C.RED, text = I18N.t("shop.next_round"), lines = 2 }
+    -- Geometry and localized button labels are stable while the shop is open.
+    -- Reusing them avoids allocating several tables/strings every render frame on 3DS.
+    local cache = game._shop_draw_cache
+    if not cache then
+        cache = {}
+        game._shop_draw_cache = cache
+    end
+    local shop_continue_rect = cache.continue_rect
+    local shop_reroll_rect = cache.reroll_rect
     local reroll_cost = game:shop_current_reroll_cost()
     local can_reroll = game:can_afford_price(reroll_cost)
     local reroll_color = can_reroll and game.C.GREEN or game.C.GREY
-    local shop_reroll_rect = {
-        x = panel_x + padding,
-        y = shop_continue_rect.y + shop_continue_rect.h + padding,
-        w = shop_continue_rect.w,
-        h = shop_continue_rect.h,
-        color = reroll_color,
-        text = I18N.t("shop.reroll", { cost = reroll_cost }),
-        lines = 2
-    }
-    game._shop_continue_rect = { x = shop_continue_rect.x, y = shop_continue_rect.y, w = shop_continue_rect.w, h = shop_continue_rect.h }
-    game._shop_reroll_rect = { x = shop_reroll_rect.x, y = shop_reroll_rect.y, w = shop_reroll_rect.w, h = shop_reroll_rect.h }
+    local reroll_text = cache.reroll_text
+    if cache.reroll_cost ~= reroll_cost or not reroll_text then
+        reroll_text = I18N.t("shop.reroll", { cost = reroll_cost })
+        cache.reroll_cost = reroll_cost
+        cache.reroll_text = reroll_text
+    end
+    if not shop_continue_rect then
+        shop_continue_rect = { x = panel_x + padding, y = panel_y + padding, w = 74, h = 45, color = game.C.RED, text = I18N.t("shop.next_round"), lines = 2 }
+        cache.continue_rect = shop_continue_rect
+    end
+    if not shop_reroll_rect then
+        shop_reroll_rect = { x = panel_x + padding, y = shop_continue_rect.y + shop_continue_rect.h + padding, w = shop_continue_rect.w, h = shop_continue_rect.h, color = reroll_color, text = reroll_text, lines = 2 }
+        cache.reroll_rect = shop_reroll_rect
+    else
+        shop_reroll_rect.color = reroll_color
+        shop_reroll_rect.text = reroll_text
+    end
+    game._shop_continue_rect = shop_continue_rect
+    game._shop_reroll_rect = shop_reroll_rect
     ShopUI.draw_shop_button(game, shop_continue_rect)
     ShopUI.draw_shop_button(game, shop_reroll_rect)
 
     love.graphics.setColor(game.C.PANEL)
-    local jokerPanel = { x = shop_continue_rect.x + shop_continue_rect.w + padding, y = shop_continue_rect.y, w = panel_w - 3 * padding - shop_continue_rect.w, h = (shop_reroll_rect.y + shop_reroll_rect.h) - shop_continue_rect.y }
+    local jokerPanel = cache.joker_panel or {}
+    jokerPanel.x = shop_continue_rect.x + shop_continue_rect.w + padding
+    jokerPanel.y = shop_continue_rect.y
+    jokerPanel.w = panel_w - 3 * padding - shop_continue_rect.w
+    jokerPanel.h = (shop_reroll_rect.y + shop_reroll_rect.h) - shop_continue_rect.y
+    cache.joker_panel = jokerPanel
     love.graphics.rectangle("fill", jokerPanel.x, jokerPanel.y, jokerPanel.w, jokerPanel.h, 4, 4)
-
-    ShopUI.layout_shop_offer_nodes(game, jokerPanel)
 
     game._shop_joker_panel = jokerPanel
 
     local bp_w, bp_h = 123, 90
-    local boosterPanel = {
-        x = jokerPanel.x + math.floor(jokerPanel.w * 0.5) - 10,
-        y = jokerPanel.y + jokerPanel.h + padding,
-        w = bp_w,
-        h = bp_h,
-    }
+    local boosterPanel = cache.booster_panel or {}
+    boosterPanel.x = jokerPanel.x + math.floor(jokerPanel.w * 0.5) - 10
+    boosterPanel.y = jokerPanel.y + jokerPanel.h + padding
+    boosterPanel.w = bp_w
+    boosterPanel.h = bp_h
+    cache.booster_panel = boosterPanel
     love.graphics.setColor(game.C.PANEL)
     love.graphics.rectangle("fill", boosterPanel.x, boosterPanel.y, boosterPanel.w, boosterPanel.h, 4, 4)
     game._shop_booster_panel = boosterPanel
-    ShopUI.layout_shop_booster_nodes(game, boosterPanel)
 
-    local voucherPanel = {
-        x = panel_x + padding,
-        y = boosterPanel.y,
-        w = 177,
-        h = bp_h,
-    }
+    local voucherPanel = cache.voucher_panel or {}
+    voucherPanel.x = panel_x + padding
+    voucherPanel.y = boosterPanel.y
+    voucherPanel.w = 177
+    voucherPanel.h = bp_h
+    cache.voucher_panel = voucherPanel
     love.graphics.setColor(game.C.PANEL)
     love.graphics.rectangle("fill", voucherPanel.x, voucherPanel.y, voucherPanel.w, voucherPanel.h, 4, 4)
     game._shop_voucher_panel = voucherPanel
-    ShopUI.layout_shop_voucher_nodes(game, voucherPanel)
+    if game._shop_layout_dirty ~= false then
+        game:layout_shop_panels()
+    end
 
     love.graphics.setColor(game.C.BLOCK.BACK)
     love.graphics.setFont(game.FONTS.PIXEL.MEDIUM)

@@ -179,7 +179,12 @@ local function compute_quad(atlas, index)
     local sx = col * cell_w
     local sy = row * cell_h
 
-    local quad = love.graphics.newQuad(sx, sy, cell_w, cell_h, iw, ih)
+    atlas._cell_quads = atlas._cell_quads or {}
+    local quad = atlas._cell_quads[index]
+    if not quad then
+        quad = love.graphics.newQuad(sx, sy, cell_w, cell_h, iw, ih)
+        atlas._cell_quads[index] = quad
+    end
     return quad, cell_w, cell_h
 end
 
@@ -1027,6 +1032,17 @@ function Joker:update(dt)
     Moveable.update(self, dt)
     if joker_front_sprite_signature(self) ~= self._quads_refresh_signature then
         self:refresh_quads()
+    elseif self.face_up and (not self.front_sprite or not self.front_sprite.image) then
+        -- Shop and owned Jokers can briefly share a sprite entry. If removal of
+        -- the shop node releases it, recover the owned Joker without reloading
+        -- the save. Keep retries throttled for constrained 3DS storage.
+        local now = love.timer and love.timer.getTime and love.timer.getTime() or 0
+        if now >= (tonumber(self._next_sprite_retry_at) or 0) then
+            self._next_sprite_retry_at = now + 1
+            self:refresh_quads()
+        end
+    else
+        self._next_sprite_retry_at = nil
     end
     if self.scoring_shake_timer and self.scoring_shake_timer > 0 then
         self.scoring_shake_timer = self.scoring_shake_timer - dt

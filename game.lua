@@ -16,6 +16,7 @@ local InputBindings = require("input_bindings")
 
 --- Seconds between revealing each payout line on the round-win screen.
 local ROUND_WIN_LINE_DELAY = 0.38
+local SETTINGS_FLUSH_DELAY = 0.75
 local RUN_SAVE_DIR = "sdmc"
 local PROFILE_COUNT = 3
 local ACTIVE_PROFILE_PATH = "sdmc/Balatro3DS_active_profile.lua"
@@ -125,6 +126,8 @@ function Game:init(seed)
     self._consumable_focus_index = nil
     self._role_held = {}
     self._role_press_time = {}
+    self._input_resync_timer = 0
+    self._input_resync_down = {}
     self._hand_sort_by_rank = true
     self._y_sweep_seeded = false
     self._pause_settings_tab = "general"
@@ -164,6 +167,7 @@ function Game:init(seed)
     self._blind_resolution_pending = false
     self.shop_offers = {}
     self.shop_offer_nodes = {}
+    self._shop_layout_dirty = true
     self.shop_booster_offers = {}
     self.shop_booster_slots = 2
     self.active_shop_booster_slot = nil
@@ -193,8 +197,14 @@ function Game:init(seed)
     self.boss_runtime = {}
     self._next_card_uid = 1
     self._collidables_buf = {}
+    self._collision_drag_active = false
+    self._draw_cons_set = {}
+    self._draw_hand_set = {}
+    self._draw_joker_set = {}
     self._gc_timer = 0
     self._gc_discarded_nodes = 0
+    self._settings_dirty = false
+    self._settings_flush_at = nil
     --- Staggered joker resolution (left-to-right); see `begin_joker_emit` / `_update_joker_emit_queue`.
     self._joker_emit_queue = nil
     self._joker_emit_next = 1
@@ -785,6 +795,7 @@ function Game:clear_shop_offer_nodes()
         end
     end
     self.shop_offer_nodes = {}
+    self._shop_layout_dirty = true
 end
 
 function Game:sync_shop_offer_nodes()
@@ -887,6 +898,7 @@ function Game:sync_shop_offer_nodes()
             node.states.collide.can = false
         end
     end
+    self._shop_layout_dirty = true
 end
 
 function Game:layout_shop_offer_nodes(param)
@@ -909,8 +921,20 @@ function Game:sync_shop_offer_interactivity()
     if not active and tooltip_is_shop_offer then
         self.active_tooltip_joker = nil
     end
-    if self.sync_shop_booster_nodes then self:sync_shop_booster_nodes() end
-    if self.sync_shop_voucher_nodes then self:sync_shop_voucher_nodes() end
+    for _, node in ipairs(self.shop_booster_nodes or {}) do
+        if node and node.states then
+            node.states.visible = active
+            node.states.click.can = active
+            node.states.drag.can = active
+        end
+    end
+    for _, node in ipairs(self.shop_voucher_nodes or {}) do
+        if node and node.states then
+            node.states.visible = active
+            node.states.click.can = active
+            node.states.drag.can = active
+        end
+    end
 end
 
 function Game:clear_shop_booster_nodes()
@@ -922,6 +946,7 @@ function Game:clear_shop_booster_nodes()
         if node then self:remove(node) end
     end
     self.shop_booster_nodes = {}
+    self._shop_layout_dirty = true
 end
 
 function Game:sync_shop_booster_nodes()
@@ -952,6 +977,7 @@ function Game:sync_shop_booster_nodes()
             node.states.drag.can = active
         end
     end
+    self._shop_layout_dirty = true
 end
 
 function Game:clear_shop_voucher_nodes()
@@ -963,6 +989,7 @@ function Game:clear_shop_voucher_nodes()
         if node then self:remove(node) end
     end
     self.shop_voucher_nodes = {}
+    self._shop_layout_dirty = true
 end
 
 function Game:sync_shop_voucher_nodes()
@@ -993,6 +1020,7 @@ function Game:sync_shop_voucher_nodes()
             node.states.drag.can = active
         end
     end
+    self._shop_layout_dirty = true
 end
 
 function Game:can_buy_shop_offer(slot_index)
@@ -1297,12 +1325,8 @@ function Game:_dec_atlas_owner(name)
     self._atlas_owner_counts[name] = nil
 
     local entry = self.JOKER_SPRITES and self.JOKER_SPRITES[name]
-    if entry and entry.image then
-        if entry.image.release then
-            pcall(function() entry.image:release() end)
-        end
-        entry.image = nil
-        entry.load_error = nil
+    if entry then
+        self:unload_joker_sprite(name)
     end
 end
 
@@ -1586,7 +1610,15 @@ function Game:discover_item(id)
         self.SETTINGS.DISCOVERED = self.Discovered
     end
     self:refresh_discovery_deck_unlocks()
-    self:save_settings()
+    local defer_save = self.STATES and (self.STATE == self.STATES.SHOP
+        or self.STATE == self.STATES.OPEN_BOOSTER)
+    if defer_save then
+        -- Purchases can discover multiple items at once. Coalesce their writes
+        -- and schedule one after the shop transition completes.
+        self._settings_dirty = true
+    else
+        self:save_settings()
+    end
     return true
 end
 
@@ -2315,7 +2347,38 @@ function Game:save_settings()
     if not ok then
         return false, tostring(err or "write_failed")
     end
+    self._settings_dirty = false
+    self._settings_flush_at = nil
     return true
+end
+
+function Game:flush_settings_if_dirty()
+    if self._settings_dirty ~= true then return true end
+    return self:save_settings()
+end
+
+function Game:schedule_settings_flush(delay)
+    if self._settings_dirty ~= true then return false end
+    local now = love and love.timer and love.timer.getTime and love.timer.getTime() or 0
+    self._settings_flush_at = now + math.max(0, tonumber(delay) or SETTINGS_FLUSH_DELAY)
+    return true
+end
+
+function Game:update_deferred_settings_save()
+    if self._settings_dirty ~= true then
+        self._settings_flush_at = nil
+        return
+    end
+    local flush_at = tonumber(self._settings_flush_at)
+    if not flush_at then return end
+    if self.STATE == self.STATES.SHOP or self.STATE == self.STATES.OPEN_BOOSTER then return end
+    local now = love and love.timer and love.timer.getTime and love.timer.getTime() or flush_at
+    if now < flush_at then return end
+    self._settings_flush_at = nil
+    local ok = self:flush_settings_if_dirty()
+    if not ok and self._settings_dirty == true then
+        self._settings_flush_at = now + SETTINGS_FLUSH_DELAY
+    end
 end
 
 function Game:control_bindings()
@@ -3437,7 +3500,15 @@ function Game:draw()
     local show_consumables = not (self.STATE == self.STATES.ROUND_EVAL
         or self.STATE == self.STATES.GAME_OVER or self.STATE == self.STATES.YOU_WIN)
     if not show_consumables then
-        self._consumable_rects = {}
+        local rects = self._consumable_rects
+        if type(rects) ~= "table" then
+            rects = {}
+            self._consumable_rects = rects
+        else
+            for i = #rects, 1, -1 do
+                rects[i] = nil
+            end
+        end
         self.active_tooltip_consumable_index = nil
         if self.consumable_nodes then
             for _, node in ipairs(self.consumable_nodes) do
@@ -3457,9 +3528,12 @@ function Game:draw()
 
     -- Keep layering stable:
     -- 1) regular nodes, 2) hand cards, 3) shop tags, ) pulled-down jokers + consumables, 5) popups
-    local cons_set = {}
-    local hand_set = {}
-    local joker_set = {}
+    local cons_set = self._draw_cons_set
+    local hand_set = self._draw_hand_set
+    local joker_set = self._draw_joker_set
+    for node in pairs(cons_set) do cons_set[node] = nil end
+    for node in pairs(hand_set) do hand_set[node] = nil end
+    for node in pairs(joker_set) do joker_set[node] = nil end
     if self.consumable_nodes and self.consumables_on_bottom == true then
         for _, cn in ipairs(self.consumable_nodes) do
             cons_set[cn] = true
@@ -4670,8 +4744,16 @@ end
 
 --- Layout owned consumable nodes (top or bottom screen depending on `consumables_on_bottom`).
 function Game:draw_consumables_row()
-    self._consumable_rects = {}
-    if not self.consumables or #self.consumables == 0 then return end
+    local rects = self._consumable_rects
+    if type(rects) ~= "table" then
+        rects = {}
+        self._consumable_rects = rects
+    end
+    local count = self.consumables and #self.consumables or 0
+    for i = #rects, count + 1, -1 do
+        rects[i] = nil
+    end
+    if count == 0 then return end
     self:_apply_consumable_layout()
 end
 
@@ -4793,7 +4875,12 @@ function Game:draw_blind_chip_sprite(sprite_row, center_x, center_y, scale)
     local row = math.floor(sprite_index / cols)
     local qx = col * cell_w
     local qy = row * cell_h
-    local quad = love.graphics.newQuad(qx, qy, cell_w, cell_h, iw, ih)
+    atlas._cell_quads = atlas._cell_quads or {}
+    local quad = atlas._cell_quads[sprite_index]
+    if not quad then
+        quad = love.graphics.newQuad(qx, qy, cell_w, cell_h, iw, ih)
+        atlas._cell_quads[sprite_index] = quad
+    end
     local s = scale or 1
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.draw(atlas.image, quad, center_x - (cell_w * s * 0.5), center_y - (cell_h * s * 0.5), 0, s, s)
@@ -5666,6 +5753,7 @@ function Game:clear_run_assets_for_main_menu()
 end
 
 function Game:enter_main_menu()
+    self:flush_settings_if_dirty()
     self.STAGE = self.STAGES.MAIN_MENU
     self._menu_sub_state = "main"
     self._main_menu_start_rect = nil
@@ -5748,8 +5836,9 @@ function Game:update(dt)
     if self.STATE == self.STATES.PAUSED then
         return
     end
+    self:update_deferred_settings_save()
     if self.sync_shoulder_input then
-        self:sync_shoulder_input()
+        self:sync_shoulder_input(dt)
     end
     if self.update_sweep_seed then
         self:update_sweep_seed()
@@ -5887,13 +5976,23 @@ end
 
 function Game:check_collisions(dt)
     if not self.dragging then
-        for _, node in ipairs(self.nodes) do
+        if not self._collision_drag_active then return end
+        for _, node in ipairs(self._collidables_buf) do
             if node.states then
                 node.states.collide.is = false
             end
+            if node.collision_offset then
+                node.collision_offset.x = 0
+                node.collision_offset.y = 0
+            end
         end
+        for i = #self._collidables_buf, 1, -1 do
+            self._collidables_buf[i] = nil
+        end
+        self._collision_drag_active = false
         return
     end
+    self._collision_drag_active = true
     
     local collidables = self._collidables_buf
     for i = #collidables, 1, -1 do
@@ -6531,6 +6630,7 @@ function Game:_apply_consumable_layout()
     local list = self.consumables or {}
     local nodes = self.consumable_nodes or {}
     if #list == 0 then return end
+    local rects = self._consumable_rects
 
     local top_dims = self:get_top_inventory_dims()
     local bot_dims = self:get_bottom_inventory_dims()
@@ -6572,7 +6672,15 @@ function Game:_apply_consumable_layout()
                 node.T.r = 0
                 node.T.scale = s
             end
-            self._consumable_rects[i] = { x = x, y = y_pos, w = eff_w, h = eff_h }
+            local rect = rects[i]
+            if not rect then
+                rect = {}
+                rects[i] = rect
+            end
+            rect.x = x
+            rect.y = y_pos
+            rect.w = eff_w
+            rect.h = eff_h
         end
     else
         local s = 1
@@ -6596,7 +6704,15 @@ function Game:_apply_consumable_layout()
                 node.T.y = y
                 node.T.scale = s
             end
-            self._consumable_rects[i] = { x = x, y = y, w = card_w, h = card_h }
+            local rect = rects[i]
+            if not rect then
+                rect = {}
+                rects[i] = rect
+            end
+            rect.x = x
+            rect.y = y
+            rect.w = card_w
+            rect.h = card_h
         end
     end
 end
@@ -7193,6 +7309,7 @@ function Game:advance_after_shop()
 end
 
 function Game:continue_from_shop()
+    self:schedule_settings_flush()
     self._shop_reroll_base_cost_override = nil
     self.hand_size_delta_juggle = 0
     self:clear_shop_selection()
@@ -7965,6 +8082,7 @@ function Game:layout_shop_panels()
     if self._shop_voucher_panel and ShopUI then
         ShopUI.layout_shop_voucher_nodes(self, self._shop_voucher_panel)
     end
+    self._shop_layout_dirty = false
 end
 
 function Game:extend_shop_offers_to_slot_count()
@@ -9077,6 +9195,7 @@ end
 
 function Game:enter_shop_after_blind()
     self:set_state(self.STATES.SHOP)
+    self._shop_draw_cache = nil
     self:init_shop_gamepad_nav()
     self.shop_reroll_count = 0
     for i = #self.tags, 1, -1 do
@@ -9266,8 +9385,7 @@ function Game:buy_shop_joker(slot_index)
     for i, node in ipairs(self.shop_offer_nodes or {}) do
         if node then node.shop_offer_slot = i end
     end
-    self:refresh_shop_prices()
-    self:layout_shop_panels()
+    self._shop_layout_dirty = true
     return true
 end
 
@@ -9310,8 +9428,7 @@ function Game:buy_and_use_shop_consumable(slot_index)
     for i, node in ipairs(self.shop_offer_nodes or {}) do
         if node then node.shop_offer_slot = i end
     end
-    self:refresh_shop_prices()
-    self:layout_shop_panels()
+    self._shop_layout_dirty = true
     return true
 end
 
@@ -11648,19 +11765,31 @@ function Game:enter_card_select_mode()
 end
 
 --- Keep hold roles aligned with hardware (release events can be dropped mid-play).
-function Game:sync_shoulder_input()
+local INPUT_RESYNC_INTERVAL = 0.1
+local INPUT_RESYNC_KEYS = {
+    z = "a", x = "b", c = "x", v = "y", y = "y",
+    q = "leftshoulder", e = "rightshoulder",
+}
+
+function Game:sync_shoulder_input(dt)
+    if not self._role_held or next(self._role_held) == nil then
+        self._input_resync_timer = 0
+        return
+    end
+    self._input_resync_timer = (self._input_resync_timer or 0) + (tonumber(dt) or 0)
+    if self._input_resync_timer < INPUT_RESYNC_INTERVAL then return end
+    self._input_resync_timer = self._input_resync_timer % INPUT_RESYNC_INTERVAL
+
     local bindings = self:control_bindings()
-    local down = {}
+    local down = self._input_resync_down or {}
+    self._input_resync_down = down
+    for button in pairs(down) do down[button] = nil end
     local joysticks = love.joystick.getJoysticks()
     local joy = joysticks and joysticks[1]
     if joy and joy.isGamepad and joy:isGamepad() then
-        down = InputBindings.build_gamepad_down_map(joy, InputBindings.REBINDABLE_BUTTONS)
+        InputBindings.build_gamepad_down_map(joy, InputBindings.REBINDABLE_BUTTONS, down)
     elseif love.keyboard.isDown then
-        local KEY_TO_GAMEPAD = {
-            z = "a", x = "b", c = "x", v = "y", y = "y",
-            q = "leftshoulder", e = "rightshoulder",
-        }
-        for key, btn in pairs(KEY_TO_GAMEPAD) do
+        for key, btn in pairs(INPUT_RESYNC_KEYS) do
             if love.keyboard.isDown(key) then
                 down[btn] = true
             end
@@ -11671,20 +11800,19 @@ function Game:sync_shoulder_input()
     end
 
     for role in pairs(InputBindings.HOLD_ROLES) do
-        local buttons = InputBindings.get_role_buttons(role, bindings)
-        if #buttons > 0 then
-            local any_down = false
-            for _, btn in ipairs(buttons) do
-                if down[btn] then
-                    any_down = true
-                    break
-                end
+        local any_bound = false
+        local any_down = false
+        for slot = 1, InputBindings.SLOTS_PER_ROLE do
+            local btn = InputBindings.get_role_slot_button(role, slot, bindings)
+            if btn then
+                any_bound = true
+                if down[btn] then any_down = true break end
             end
-            if not any_down then
-                self:set_role_held(role, false)
-                if role == "sort" then
-                    self._y_sweep_seeded = false
-                end
+        end
+        if any_bound and not any_down then
+            self:set_role_held(role, false)
+            if role == "sort" then
+                self._y_sweep_seeded = false
             end
         end
     end
@@ -11707,11 +11835,36 @@ function Game:move_selected_hand_cards_to_front()
     self.nodes = ordered
 end
 
+local function load_runtime_texture(path, options)
+    if type(path) ~= "string" or path == "" then return nil, "missing texture path", nil end
+    local candidates = { path }
+    if path:sub(-4):lower() == ".png" then
+        candidates[#candidates + 1] = path:sub(1, -5) .. ".t3x"
+    end
+    local last_error = nil
+    for _, candidate in ipairs(candidates) do
+        local ok, image = pcall(love.graphics.newImage, candidate, options or {})
+        if not ok and options and options.dpiscale then
+            ok, image = pcall(love.graphics.newImage, candidate, {})
+        end
+        if ok and image then return image, nil, candidate end
+        last_error = image
+    end
+    return nil, tostring(last_error or "texture load failed"), nil
+end
+
+local function runtime_texture_retry_due(entry)
+    if not entry or not entry.load_attempted then return true end
+    if entry.image then return false end
+    local now = love.timer and love.timer.getTime and love.timer.getTime() or 0
+    return now >= (tonumber(entry.next_load_retry_at) or 0)
+end
+
 function Game:ensure_joker_sprite_loaded(key)
     if not key then return nil end
     if type(self.JOKER_SPRITES) ~= "table" then self.JOKER_SPRITES = {} end
     local entry = self.JOKER_SPRITES[key]
-    if entry and entry.image then return entry end
+    if entry and not runtime_texture_retry_due(entry) then return entry end
     if not entry then
         entry = {
             name = key,
@@ -11724,26 +11877,29 @@ function Game:ensure_joker_sprite_loaded(key)
     end
     if not entry.path then return entry end
 
-    local ok, img = pcall(love.graphics.newImage, entry.path, { dpiscale = self.SETTINGS.GRAPHICS.texture_scaling, mipmaps = false })
-    local err = ok and nil or img
-    if not ok then
-        ok, img = pcall(love.graphics.newImage, entry.path, {})
-        if not ok then err = img end
-    end
-    entry.image = ok and img or nil
-    entry.load_error = ok and nil or tostring(err)
+    local img, err, resolved_path = load_runtime_texture(entry.path, {
+        dpiscale = self.SETTINGS.GRAPHICS.texture_scaling, mipmaps = false
+    })
+    entry.image = img
+    entry.load_error = err
+    entry.resolved_path = resolved_path
+    entry.load_attempted = true
+    entry.next_load_retry_at = img and nil or ((love.timer and love.timer.getTime and love.timer.getTime() or 0) + 1)
     return entry
 end
 
 function Game:unload_joker_sprite(key)
     if not key or type(self.JOKER_SPRITES) ~= "table" then return false end
     local entry = self.JOKER_SPRITES[key]
-    if not entry or not entry.image then return false end
-    if entry.image.release then
+    if not entry then return false end
+    if entry.image and entry.image.release then
         pcall(function() entry.image:release() end)
     end
     entry.image = nil
     entry.load_error = nil
+    entry.load_attempted = nil
+    entry.resolved_path = nil
+    entry.next_load_retry_at = nil
     return true
 end
 
@@ -11751,17 +11907,17 @@ function Game:ensure_asset_atlas_loaded(name)
     if not name or not self.ASSET_ATLAS then return nil end
     local atlas = self.ASSET_ATLAS[name]
     if not atlas then return nil end
-    if atlas.image then return atlas end
+    if not runtime_texture_retry_due(atlas) then return atlas end
     if not atlas.path then return atlas end
 
-    local ok, img = pcall(love.graphics.newImage, atlas.path, { dpiscale = atlas.dpiscale or self.SETTINGS.GRAPHICS.texture_scaling, mipmaps = false })
-    local err = ok and nil or img
-    if not ok then
-        ok, img = pcall(love.graphics.newImage, atlas.path, {})
-        if not ok then err = img end
-    end
-    atlas.image = ok and img or nil
-    atlas.load_error = ok and nil or tostring(err)
+    local img, err, resolved_path = load_runtime_texture(atlas.path, {
+        dpiscale = atlas.dpiscale or self.SETTINGS.GRAPHICS.texture_scaling, mipmaps = false
+    })
+    atlas.image = img
+    atlas.load_error = err
+    atlas.resolved_path = resolved_path
+    atlas.load_attempted = true
+    atlas.next_load_retry_at = img and nil or ((love.timer and love.timer.getTime and love.timer.getTime() or 0) + 1)
     return atlas
 end
 
@@ -11769,41 +11925,51 @@ function Game:ensure_animation_atlas_loaded(name)
     if not name or not self.ANIMATION_ATLAS then return nil end
     local atlas = self.ANIMATION_ATLAS[name]
     if not atlas then return nil end
-    if atlas.image then return atlas end
+    if not runtime_texture_retry_due(atlas) then return atlas end
     if not atlas.path then return atlas end
 
-    local ok, img = pcall(love.graphics.newImage, atlas.path, { dpiscale = atlas.dpiscale or self.SETTINGS.GRAPHICS.texture_scaling, mipmaps = false })
-    local err = ok and nil or img
-    if not ok then
-        ok, img = pcall(love.graphics.newImage, atlas.path, {})
-        if not ok then err = img end
-    end
-    atlas.image = ok and img or nil
-    atlas.load_error = ok and nil or tostring(err)
+    local img, err, resolved_path = load_runtime_texture(atlas.path, {
+        dpiscale = atlas.dpiscale or self.SETTINGS.GRAPHICS.texture_scaling, mipmaps = false
+    })
+    atlas.image = img
+    atlas.load_error = err
+    atlas.resolved_path = resolved_path
+    atlas.load_attempted = true
+    atlas.next_load_retry_at = img and nil or ((love.timer and love.timer.getTime and love.timer.getTime() or 0) + 1)
     return atlas
 end
 
 function Game:unload_animation_atlas(name)
     if not name or not self.ANIMATION_ATLAS then return false end
     local atlas = self.ANIMATION_ATLAS[name]
-    if not atlas or not atlas.image then return false end
-    if atlas.image.release then
+    if not atlas then return false end
+    if atlas.image and atlas.image.release then
         pcall(function() atlas.image:release() end)
     end
     atlas.image = nil
     atlas.load_error = nil
+    atlas.load_attempted = nil
+    atlas.resolved_path = nil
+    atlas.next_load_retry_at = nil
+    atlas._frame_quads = nil
     return true
 end
 
 function Game:unload_asset_atlas(name)
     if not name or not self.ASSET_ATLAS then return false end
     local atlas = self.ASSET_ATLAS[name]
-    if not atlas or not atlas.image then return false end
-    if atlas.image.release then
+    if not atlas then return false end
+    if atlas.image and atlas.image.release then
         pcall(function() atlas.image:release() end)
     end
     atlas.image = nil
     atlas.load_error = nil
+    atlas.load_attempted = nil
+    atlas.resolved_path = nil
+    atlas.next_load_retry_at = nil
+    atlas._cell_quads = nil
+    atlas._pack_quads = nil
+    atlas._voucher_quads = nil
     return true
 end
 

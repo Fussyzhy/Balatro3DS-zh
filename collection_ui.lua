@@ -51,7 +51,12 @@ local function atlas_quad_for_index(atlas, index)
     local cols = math.max(1, math.floor(iw / px))
     local col = index % cols
     local row = math.floor(index / cols)
-    local quad = love.graphics.newQuad(col * px, row * py, px, py, iw, ih)
+    atlas._cell_quads = atlas._cell_quads or {}
+    local quad = atlas._cell_quads[index]
+    if not quad then
+        quad = love.graphics.newQuad(col * px, row * py, px, py, iw, ih)
+        atlas._cell_quads[index] = quad
+    end
     return quad, px, py
 end
 
@@ -81,13 +86,8 @@ local function draw_deck_collection_sprite(game, def, x, y, w, h)
     if not atlas or not atlas.image then return end
 
     local index = tonumber(def.pos) or 0
-    local iw, ih = atlas.image:getDimensions()
-    local cell_w = tonumber(atlas.px) or 72
-    local cell_h = tonumber(atlas.py) or 95
-    local cols = math.max(1, math.floor(iw / cell_w))
-    local col = index % cols
-    local row = math.floor(index / cols)
-    local quad = love.graphics.newQuad(col * cell_w, row * cell_h, cell_w, cell_h, iw, ih)
+    local quad, cell_w, cell_h = atlas_quad_for_index(atlas, index)
+    if not quad then return end
 
     local scale = math.min(w / cell_w, h / cell_h)
     if scale > 1 then scale = 1 end
@@ -125,11 +125,7 @@ function CollectionStaticNode:draw()
                 local px = tonumber(atlas.px) or 72
                 local py = tonumber(atlas.py) or 95
                 local idx = tonumber(def.pos) or 0
-                local iw, ih = atlas.image:getDimensions()
-                local cols = math.max(1, math.floor(iw / px))
-                local col = idx % cols
-                local row = math.floor(idx / cols)
-                local quad = love.graphics.newQuad(col * px, row * py, px, py, iw, ih)
+                local quad = atlas_quad_for_index(atlas, idx)
                 local s = math.min(dw / px, dh / py)
                 love.graphics.setColor(1, 1, 1, 1)
                 love.graphics.draw(atlas.image, quad, draw_x, draw_y, 0, s, s)

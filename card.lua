@@ -79,11 +79,6 @@ function Card:init(X, Y, W, H, card, center, params)
     self.enhancement = self.params.enhancement or (self.card_data and self.card_data.enhancement) or nil
     self.seal = self.params.seal or (self.card_data and self.card_data.seal) or nil
 
-    -- register in global instance table if available
-    if G and G.I and G.I.CARD then
-        table.insert(G.I.CARD, self)
-    end
-
     -- which atlases to use for each visual layer
     -- back: `centers` cell from selected deck (`DECK_DEFS.pos`) or enhancement
     -- face: standard playing-card front in `centers` (rank/suit overlay from `cards_2`)
@@ -167,7 +162,12 @@ function Card:compute_quad(atlas, index)
     local sx = col * cell_w
     local sy = row * cell_h
 
-    local quad = love.graphics.newQuad(sx, sy, cell_w, cell_h, iw, ih)
+    atlas._cell_quads = atlas._cell_quads or {}
+    local quad = atlas._cell_quads[index]
+    if not quad then
+        quad = love.graphics.newQuad(sx, sy, cell_w, cell_h, iw, ih)
+        atlas._cell_quads[index] = quad
+    end
     return quad, cell_w, cell_h
 end
 
@@ -803,6 +803,19 @@ end
 
 function Card:draw()
     if not self.states.visible then return end
+
+    -- A transient texture load failure used to leave cards with nil quads until
+    -- the run was reloaded. Retry slowly so a dealt hand can recover in place.
+    local base_quad = self.face_up and self.face_quad or self.back_quad
+    if not base_quad then
+        local now = love.timer and love.timer.getTime and love.timer.getTime() or 0
+        if now >= (tonumber(self._next_quad_retry_at) or 0) then
+            self._next_quad_retry_at = now + 1
+            self:refresh_quads()
+        end
+    else
+        self._next_quad_retry_at = nil
+    end
 
     local prev_r, prev_g, prev_b, prev_a = love.graphics.getColor()
     local ed = card_edition_for_display(self)

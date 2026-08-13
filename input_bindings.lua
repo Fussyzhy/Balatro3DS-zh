@@ -358,17 +358,12 @@ end
 function InputBindings.safe_is_trigger_down(joy, button)
     if not InputBindings.is_trigger_button(button) then return false end
     if not joy or not joy.getGamepadAxis then return false end
-    local axes = { button }
-    if button == "lefttrigger" then
-        axes = { "lefttrigger", "triggerleft" }
-    elseif button == "righttrigger" then
-        axes = { "righttrigger", "triggerright" }
-    end
     local threshold = InputBindings.TRIGGER_AXIS_THRESHOLD
-    for _, axis in ipairs(axes) do
-        local ok, value = pcall(function()
-            return joy:getGamepadAxis(axis)
-        end)
+    local alias = button == "lefttrigger" and "triggerleft"
+        or (button == "righttrigger" and "triggerright")
+    for i = 1, alias and 2 or 1 do
+        local axis = i == 1 and button or alias
+        local ok, value = pcall(joy.getGamepadAxis, joy, axis)
         if ok and (tonumber(value) or 0) > threshold then
             return true
         end
@@ -382,15 +377,13 @@ function InputBindings.safe_is_gamepad_down(joy, button)
     end
     if not joy or not joy.isGamepad or not joy:isGamepad() then return false end
     if type(button) ~= "string" or button == "" then return false end
-    local ok, pressed = pcall(function()
-        return joy:isGamepadDown(button) == true
-    end)
+    local ok, pressed = pcall(joy.isGamepadDown, joy, button)
     return ok and pressed == true
 end
 
 --- Build a map of pressed buttons; skips unsupported names (e.g. ZL/ZR on O3DS).
-function InputBindings.build_gamepad_down_map(joy, button_set)
-    local down = {}
+function InputBindings.build_gamepad_down_map(joy, button_set, out)
+    local down = out or {}
     if not joy or not joy.isGamepad or not joy:isGamepad() then return down end
     local set = button_set or InputBindings.REBINDABLE_BUTTONS
     for btn in pairs(set) do

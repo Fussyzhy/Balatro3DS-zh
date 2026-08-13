@@ -28,7 +28,9 @@ function ShopBoosterNode:draw()
     local idx = tonumber(offer.booster_sprite_index) or 0
     local game = G
     if not game then return end
-    local rect = { x = x, y = y, w = w, h = h }
+    local rect = self._draw_rect or {}
+    self._draw_rect = rect
+    rect.x, rect.y, rect.w, rect.h = x, y, w, h
     if not ShopUI.draw_booster_atlas_frame(game, rect, idx) then
         love.graphics.setColor((game.C and game.C.BOOSTER) or { 0.4, 0.43, 0.72 })
         love.graphics.rectangle("fill", x, y, w, h, 3, 3)
@@ -79,7 +81,12 @@ function ShopVoucherNode:draw()
             local col = pos % cols
             local row = math.floor(pos / cols)
             local qx, qy = col * px, row * py
-            local quad = love.graphics.newQuad(qx, qy, px, py, iw, ih)
+            atlas._voucher_quads = atlas._voucher_quads or {}
+            local quad = atlas._voucher_quads[pos]
+            if not quad then
+                quad = love.graphics.newQuad(qx, qy, px, py, iw, ih)
+                atlas._voucher_quads[pos] = quad
+            end
             local s = math.min(w / px, h / py)
             local dw, dh = px * s, py * s
             local dx = x + math.floor((w - dw) * 0.5 + 0.5)
